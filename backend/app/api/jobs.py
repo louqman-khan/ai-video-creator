@@ -10,6 +10,7 @@ from app.api.store import ProjectStore
 from app.config import Settings
 from app.pipeline.caption_style import CaptionStyle
 from app.pipeline.runner import Pipeline, Providers
+from app.timeline.convert import discard_unedited
 
 log = logging.getLogger("avc.jobs")
 ProvidersFactory = Callable[[Settings, dict], Providers]
@@ -74,6 +75,7 @@ class JobRunner:
                 script=script_file.read_text("utf-8") if script_file.exists() else None,
                 quality="final" if export else "preview",
             )
+            discard_unedited(d)  # scenes/captions may have changed: an unedited timeline is rebuilt on demand
             store.update(pid, status="done", stage="done", progress=1.0, message="Finished", video_ready=True,
                          export_ready=export, export_aspect=export_aspect)
         except Exception as e:  # report to the user, keep the worker alive for the next job

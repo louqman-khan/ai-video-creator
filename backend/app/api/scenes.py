@@ -23,6 +23,7 @@ from app.media import ffmpeg
 from app.media.cache import MediaCache
 from app.models import MediaAsset, MediaKind, Scene, ScenePick
 from app.pipeline.runner import Providers
+from app.timeline.convert import has_edits as has_timeline_edits
 
 log = logging.getLogger("avc.scenes")
 MAX_CANDIDATES = 16
@@ -200,6 +201,8 @@ def build_router(store: ProjectStore, jobs: JobRunner, settings: Settings) -> AP
         if info.status in ("queued", "running"):
             raise HTTPException(409, "This project is still processing")
         d = store.path(pid)
+        if has_timeline_edits(d):
+            raise HTTPException(409, "This project has timeline edits. Change it in the timeline editor instead.")
         sc, _ = load_scenes(d)
         scene_or_404(sc, sid)
         offered = (_read_json(d / "candidates.json") or {}).get(str(sid), [])

@@ -27,6 +27,7 @@ from app.models import Transcript
 from app.pipeline.caption_style import CaptionStyle
 from app.pipeline.captions import Cue, build_cues, cues_to_ass
 from app.pipeline.runner import ASPECTS, PREVIEW_SIZES
+from app.timeline.convert import has_edits as has_timeline_edits
 
 log = logging.getLogger("avc.captions")
 MAX_TEXT = 300
@@ -105,6 +106,8 @@ def build_router(store: ProjectStore, jobs: JobRunner, settings: Settings) -> AP
             raise HTTPException(409, "This project is still processing")
         if not info.video_ready:
             raise HTTPException(409, "The video is not ready yet")
+        if has_timeline_edits(store.path(info.id)):
+            raise HTTPException(409, "This project has timeline edits. Change it in the timeline editor instead.")
 
     def rerender(pid: str, info: ProjectInfo) -> ProjectInfo:
         queued = store.update(pid, status="queued", stage="captions", progress=0.0, message="Applying caption changes", error=None)

@@ -1,3 +1,4 @@
+import json
 import shutil
 import subprocess
 import threading
@@ -523,3 +524,163 @@ def test_attributions_not_ready_while_processing(env):
         assert c.get(f"/api/projects/{p['id']}/attributions").status_code == 409
         gate.set()
         wait_done(c, p["id"])
+
+
+# ---------------------------------------------------------------- timeline document (task 4.1)
+
+def put_tl(c, pid, tl, **over):
+    body = {"base_rev": tl["rev"], "tracks": tl["tracks"], "clips": tl["clips"], "caption_style": tl["caption_style"], **over}
+    return c.put(f"/api/projects/{pid}/timeline", json=body)
+
+
+def test_timeline_is_built_from_the_project_and_hides_server_paths(env):
+    settings, _, tone, _ = env
+    with client(env) as c:
+        pid = finished_project(c, tone)
+        r = c.get(f"/api/projects/{pid}/timeline")
+        assert r.status_code == 200
+        tl = r.json()
+        assert tl["rev"] == 1 and tl["fps"] == 30 and tl["aspect"] == "16:9"
+        assert [t["id"] for t in tl["tracks"]] == ["V1", "A1", "C1"]
+        scenes = c.get(f"/api/projects/{pid}/scenes").json()
+        v1 = [x for x in tl["clips"] if x["track"] == "V1"]
+        assert len(v1) == len([s for s in scenes if s["asset"]])
+        assert any(x["track"] == "A1" for x in tl["clips"]) and any(x["track"] == "C1" for x in tl["clips"])
+        nar = next(x for x in tl["clips"] if x["track"] == "A1")
+        assert tl["duration"] >= nar["duration"] and all(isinstance(x["start"], int) and isinstance(x["duration"], int) for x in tl["clips"])
+        assert all(a["license"] for a in tl["assets"].values())
+        assert "path" not in r.text and "file:" not in r.text and str(settings.projects_dir) not in r.text and str(settings.work_dir) not in r.text
+        assert all("url" not in a and "path" not in a for a in tl["assets"].values())
+        assert c.get(f"/api/projects/{pid}/timeline").json()["rev"] == 1       # reading never bumps the revision
+        assert (Path(settings.projects_dir) / pid / "timeline.json").is_file()
+
+
+def test_timeline_unavailable_while_processing_or_unknown(env):
+    _, _, tone, gate = env
+    gate.clear()
+    with client(env) as c:
+        p = upload(c, tone).json()
+        assert c.get(f"/api/projects/{p['id']}/timeline").status_code == 409
+        gate.set()
+        wait_done(c, p["id"])
+        assert c.get(f"/api/projects/{'0' * 32}/timeline").status_code == 404
+        assert c.put(f"/api/projects/{'0' * 32}/timeline", json={"base_rev": 1, "tracks": [], "clips": []}).status_code == 404
+
+
+def test_timeline_edit_roundtrip_and_revisions(env):
+    settings, _, tone, _ = env
+    with client(env) as c:
+        pid = finished_project(c, tone)
+        tl = c.get(f"/api/projects/{pid}/timeline").json()
+        nar = next(x for x in tl["clips"] if x["track"] == "A1")
+        nar["volume"] = 0.5
+        r = put_tl(c, pid, tl)
+        assert r.status_code == 200 and r.json()["rev"] == 2
+        again = c.get(f"/api/projects/{pid}/timeline").json()
+        assert again["rev"] == 2 and next(x for x in again["clips"] if x["track"] == "A1")["volume"] == 0.5
+        # a second tab that still has revision 1 must not overwrite
+        stale = put_tl(c, pid, tl)
+        assert stale.status_code == 409 and stale.headers["x-current-rev"] == "2" and "revision 2" in stale.json()["detail"]
+        assert c.get(f"/api/projects/{pid}/timeline").json()["rev"] == 2
+        # the file on disk is the saved document, not a half-written one
+        saved = json.loads((Path(settings.projects_dir) / pid / "timeline.json").read_text())
+        assert saved["rev"] == 2 and saved["schema_version"] == 1
+
+
+def test_timeline_put_without_opening_it_first_is_refused(env):
+    _, _, tone, _ = env
+    with client(env) as c:
+        pid = finished_project(c, tone)
+        r = c.put(f"/api/projects/{pid}/timeline", json={"base_rev": 1, "tracks": [], "clips": []})
+        assert r.status_code == 409 and "Open the timeline first" in r.json()["detail"]
+
+
+def test_timeline_put_rejects_invalid_documents(env):
+    _, _, tone, _ = env
+    with client(env) as c:
+        pid = finished_project(c, tone)
+        tl = c.get(f"/api/projects/{pid}/timeline").json()
+        v1 = [x for x in tl["clips"] if x["track"] == "V1"]
+
+        def mutate(fn, expect=422, contains=""):
+            doc = json.loads(json.dumps(tl))
+            body = fn(doc) or doc
+            r = put_tl(c, pid, doc) if body is doc else c.put(f"/api/projects/{pid}/timeline", json=body)
+            assert r.status_code == expect, (r.status_code, r.text[:200])
+            assert contains in r.text, r.text[:300]
+            assert c.get(f"/api/projects/{pid}/timeline").json()["rev"] == 1  # nothing was saved
+
+        def overlap(d):
+            clips = [x for x in d["clips"] if x["track"] == "V1"]
+            clips[1]["start"] = clips[0]["start"] + 1
+        if len(v1) > 1:
+            mutate(overlap, contains="overlap")
+        mutate(lambda d: d["clips"][0].update(asset="does-not-exist"), contains="unknown asset")
+        mutate(lambda d: d["clips"][0].update(track="NOPE"), contains="unknown track")
+        mutate(lambda d: d["clips"][0].update(start=-1))
+        mutate(lambda d: d["clips"][0].update(duration=0))
+        mutate(lambda d: d["clips"][0].update(duration=10 ** 9))
+        mutate(lambda d: d["clips"][0].update(volume=99))
+        mutate(lambda d: d["clips"][0].update(id="has space"))
+        mutate(lambda d: d["clips"][0].update(url="http://evil.example/x.mp4"))          # unknown field
+        mutate(lambda d: d["clips"][0].update(path="/etc/passwd"))                        # unknown field
+        mutate(lambda d: d["clips"][0].update(text="x" * 301))
+        mutate(lambda d: d["clips"].extend({**d["clips"][-1], "id": f"extra{i}", "start": 10 ** 6 + i * 10} for i in range(2001)))
+        mutate(lambda d: d["clips"].append(dict(d["clips"][0])), contains="duplicate")
+        mutate(lambda d: d.update(caption_style={"color": "yellow"}))
+        mutate(lambda d: d.update(caption_style={"font": "a,b"}))
+        # the browser cannot add or change assets, rev, or any other top-level field
+        for extra in ({"assets": {"x": {"id": "x", "kind": "video", "path": "/etc/passwd", "license": "L"}}}, {"rev": 99}, {"fps": 1}):
+            r = c.put(f"/api/projects/{pid}/timeline", json={"base_rev": 1, "tracks": tl["tracks"], "clips": tl["clips"], **extra})
+            assert r.status_code == 422, extra
+        assert c.put(f"/api/projects/{pid}/timeline", json={"tracks": [], "clips": []}).status_code == 422   # base_rev missing
+        assert c.put(f"/api/projects/{pid}/timeline", json={"base_rev": 0, "tracks": [], "clips": []}).status_code == 422
+        assert c.get(f"/api/projects/{pid}/timeline").json()["rev"] == 1
+
+
+def test_timeline_reset_needs_confirmation_when_edited(env):
+    settings, _, tone, _ = env
+    with client(env) as c:
+        pid = finished_project(c, tone)
+        f = Path(settings.projects_dir) / pid / "timeline.json"
+        tl = c.get(f"/api/projects/{pid}/timeline").json()
+        assert c.delete(f"/api/projects/{pid}/timeline").status_code == 204 and not f.exists()   # unedited: free to drop
+        tl = c.get(f"/api/projects/{pid}/timeline").json()
+        assert f.exists() and tl["rev"] == 1                                                       # rebuilt on demand
+        tl["clips"][0]["volume"] = 0.5
+        assert put_tl(c, pid, tl).status_code == 200
+        refused = c.delete(f"/api/projects/{pid}/timeline")
+        assert refused.status_code == 409 and "discard" in refused.json()["detail"] and f.exists()
+        assert c.delete(f"/api/projects/{pid}/timeline", params={"discard_edits": "true"}).status_code == 204
+        assert c.get(f"/api/projects/{pid}/timeline").json()["rev"] == 1
+
+
+def test_an_unedited_timeline_follows_step3_changes_but_an_edited_one_blocks_them(env):
+    settings, _, tone, _ = env
+    with client(env) as c:
+        pid = finished_project(c, tone)
+        f = Path(settings.projects_dir) / pid / "timeline.json"
+        c.get(f"/api/projects/{pid}/timeline")
+        assert f.exists()
+        # Step 3 edit (caption style) re-renders: the never-edited timeline is stale and dropped, then rebuilt on demand
+        assert c.put(f"/api/projects/{pid}/captions", json={"style": {"bold": True}}).status_code == 202
+        wait_done(c, pid)
+        assert not f.exists()
+        tl = c.get(f"/api/projects/{pid}/timeline").json()
+        assert tl["caption_style"]["bold"] is True and tl["rev"] == 1
+
+        # once the timeline itself is edited it is the only truth: the old Step 3 endpoints stop
+        sid = c.get(f"/api/projects/{pid}/scenes").json()[0]["id"]
+        cand = c.get(f"/api/projects/{pid}/scenes/{sid}/candidates", params={"query": "sky"}).json()[0]
+        tl["clips"][0]["volume"] = 0.5
+        assert put_tl(c, pid, tl).status_code == 200
+        for resp in (c.post(f"/api/projects/{pid}/scenes/{sid}/swap", json={"asset_id": cand["id"]}),
+                     c.put(f"/api/projects/{pid}/captions", json={"style": {"bold": False}}),
+                     c.post(f"/api/projects/{pid}/export")):
+            assert resp.status_code == 409 and "timeline" in resp.json()["detail"].lower()
+        assert c.get(f"/api/projects/{pid}/timeline").json()["rev"] == 2        # untouched by the refused calls
+        # reading still works, and discarding the edits frees the old screens again
+        assert c.get(f"/api/projects/{pid}/video").status_code == 200
+        c.delete(f"/api/projects/{pid}/timeline", params={"discard_edits": "true"})
+        assert c.put(f"/api/projects/{pid}/captions", json={"style": {"bold": False}}).status_code == 202
+        wait_done(c, pid)

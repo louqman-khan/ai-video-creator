@@ -52,6 +52,11 @@ class ProjectStore:
         self.root.mkdir(parents=True, exist_ok=True)
         self._lock = threading.RLock()
 
+    @property
+    def lock(self) -> threading.RLock:  # type: ignore[valid-type]
+        """Held around read-modify-write sequences on a project's files."""
+        return self._lock
+
     def path(self, project_id: str) -> Path:
         if not _ID.match(project_id):  # also rules out path traversal
             raise ProjectNotFound(project_id)
