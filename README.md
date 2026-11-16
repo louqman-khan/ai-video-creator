@@ -64,7 +64,7 @@ npm run dev     # http://127.0.0.1:5742  (use 127.0.0.1, not "localhost": see be
 npm test        # unit tests
 npm run build   # type-check + production build
 ```
-Run `avc serve` in another terminal. Ports 5742/8742 are deliberately unusual because 5173/8000
+Run `avc serve` in another terminal, then open the page and use **New project** to upload audio. Ports 5742/8742 are deliberately unusual because 5173/8000
 are often taken by other dev servers, and `localhost` can resolve to IPv6 and hit a different app.
 Set `VITE_API_TARGET` to point the dev proxy somewhere else.
 

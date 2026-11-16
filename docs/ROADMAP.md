@@ -68,7 +68,7 @@ The human only needs to say **"continue"** (or "next task") to move forward.
 
 - [x] 3.1 FastAPI: project model (JSON on disk to start), upload endpoint, background job queue for the pipeline, progress via polling or SSE.
 - [x] 3.2 Frontend scaffold: React + TS + Vite + Zustand; routes for Projects, New Project and Editor.
-- [ ] 3.3 New Project: upload audio or paste a script, choose language and aspect ratio, start the job, show progress.
+- [x] 3.3 New Project: upload audio (+ optional script for exact captions), choose language and aspect ratio, start the job, show progress. (Script-only projects need TTS: Step 5.)
 - [ ] 3.4 Scene list view: each scene's text, time range and chosen visual; "swap visual" shows other candidates and runs a new search.
 - [ ] 3.5 Caption editor: fix transcript text per word/line; style panel (font, size, color, position) with live preview.
 - [ ] 3.6 Preview player (proxy/low-res render) + Export (1080p, 16:9 / 9:16).
@@ -103,6 +103,8 @@ The human only needs to say **"continue"** (or "next task") to move forward.
 ## Progress log
 
 <!-- Agent: add one line per completed task, newest first. Format: YYYY-MM-DD — task id — what changed — how verified -->
+
+- 2026-11-16 — 3.3 — New Project form (`NewProjectPage`): file picker, optional name, language (auto/English/Urdu), 16:9 or 9:16, optional script box (RTL-aware), audio/caption options, real upload progress (XHR) with cancel; client-side checks use the limits the server reports in `/api/health` (single source of truth); `useProject` no longer retries 4xx (a missing project was re-polled forever) — 30 vitest tests, `tsc` clean, build ok; real browser E2E (Chrome via playwright-core, both real servers): wrong file refused in the page, Urdu clip + script + options uploaded, live status Listening → Recognised 31 words → Planning → Finding visuals 1/3..3/3 → Rendering → Ready in ~95 s, `<video>` loaded 1920x1080 / 11.97 s with the Nastaleeq caption visible, API log shows only 200/202/206; favicon added; not-found page requests the project twice (StrictMode) then stops. Backend: `/api/health` now returns `limits`
 
 - 2026-11-16 — 3.2 — `frontend/`: React 19 + TypeScript (strict) + Vite + Zustand + React Router; typed API client (readable FastAPI errors, "is avc serve running?" message), projects store, `useProject` polling hook, Projects / New Project (placeholder) / Editor pages (progress, error, player, download, credits), light/dark CSS, RTL-safe names (`dir=auto`). Dev ports 5742 (UI, strict) and 8742 (API): 5173/8000 were already used by other dev servers on this Mac, and `localhost` resolved to IPv6 and hit a different app — verified: `tsc` clean, 13 vitest tests pass, `npm run build` ok, both servers running: UI page, API through the Vite proxy, SPA deep link, error text, CORS allowed for the UI origin and refused for a foreign one; headless Chrome screenshots of the real Projects and Editor pages (video loads and plays through the proxy)
 

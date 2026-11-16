@@ -85,7 +85,17 @@ def create_app(settings: Settings | None = None, providers_factory: ProvidersFac
 
     @app.get("/api/health")
     def health() -> dict:
-        return {"ok": True, "ffmpeg": ffmpeg.has_tools()}
+        return {
+            "ok": True,
+            "ffmpeg": ffmpeg.has_tools(),
+            # the UI validates against the same limits the server enforces
+            "limits": {
+                "max_upload_mb": settings.max_upload_mb,
+                "max_audio_minutes": settings.max_audio_minutes,
+                "max_script_chars": MAX_SCRIPT_CHARS,
+                "extensions": sorted(AUDIO_EXTENSIONS),
+            },
+        }
 
     @app.post("/api/projects", status_code=202, response_model=ProjectInfo)
     async def create_project(

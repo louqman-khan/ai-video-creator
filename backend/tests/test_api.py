@@ -82,7 +82,8 @@ def wait_done(c, pid, timeout=90):
 def test_full_flow_upload_progress_video_credits_delete(env):
     _, _, tone, _ = env
     with client(env) as c:
-        assert c.get("/api/health").json()["ok"] is True
+        h = c.get("/api/health").json()
+        assert h["ok"] is True and ".mp3" in h["limits"]["extensions"] and h["limits"]["max_upload_mb"] == 200
         r = upload(c, tone, aspect="16:9", clean="false")
         assert r.status_code == 202
         p = r.json()

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api } from "./api/client";
+import { api, ApiError } from "./api/client";
 import { isActive, type Project } from "./api/types";
 import { useProjects } from "./store/projects";
 
@@ -24,7 +24,10 @@ export function useProject(id: string | undefined, intervalMs = 1500) {
       } catch (e) {
         if (stopped) return;
         setError(e instanceof Error ? e.message : "Something went wrong");
-        timer = setTimeout(tick, intervalMs * 3); // server hiccup: keep trying, slower
+        // a 4xx (e.g. 404: no such project) is permanent: retrying would only spam the server.
+        // Network failures and 5xx are temporary: keep trying, more slowly.
+        const permanent = e instanceof ApiError && e.status >= 400 && e.status < 500;
+        if (!permanent) timer = setTimeout(tick, intervalMs * 3);
       }
     };
     void tick();

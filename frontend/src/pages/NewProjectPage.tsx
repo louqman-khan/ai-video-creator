@@ -1,16 +1,189 @@
-import { Link } from "react-router-dom";
+import { useEffect, useRef, useState, type FormEvent } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { api, DEFAULT_LIMITS, uploadProject, type Limits } from "../api/client";
+import { ProgressBar } from "../components/ProgressBar";
+import { useProjects } from "../store/projects";
+import {
+  buildForm, DEFAULT_VALUES, formatSize, validateAudioFile, validateScript, type NewProjectValues,
+} from "../newProject";
 
-// The upload form is task 3.3.
 export function NewProjectPage() {
+  const navigate = useNavigate();
+  const upsert = useProjects((s) => s.upsert);
+  const [limits, setLimits] = useState<Limits>(DEFAULT_LIMITS);
+  const [values, setValues] = useState<NewProjectValues>(DEFAULT_VALUES);
+  const [file, setFile] = useState<File | null>(null);
+  const [fileError, setFileError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const abortRef = useRef<(() => void) | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    api.health().then((h) => live && setLimits(h.limits)).catch(() => undefined); // keep defaults
+    return () => {
+      live = false;
+      abortRef.current?.(); // leaving the page cancels a running upload
+    };
+  }, []);
+
+  const set = <K extends keyof NewProjectValues>(key: K, value: NewProjectValues[K]) =>
+    setValues((v) => ({ ...v, [key]: value }));
+
+  const pick = (f: File | undefined) => {
+    setError(null);
+    if (!f) return;
+    const problem = validateAudioFile(f, limits);
+    setFileError(problem);
+    setFile(problem ? null : f);
+  };
+
+  const scriptError = validateScript(values.script, limits);
+
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    if (!file || scriptError || uploading) return;
+    setError(null);
+    setUploading(true);
+    setProgress(0);
+    const up = uploadProject(buildForm(file, values), setProgress);
+    abortRef.current = up.abort;
+    up.promise
+      .then((project) => {
+        abortRef.current = null;
+        upsert(project);
+        navigate(`/projects/${project.id}`);
+      })
+      .catch((err: Error) => {
+        abortRef.current = null;
+        setUploading(false);
+        setError(err.message);
+      });
+  };
+
   return (
     <section>
       <div className="page-head">
         <h1>New project</h1>
       </div>
-      <p className="muted">The upload form arrives in the next task.</p>
-      <Link className="btn" to="/">
-        Back to projects
-      </Link>
+
+      <form className="form" onSubmit={submit} noValidate>
+        <div className="panel">
+          <label className="field">
+            <span className="label">Narration audio</span>
+            <input
+              type="file"
+              accept={limits.extensions.join(",")}
+              disabled={uploading}
+              onChange={(e) => pick(e.target.files?.[0])}
+              aria-describedby="audio-help"
+            />
+          </label>
+          <p id="audio-help" className="muted small">
+            {limits.extensions.join(" ")} · up to {limits.max_upload_mb} MB and {limits.max_audio_minutes} minutes.
+          </p>
+          {file && (
+            <p className="small">
+              Selected: <strong dir="auto">{file.name}</strong> ({formatSize(file.size)})
+            </p>
+          )}
+          {fileError && (
+            <p className="alert small" role="alert">
+              {fileError}
+            </p>
+          )}
+        </div>
+
+        <div className="panel">
+          <label className="field">
+            <span className="label">Project name (optional)</span>
+            <input type="text" dir="auto" maxLength={80} value={values.name} disabled={uploading}
+              onChange={(e) => set("name", e.target.value)} placeholder="Defaults to the file name" />
+          </label>
+          <div className="row">
+            <label className="field">
+              <span className="label">Language</span>
+              <select value={values.language} disabled={uploading}
+                onChange={(e) => set("language", e.target.value as NewProjectValues["language"])}>
+                <option value="">Detect automatically</option>
+                <option value="en">English</option>
+                <option value="ur">Urdu (اردو)</option>
+              </select>
+            </label>
+            <label className="field">
+              <span className="label">Video format</span>
+              <select value={values.aspect} disabled={uploading}
+                onChange={(e) => set("aspect", e.target.value as NewProjectValues["aspect"])}>
+                <option value="16:9">Landscape 16:9 (1920×1080)</option>
+                <option value="9:16">Vertical 9:16 (1080×1920)</option>
+              </select>
+            </label>
+          </div>
+        </div>
+
+        <div className="panel">
+          <label className="field">
+            <span className="label">Script (optional)</span>
+            <textarea rows={6} dir="auto" value={values.script} disabled={uploading}
+              onChange={(e) => set("script", e.target.value)}
+              placeholder="Paste the exact text of your narration. Captions will use your spelling and punctuation; the timing still comes from the audio." />
+          </label>
+          <p className="muted small">
+            A script is matched to the audio you upload. Creating a voice-over from text alone arrives in a later step.
+          </p>
+          {scriptError && (
+            <p className="alert small" role="alert">
+              {scriptError}
+            </p>
+          )}
+        </div>
+
+        <details className="panel">
+          <summary>Audio and caption options</summary>
+          {([
+            ["captions", "Burn captions into the video"],
+            ["clean", "Remove background noise"],
+            ["normalize", "Even out the loudness (−14 LUFS)"],
+            ["removeSilence", "Shorten long pauses"],
+          ] as const).map(([key, label]) => (
+            <label key={key} className="check">
+              <input type="checkbox" checked={values[key]} disabled={uploading}
+                onChange={(e) => set(key, e.target.checked)} />
+              {label}
+            </label>
+          ))}
+        </details>
+
+        {error && (
+          <p className="alert" role="alert">
+            {error}
+          </p>
+        )}
+        {uploading && (
+          <div className="panel">
+            <ProgressBar value={progress} label="Upload progress" />
+            <p className="small">
+              {progress < 1 ? `Uploading ${Math.round(progress * 100)}%` : "Upload complete, starting…"}
+            </p>
+          </div>
+        )}
+
+        <div className="card-actions">
+          <button className="btn btn-primary" type="submit" disabled={!file || !!scriptError || uploading}>
+            {uploading ? "Uploading…" : "Create video"}
+          </button>
+          {uploading ? (
+            <button className="btn" type="button" onClick={() => abortRef.current?.()}>
+              Cancel
+            </button>
+          ) : (
+            <Link className="btn" to="/">
+              Cancel
+            </Link>
+          )}
+        </div>
+      </form>
     </section>
   );
 }
