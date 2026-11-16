@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from app.config import Settings
 from app.providers.base import Registry
 
@@ -7,7 +9,22 @@ from .gemini import GeminiPlanner
 from .heuristic import HeuristicPlanner
 from .interface import PlannerError, ScenePlanner
 
+log = logging.getLogger("avc.planner")
 registry: Registry[ScenePlanner] = Registry("scene planner")
+
+
+class FallbackPlanner:
+    """Try the LLM planner; if it fails, use the no-LLM planner (English only) and say so."""
+
+    def __init__(self, primary: ScenePlanner, fallback: ScenePlanner) -> None:
+        self.primary, self.fallback = primary, fallback
+
+    def plan(self, transcript):
+        try:
+            return self.primary.plan(transcript)
+        except PlannerError as e:
+            log.warning("LLM planner failed (%s); falling back to the heuristic planner", e)
+            return self.fallback.plan(transcript)  # raises a clear error for non-English
 
 
 @registry.register("gemini")
@@ -21,7 +38,10 @@ def _heuristic(s: Settings) -> ScenePlanner:
 
 
 def create_planner(settings: Settings) -> ScenePlanner:
-    return registry.create(settings.scene_planner, settings)
+    planner = registry.create(settings.scene_planner, settings)
+    if settings.scene_planner != "heuristic":
+        planner = FallbackPlanner(planner, registry.create("heuristic", settings))
+    return planner
 
 
 __all__ = ["PlannerError", "ScenePlanner", "create_planner"]

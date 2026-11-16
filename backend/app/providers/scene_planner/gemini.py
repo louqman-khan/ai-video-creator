@@ -12,7 +12,7 @@ from typing import Literal
 import httpx
 from pydantic import BaseModel, Field, ValidationError
 
-from app.http import make_client, post_json
+from app.http import HttpError, make_client, post_json
 from app.models import Scene, Transcript
 from app.pipeline.scenes import chunk_scenes
 
@@ -61,7 +61,7 @@ class GeminiPlanner:
             raise PlannerError("GEMINI_API_KEY is not set (or use SCENE_PLANNER=heuristic for English).")
         self.api_key, self.model = api_key, model
         self.min_s, self.max_s = min_s, max_s
-        self.client = client or make_client()
+        self.client = client or make_client(read_timeout=120.0)  # LLM calls can be slow
 
     def _ask(self, lang: str, scenes: list[Scene]) -> list[Annotation]:
         listing = "\n".join(f"{s.id}. {s.text}" for s in scenes)
@@ -69,12 +69,15 @@ class GeminiPlanner:
             "contents": [{"parts": [{"text": PROMPT.format(lang=lang, scenes=listing)}]}],
             "generationConfig": {"responseMimeType": "application/json", "temperature": 0.3},
         }
-        data = post_json(
-            self.client,
-            ENDPOINT.format(model=self.model),
-            json=body,
-            headers={"x-goog-api-key": self.api_key},  # header, so the key never lands in a URL
-        )
+        try:
+            data = post_json(
+                self.client,
+                ENDPOINT.format(model=self.model),
+                json=body,
+                headers={"x-goog-api-key": self.api_key},  # header, so the key never lands in a URL
+            )
+        except (httpx.HTTPError, HttpError) as e:
+            raise PlannerError(f"Gemini request failed: {type(e).__name__}: {e}") from None
         try:
             return parse_annotations(data["candidates"][0]["content"]["parts"][0]["text"])
         except (KeyError, IndexError, json.JSONDecodeError, ValidationError) as e:

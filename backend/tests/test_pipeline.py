@@ -145,3 +145,30 @@ def test_httpx_request_logging_is_silenced_so_api_keys_cannot_leak():
     import app.http  # noqa: F401  (import side effect sets the log levels)
 
     assert logging.getLogger("httpx").level >= logging.WARNING
+
+
+def test_fallback_planner_uses_heuristic_for_english_and_errors_for_urdu():
+    from app.providers.scene_planner import FallbackPlanner
+
+    class Broken:
+        def plan(self, t):
+            raise PlannerError("down")
+
+    fb = FallbackPlanner(Broken(), HeuristicPlanner())
+    scenes = fb.plan(make_transcript("The ancient castle stands above the misty mountain valley. " * 3))
+    assert all(s.query_en for s in scenes)
+    with pytest.raises(PlannerError, match="English"):
+        fb.plan(make_transcript("سلام دنیا", lang="ur"))
+
+
+def test_load_wav_reads_16k_mono(tmp_path):
+    import wave
+
+    from app.providers.transcriber.faster_whisper import FasterWhisperTranscriber
+
+    p = tmp_path / "a.wav"
+    with wave.open(str(p), "wb") as w:
+        w.setnchannels(1), w.setsampwidth(2), w.setframerate(16000)
+        w.writeframes((b"\x00\x40" * 1600))
+    arr = FasterWhisperTranscriber._load_wav(p)
+    assert arr.shape == (1600,) and 0.49 < float(arr[0]) < 0.51

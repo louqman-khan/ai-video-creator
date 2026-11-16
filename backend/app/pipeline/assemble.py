@@ -11,7 +11,9 @@ from app.models import Scene, ScenePick
 
 log = logging.getLogger("avc.assemble")
 
-_ENC = ["-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p", "-an"]
+# -map_metadata -1 / -write_tmcd 0: drop the source clips' metadata and timecode track
+_ENC = ["-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p", "-an",
+        "-map_metadata", "-1", "-write_tmcd", "0"]
 
 
 def scene_frames(scenes: list[Scene], fps: int) -> list[int]:
@@ -84,6 +86,7 @@ def concat_and_finish(
     args += [
         "-c:v", "libx264", "-preset", "medium", "-crf", "20", "-pix_fmt", "yuv420p",
         "-c:a", "aac", "-b:a", "192k", "-t", f"{audio_duration:.3f}",
+        "-map_metadata", "-1", "-write_tmcd", "0",
         "-movflags", "+faststart", str(out.resolve()),
     ]  # fmt: skip
     ffmpeg.run(args, cwd=captions.parent if captions else None)

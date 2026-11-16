@@ -29,9 +29,9 @@ def safe_url(url: str) -> str:
     return str(httpx.URL(url).copy_with(query=None))
 
 
-def make_client() -> httpx.Client:
+def make_client(read_timeout: float = 30.0) -> httpx.Client:
     return httpx.Client(
-        timeout=httpx.Timeout(30.0, connect=10.0),
+        timeout=httpx.Timeout(read_timeout, connect=10.0),
         headers={"User-Agent": USER_AGENT},
         follow_redirects=True,
     )

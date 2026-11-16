@@ -18,9 +18,24 @@ class FasterWhisperTranscriber:
             self._model = WhisperModel(self.model_size, device="cpu", compute_type="int8")
         return self._model
 
+    @staticmethod
+    def _load_wav(path: Path):
+        """16 kHz mono 16-bit WAV -> float32 array. Bypasses PyAV decoding, whose newer versions
+        break faster-whisper's own decoder (`metadata_errors` TypeError)."""
+        import wave
+
+        import numpy as np
+
+        with wave.open(str(path), "rb") as w:
+            if (w.getframerate(), w.getnchannels(), w.getsampwidth()) != (16000, 1, 2):
+                raise ValueError("expected 16 kHz mono 16-bit WAV (the pipeline converts to this)")
+            raw = w.readframes(w.getnframes())
+        return np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768.0
+
     def transcribe(self, audio: Path, language: str | None = None) -> Transcript:
+        source = self._load_wav(audio) if audio.suffix.lower() == ".wav" else str(audio)
         segments_iter, info = self._load().transcribe(
-            str(audio), language=language, word_timestamps=True, vad_filter=True
+            source, language=language, word_timestamps=True, vad_filter=True
         )
         segments: list[Segment] = []
         for s in segments_iter:
