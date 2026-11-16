@@ -83,9 +83,57 @@ def test_ranker_prefers_unused_landscape_video():
     assert [x.id for x in ranked] == ["s:2", "s:1", "s:3"]
 
 
+def test_ranker_keyword_match_beats_source_order():
+    scene = Scene(id=1, start=0, end=6, text="x", query_en="old castle", keywords=["fortress"])
+
+    def a(i, tags=(), title=""):
+        return MediaAsset(id=f"s:{i}", source="s", kind="image", url="u", license="L",
+                          width=1920, height=1080, tags=list(tags), title=title)
+
+    cands = [a(1, tags=["beach"]), a(2, tags=["castle", "old", "stone"]), a(3, title="Fortress wall")]
+    ranked = HeuristicRanker().rank(scene, cands)
+    assert [x.id for x in ranked] == ["s:2", "s:3", "s:1"]
+
+
 def test_credits_dedupe_and_include_license():
     asset = MediaAsset(id="wikimedia:1", source="wikimedia", kind="image", url="u", license="CC BY 4.0",
                        license_url="https://cc/by", attribution='"Bridge" by Jane')
     text = credits_text([ScenePick(scene_id=1, asset=asset), ScenePick(scene_id=2, asset=asset),
                          ScenePick(scene_id=3)])
     assert text.count("Bridge") == 1 and "CC BY 4.0" in text
+
+
+def test_doctor_reports_missing_keys_without_network():
+    from app.config import Settings
+    from app.doctor import run_checks
+
+    checks = {c.name: c for c in run_checks(Settings(_env_file=None), network=False)}
+    assert checks["python >= 3.11"].status == "ok"
+    assert checks["PIXABAY_API_KEY"].status == "warn"
+    assert checks["PEXELS_API_KEY (optional)"].status == "ok"  # optional: never a problem
+    assert not any(n.startswith("network") for n in checks)
+
+
+def test_providers_selected_from_env_without_code_edits(monkeypatch):
+    from app.config import Settings
+    from app.providers.avatar_renderer import create_avatar_renderer
+    from app.providers.audio_cleaner import NoopCleaner, create_cleaner
+    from app.providers.media_ranker import create_ranker
+    from app.providers.scene_planner import create_planner
+    from app.providers.scene_planner.heuristic import HeuristicPlanner
+    from app.providers.transcriber import create_transcriber
+    from app.providers.transcriber.faster_whisper import FasterWhisperTranscriber
+    from app.providers.tts import create_tts
+
+    monkeypatch.setenv("SCENE_PLANNER", "heuristic")
+    monkeypatch.setenv("WHISPER_MODEL", "tiny")
+    s = Settings(_env_file=None)
+    assert isinstance(create_planner(s), HeuristicPlanner)
+    t = create_transcriber(s)
+    assert isinstance(t, FasterWhisperTranscriber) and t.model_size == "tiny"
+    assert isinstance(create_cleaner(s), NoopCleaner)
+    create_ranker(s), create_tts(s), create_avatar_renderer(s)
+
+    monkeypatch.setenv("SCENE_PLANNER", "nope")
+    with pytest.raises(ValueError, match="Available"):
+        create_planner(Settings(_env_file=None))

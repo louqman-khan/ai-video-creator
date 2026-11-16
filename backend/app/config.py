@@ -30,6 +30,8 @@ class Settings(BaseSettings):
     whisper_model: str = "small"
     media_ranker: str = "heuristic"
     audio_cleaner: str = "noop"
+    tts: str = "none"
+    avatar_renderer: str = "none"
 
     # scene chunking
     scene_min_s: float = 3.0

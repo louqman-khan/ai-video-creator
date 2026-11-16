@@ -3,9 +3,14 @@ A CLIP-based ranker (image-text similarity) can replace this behind the same int
 
 from __future__ import annotations
 
+import re
 from collections.abc import Collection
 
 from app.models import MediaAsset, Scene
+
+
+def _tokens(text: str) -> set[str]:
+    return {w for w in re.findall(r"[a-z0-9]+", text.lower()) if len(w) > 2}
 
 
 class HeuristicRanker:
@@ -16,6 +21,10 @@ class HeuristicRanker:
         s = 0.0
         if a.id in used:
             s -= 100
+        # keyword match: scene query/keywords vs the asset's tags + title (max 3 words count)
+        wanted = _tokens(" ".join([scene.query_en, *scene.keywords]))
+        have = _tokens(" ".join([*a.tags, a.title]))
+        s += 1.5 * min(len(wanted & have), 3)
         if a.width and a.height:
             if (a.width >= a.height) != self.landscape:
                 s -= 20

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import shutil
 from pathlib import Path
 from typing import Annotated, Optional
 
@@ -9,7 +8,8 @@ import typer
 from rich.console import Console
 from rich.logging import RichHandler
 
-from app.config import ROOT, get_settings
+from app.config import get_settings
+from app.doctor import run_checks
 from app.media import ffmpeg
 from app.pipeline.runner import ASPECTS, Pipeline, Providers
 from app.providers.audio_cleaner import create_cleaner
@@ -105,23 +105,18 @@ def transcribe(
 
 
 @app.command()
-def doctor() -> None:
-    """Check ffmpeg, captions support, fonts and API keys."""
+def doctor(
+    offline: Annotated[bool, typer.Option(help="Skip network reachability checks")] = False,
+) -> None:
+    """Pass/fail list: Python, FFmpeg, .env keys, fonts, and network reachability."""
     s = get_settings()
-    ok = lambda b: "[green]ok[/green]" if b else "[red]MISSING[/red]"  # noqa: E731
-    has_ff = bool(shutil.which("ffmpeg") and shutil.which("ffprobe"))
-    console.print(f"ffmpeg + ffprobe:  {ok(has_ff)}" + ("" if has_ff else "   -> brew install ffmpeg"))
-    if has_ff:
-        console.print(f"  libass (subtitles filter): {ok(ffmpeg.has_filter('subtitles'))}")
-    console.print(f".env file:         {ok((ROOT / '.env').exists())}  ({ROOT / '.env'})")
-    console.print(f"PIXABAY_API_KEY:   {ok(bool(s.pixabay_api_key))}")
-    console.print(f"GEMINI_API_KEY:    {ok(bool(s.gemini_api_key))}")
-    console.print(f"PEXELS_API_KEY:    {'set' if s.pexels_api_key else 'not set (optional, skipped)'}")
-    fonts = Path(s.fonts_dir)
-    jameel = any("jameel" in f.name.lower() for f in fonts.glob("*")) if fonts.is_dir() else False
-    console.print(f"Jameel Noori font: {ok(jameel)}  (put the .ttf in {fonts}; needed for Urdu captions)")
-    names = [src.name for src in build_sources(s)]
-    console.print(f"active media sources: {', '.join(names) or 'none'}")
+    marks = {"ok": "[green]PASS[/green]", "warn": "[yellow]WARN[/yellow]", "fail": "[red]FAIL[/red]"}
+    checks = run_checks(s, network=not offline)
+    for c in checks:
+        console.print(f"{marks[c.status]}  {c.name}" + (f"  [dim]{c.detail}[/dim]" if c.detail else ""))
+    console.print(f"\nactive media sources: {', '.join(src.name for src in build_sources(s)) or 'none'}")
+    if any(c.status == "fail" for c in checks):
+        raise typer.Exit(1)
 
 
 if __name__ == "__main__":

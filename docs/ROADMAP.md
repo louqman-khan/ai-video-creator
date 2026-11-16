@@ -39,12 +39,12 @@ The human only needs to say **"continue"** (or "next task") to move forward.
 ## Step 1 — Core pipeline as a CLI (CPU only)
 
 - [x] 1.1 Repo skeleton: `backend/`, venv, `requirements.txt`/`pyproject`, `.env.example`, `.gitignore`, `avc` CLI entry point. *Done when:* `avc --help` works.
-- [~] 1.2 `avc doctor`: checks Python version, FFmpeg, `.env` keys, fonts, and network reachability of the media APIs. *Done when:* it prints a clear pass/fail list. *Built:* ffmpeg/libass, `.env`, keys, fonts, active sources. *Missing:* Python version check, network reachability.
-- [~] 1.3 Provider interfaces + config-based selection (Transcriber, ScenePlanner/LLM, MediaSearch, MediaRanker, AudioCleaner, TTS, AvatarRenderer). *Done when:* providers are chosen from config/.env with no code edits. *Built:* the first five, via `Registry`. *Missing:* TTS and AvatarRenderer interface stubs.
+- [x] 1.2 `avc doctor`: checks Python version, FFmpeg, `.env` keys, fonts, and network reachability of the media APIs. *Done when:* it prints a clear pass/fail list.
+- [x] 1.3 Provider interfaces + config-based selection (Transcriber, ScenePlanner/LLM, MediaSearch, MediaRanker, AudioCleaner, TTS, AvatarRenderer). *Done when:* providers are chosen from config/.env with no code edits. (TTS and AvatarRenderer are interface stubs until Step 5.)
 - [~] 1.4 Transcriber: faster-whisper (CPU, `small`) with word timestamps → `transcript.json`. *Done when:* English sample → words with start/end times. *Code written, never run* (needs FFmpeg + model download).
 - [~] 1.5 ScenePlanner: 3–8 s scenes + English search query per scene via Gemini (or Ollama), with a sentence-split fallback that needs no LLM → `scenes.json`. *Built:* chunking, heuristic fallback (unit-tested), Gemini (parsing tested; no live call, no key yet). Ollama not built.
 - [~] 1.6 MediaSearch: Pixabay (videos preferred, images as fallback), Openverse + Wikimedia Commons (images, no key), Pexels optional (skipped when no key). Cache downloads; store source/license/attribution per asset. *Built and mock-tested;* Openverse also checked live. Pixabay not tested live (no key). Wikimedia not tested live (commons.wikimedia.org times out from this network).
-- [~] 1.7 Heuristic MediaRanker (default): keyword match, orientation, resolution, duration fit. *Built:* orientation, resolution, duration, reuse penalty. *Missing:* keyword match.
+- [x] 1.7 Heuristic MediaRanker (default): keyword match, orientation, resolution, duration fit.
 - [~] 1.8 Assembler (FFmpeg): trim/loop clips to scene duration, slow zoom on still images, scale/crop to 1920x1080, original audio, burned-in ASS captions from word timestamps. *Code written, never run* (FFmpeg not installed yet).
 - [~] 1.9 `--vertical` flag → 1080x1920 (9:16) with smart crop. *Built:* `--aspect 9:16` (centre crop). *Missing:* `--vertical` alias, smart crop.
 - [~] 1.10 `avc make <audio>` runs the full pipeline with progress logs; writes `output.mp4` + `credits.txt` (attributions). *Done when:* English sample → watchable MP4. *Wired up, never run end to end.*
@@ -102,5 +102,8 @@ The human only needs to say **"continue"** (or "next task") to move forward.
 
 <!-- Agent: add one line per completed task, newest first. Format: YYYY-MM-DD — task id — what changed — how verified -->
 
+- 2026-11-16 — 1.3 — TTS + AvatarRenderer interface stubs (`none` provider); all 7 providers selectable via env — test sets `SCENE_PLANNER`/`WHISPER_MODEL` env vars and checks the chosen classes, unknown name gives a clear error; `pytest` 21 passed
+- 2026-11-16 — 1.2 — `avc doctor` rewritten (`app/doctor.py`): Python version, FFmpeg + libass, `.env`, keys, fonts, network reachability — ran it live: PASS/WARN/FAIL list printed, exit 1 because FFmpeg is missing, Wikimedia Commons unreachable from this network
+- 2026-11-16 — 1.7 — ranker now scores keyword overlap (query/keywords vs tags/title) — new unit test, `pytest` passes
 - 2026-11-16 — 1.1 — repo skeleton (`backend/` package, `.venv`, `pyproject.toml`, `.env.example`, `.gitignore`, `avc` entry point) — `avc --help` lists make/transcribe/doctor; `pytest` 18 passed
 - 2026-11-16 — audit — compared roadmap with code; 1.2–1.11 are partly built and marked `[~]` with what is missing; roadmap moved from `ROADMAP.md` to `docs/ROADMAP.md` to match CLAUDE.md
