@@ -28,16 +28,30 @@ class JobRunner:
         self.store, self.settings, self.factory = store, settings, providers_factory
         self._pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="avc-job")
 
-    def submit(self, project_id: str) -> None:
-        self._pool.submit(self._run, project_id)
+    def submit(self, project_id: str, prepare: Callable[[], None] | None = None) -> None:
+        """Queue a (re-)run of the pipeline. `prepare` runs first inside the worker (e.g. download
+        the replacement visual of a swap); if it fails the previous video is kept."""
+        self._pool.submit(self._run, project_id, prepare)
 
     def shutdown(self) -> None:
         self._pool.shutdown(wait=False, cancel_futures=True)
 
-    def _run(self, pid: str) -> None:
+    def _run(self, pid: str, prepare: Callable[[], None] | None = None) -> None:
         store = self.store
         try:
             info = store.update(pid, status="running", stage="start", progress=0.0, message="Starting", error=None)
+        except Exception:  # project deleted while queued
+            return
+        if prepare:
+            try:
+                prepare()
+            except Exception as e:
+                log.exception("project %s: preparing the change failed", pid)
+                # the old video is still fine: report the problem without breaking the project
+                store.update(pid, status="done" if info.video_ready else "failed", stage="done", progress=1.0,
+                             message="", error=redact(f"Could not apply the change: {e}", self.settings)[:500])
+                return
+        try:
             opts = info.options
             d = store.path(pid)
             settings = self.settings.model_copy(update={"audio_cleaner": "ffmpeg" if opts.get("clean", True) else "noop"})

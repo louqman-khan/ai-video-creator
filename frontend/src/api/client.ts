@@ -1,4 +1,4 @@
-import type { Project } from "./types";
+import type { Asset, Project, Scene } from "./types";
 
 export class ApiError extends Error {
   constructor(
@@ -80,6 +80,21 @@ export const api = {
   listProjects: () => request<Project[]>("/api/projects"),
   getProject: (id: string) => request<Project>(`/api/projects/${encodeURIComponent(id)}`),
   deleteProject: (id: string) => request<void>(`/api/projects/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  getScenes: (id: string) => request<Scene[]>(`/api/projects/${encodeURIComponent(id)}/scenes`),
+  getCandidates: (id: string, sceneId: number, query: string) =>
+    request<Asset[]>(
+      `/api/projects/${encodeURIComponent(id)}/scenes/${sceneId}/candidates?query=${encodeURIComponent(query)}`,
+    ),
+  /** Only the id of a visual the server offered is sent: never a URL. */
+  swapVisual: (id: string, sceneId: number, assetId: string) =>
+    request<Project>(`/api/projects/${encodeURIComponent(id)}/scenes/${sceneId}/swap`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ asset_id: assetId }),
+    }),
+  /** `version` (the asset id) busts the browser cache when a visual is swapped. */
+  thumbUrl: (id: string, sceneId: number, version: string) =>
+    `/api/projects/${encodeURIComponent(id)}/scenes/${sceneId}/thumb?v=${encodeURIComponent(version)}`,
   videoUrl: (id: string) => `/api/projects/${encodeURIComponent(id)}/video`,
   creditsUrl: (id: string) => `/api/projects/${encodeURIComponent(id)}/credits`,
 };

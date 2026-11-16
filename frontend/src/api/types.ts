@@ -19,3 +19,32 @@ export interface Project {
 
 export const isActive = (p: Pick<Project, "status">): boolean =>
   p.status === "queued" || p.status === "running";
+
+export interface Asset {
+  id: string;
+  source: string;
+  kind: "video" | "image";
+  thumb_url: string;
+  page_url: string;
+  title: string;
+  width: number;
+  height: number;
+  duration: number | null;
+  license: string;
+  license_url: string;
+  author: string;
+  attribution: string;
+  attribution_required: boolean;
+}
+
+export interface Scene {
+  id: number;
+  start: number;
+  end: number;
+  text: string;
+  query_en: string;
+  keywords: string[];
+  preferred_kind: "video" | "image" | null;
+  asset: Asset | null;
+  has_thumb: boolean;
+}

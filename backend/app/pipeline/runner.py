@@ -219,7 +219,8 @@ class Pipeline:
         log.info("rendering...")
         self.progress("render", 0.78, "Rendering the video")
         seg_dir = self.run_dir / "segments"
-        shutil.rmtree(seg_dir, ignore_errors=True)
+        if force:
+            shutil.rmtree(seg_dir, ignore_errors=True)
         segments = assemble.build_segments(scenes, picks, seg_dir, w, h, self.s.fps)
         out.parent.mkdir(parents=True, exist_ok=True)
         assemble.concat_and_finish(

@@ -7,6 +7,7 @@ import { useProjects } from "./store/projects";
 export function useProject(id: string | undefined, intervalMs = 1500) {
   const [project, setProject] = useState<Project | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [nonce, setNonce] = useState(0); // bump to start polling again (e.g. after a swap)
   const upsert = useProjects((s) => s.upsert);
 
   useEffect(() => {
@@ -35,7 +36,7 @@ export function useProject(id: string | undefined, intervalMs = 1500) {
       stopped = true;
       if (timer) clearTimeout(timer);
     };
-  }, [id, intervalMs, upsert]);
+  }, [id, intervalMs, upsert, nonce]);
 
-  return { project, error };
+  return { project, error, refresh: () => setNonce((n) => n + 1) };
 }

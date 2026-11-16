@@ -196,3 +196,21 @@ def test_caption_grouping_avoids_one_word_orphan_without_exceeding_max_words():
     assert [len(c) for c in group_words(ws, max_words=8)] == [7, 2]  # 8 + a lone 9th word -> one word moves over
     ws2 = [Word(text=t, start=i * 0.4, end=i * 0.4 + 0.35) for i, t in enumerate(["ab"] * 8 + ["cd", "ef"])]
     assert [len(c) for c in group_words(ws2, max_words=8)] == [8, 2]  # two words is not an orphan: kept
+
+
+def test_segment_key_changes_only_when_inputs_change(tmp_path):
+    from app.pipeline.assemble import segment_key
+
+    f = tmp_path / "a.jpg"
+    f.write_bytes(b"x" * 10)
+
+    def pick(aid, path=f, kind="image"):
+        a = MediaAsset(id=aid, source="s", kind=kind, url="u", license="L")
+        return ScenePick(scene_id=1, asset=a, local_path=str(path))
+
+    base = segment_key(pick("s:1"), 90, 1920, 1080, 30)
+    assert base == segment_key(pick("s:1"), 90, 1920, 1080, 30)           # same inputs: reusable
+    assert base != segment_key(pick("s:2"), 90, 1920, 1080, 30)           # swapped visual
+    assert base != segment_key(pick("s:1"), 91, 1920, 1080, 30)           # scene length changed
+    assert base != segment_key(pick("s:1"), 90, 1080, 1920, 30)           # aspect changed
+    assert segment_key(ScenePick(scene_id=1), 90, 1920, 1080, 30) != base  # black placeholder

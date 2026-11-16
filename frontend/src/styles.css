@@ -41,3 +41,21 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, .btn:focus-vi
 .row { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
 .check { display: flex; gap: 8px; align-items: center; margin-top: 10px; }
 summary { cursor: pointer; font-weight: 600; }
+h2 { font-size: 1.15rem; margin: 24px 0 12px; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.scenes { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.scene-card { display: grid; grid-template-columns: 200px 1fr; gap: 16px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
+.thumb { width: 200px; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 8px; background: #000; display: block; }
+.thumb-empty { display: grid; place-items: center; color: var(--muted); background: var(--bg); border: 1px dashed var(--line); font-size: .85rem; }
+.scene-body p { margin: 0 0 6px; }
+.scene-text { font-size: 1.05rem; }
+.swap-panel { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+.row-inline { display: flex; gap: 8px; margin-bottom: 8px; }
+.row-inline input { flex: 1; min-width: 0; padding: 8px 10px; font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; }
+.candidates { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); }
+.candidate { width: 100%; padding: 0; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--text); cursor: pointer; overflow: hidden; text-align: left; font: inherit; }
+.candidate:hover:not(:disabled) { border-color: var(--accent); }
+.candidate:disabled { opacity: .6; cursor: wait; }
+.candidate img, .candidate .thumb-empty { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; display: grid; place-items: center; }
+.candidate-label { display: block; font-size: .75rem; padding: 4px 6px; color: var(--muted); }
+@media (max-width: 600px) { .scene-card { grid-template-columns: 1fr; } .thumb { width: 100%; } }

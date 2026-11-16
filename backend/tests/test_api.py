@@ -31,6 +31,7 @@ def env(tmp_path):
     media = tmp_path / "media"
     media.mkdir()
     ff("-f", "lavfi", "-i", "color=c=blue:s=640x360", "-frames:v", "1", str(media / "blue sky.jpg"))
+    ff("-f", "lavfi", "-i", "color=c=green:s=640x360", "-frames:v", "1", str(media / "green sky.jpg"))
     tone = tmp_path / "tone.wav"
     ff("-f", "lavfi", "-i", "sine=frequency=300:duration=4", str(tone))
     words = [Word(text=f"w{i}", start=0.2 + i * 0.4, end=0.2 + i * 0.4 + 0.35) for i in range(8)]
@@ -167,3 +168,108 @@ def test_restart_marks_interrupted_projects_failed(env):
     with TestClient(create_app(settings, factory)) as c:  # startup runs the recovery
         p = c.get(f"/api/projects/{stuck.id}").json()
         assert p["status"] == "failed" and "restarted" in p["error"]
+
+
+# ---------------------------------------------------------------- scenes / swap (task 3.4)
+
+def finished_project(c, tone):
+    p = upload(c, tone, clean="false", normalize="false").json()
+    assert wait_done(c, p["id"])["status"] == "done"
+    return p["id"]
+
+
+def test_scene_list_hides_download_urls_and_serves_thumbnails(env):
+    _, _, tone, _ = env
+    with client(env) as c:
+        pid = finished_project(c, tone)
+        r = c.get(f"/api/projects/{pid}/scenes")
+        assert r.status_code == 200
+        scenes = r.json()
+        assert scenes and all(s["text"] and s["end"] > s["start"] for s in scenes)
+        first = scenes[0]
+        assert first["asset"]["id"].startswith("local:") and first["asset"]["license"] and first["has_thumb"]
+        assert "url" not in first["asset"] and "local_path" not in first["asset"]
+        assert "file:" not in r.text and str(tone.parent) not in r.text  # no local paths either
+        t = c.get(f"/api/projects/{pid}/scenes/{first['id']}/thumb")
+        assert t.status_code == 200 and t.headers["content-type"] == "image/jpeg" and t.content[:2] == b"\xff\xd8"
+        assert c.get(f"/api/projects/{pid}/scenes/999/thumb").status_code == 404
+
+
+def test_scenes_not_ready_yet_and_unknown_project(env):
+    _, _, tone, gate = env
+    gate.clear()
+    with client(env) as c:
+        p = upload(c, tone).json()
+        assert c.get(f"/api/projects/{p['id']}/scenes").status_code == 409
+        gate.set()
+        wait_done(c, p["id"])
+        assert c.get(f"/api/projects/{'0' * 32}/scenes").status_code == 404
+
+
+def test_swap_visual_end_to_end(env):
+    settings, _, tone, _ = env
+    with client(env) as c:
+        pid = finished_project(c, tone)
+        before = c.get(f"/api/projects/{pid}").json()
+        scene = c.get(f"/api/projects/{pid}/scenes").json()[0]
+        cands = c.get(f"/api/projects/{pid}/scenes/{scene['id']}/candidates", params={"query": "sky"})
+        assert cands.status_code == 200 and len(cands.json()) == 2
+        assert all("url" not in a for a in cands.json())
+        other = next(a for a in cands.json() if a["id"] != scene["asset"]["id"])
+
+        r = c.post(f"/api/projects/{pid}/scenes/{scene['id']}/swap", json={"asset_id": other["id"]})
+        assert r.status_code == 202 and r.json()["status"] in ("queued", "running")
+        done = wait_done(c, pid)
+        assert done["status"] == "done" and done["error"] is None and done["video_ready"]
+        assert done["updated_at"] != before["updated_at"]
+        after = c.get(f"/api/projects/{pid}/scenes").json()
+        assert after[0]["asset"]["id"] == other["id"]
+        assert [s["asset"]["id"] for s in after[1:]] == [s["asset"]["id"] for s in c.get(f"/api/projects/{pid}/scenes").json()[1:]]
+        assert "License:" in (Path(settings.projects_dir) / pid / "CREDITS.txt").read_text()  # credits regenerated
+        assert c.get(f"/api/projects/{pid}/video").status_code == 200  # still playable
+        # the thumbnail now shows the new visual (a different file name, a fresh image)
+        assert c.get(f"/api/projects/{pid}/scenes/{scene['id']}/thumb").status_code == 200
+
+
+def test_swap_rejects_anything_the_server_did_not_offer(env):
+    _, _, tone, _ = env
+    with client(env) as c:
+        pid = finished_project(c, tone)
+        sid = c.get(f"/api/projects/{pid}/scenes").json()[0]["id"]
+        swap = lambda body, s=sid: c.post(f"/api/projects/{pid}/scenes/{s}/swap", json=body)  # noqa: E731
+        assert swap({"asset_id": "local:blue sky.jpg"}).status_code == 400   # real id, but never offered yet
+        c.get(f"/api/projects/{pid}/scenes/{sid}/candidates", params={"query": "sky"})
+        for evil in ("http://evil.example/x.mp4", "file:///etc/passwd", "../../etc/passwd", "local:nope.jpg"):
+            assert swap({"asset_id": evil}).status_code == 400, evil
+        assert swap({"url": "http://evil.example/x.mp4"}).status_code == 422  # a URL field is not even accepted
+        assert swap({"asset_id": ""}).status_code == 422
+        assert swap({"asset_id": "local:blue sky.jpg"}, 999).status_code == 404
+        assert c.get(f"/api/projects/{pid}/scenes/{sid}/candidates", params={"query": "x" * 101}).status_code == 422
+        assert c.get(f"/api/projects/{pid}/scenes/999/candidates").status_code == 404
+
+
+def test_swap_not_allowed_while_processing(env):
+    _, _, tone, _ = env
+    with client(env) as c:
+        pid = finished_project(c, tone)
+        sid = c.get(f"/api/projects/{pid}/scenes").json()[0]["id"]
+        cand = c.get(f"/api/projects/{pid}/scenes/{sid}/candidates", params={"query": "sky"}).json()[0]
+        assert c.post(f"/api/projects/{pid}/scenes/{sid}/swap", json={"asset_id": cand["id"]}).status_code == 202
+        assert c.post(f"/api/projects/{pid}/scenes/{sid}/swap", json={"asset_id": cand["id"]}).status_code == 409
+        wait_done(c, pid)
+
+
+def test_failed_swap_keeps_the_existing_video(env, tmp_path):
+    _, _, tone, _ = env
+    with client(env) as c:
+        pid = finished_project(c, tone)
+        sid = c.get(f"/api/projects/{pid}/scenes").json()[0]["id"]
+        current = c.get(f"/api/projects/{pid}/scenes").json()[0]["asset"]["id"]
+        cands = c.get(f"/api/projects/{pid}/scenes/{sid}/candidates", params={"query": "sky"}).json()
+        other = next(a for a in cands if a["id"] != current)
+        (tmp_path / "media" / (other["title"] + ".jpg")).unlink()  # the source vanishes before the download
+        c.post(f"/api/projects/{pid}/scenes/{sid}/swap", json={"asset_id": other["id"]})
+        done = wait_done(c, pid)
+        assert done["status"] == "done" and done["video_ready"] and "Could not apply the change" in done["error"]
+        assert c.get(f"/api/projects/{pid}/video").status_code == 200
+        assert c.get(f"/api/projects/{pid}/scenes").json()[0]["asset"]["id"] == current  # unchanged

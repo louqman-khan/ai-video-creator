@@ -3,6 +3,8 @@ then one final encode that adds the narration audio and burns captions."""
 
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 from pathlib import Path
 
@@ -40,21 +42,51 @@ def _segment_args(pick: ScenePick, frames: int, w: int, h: int, fps: int, dst: P
             "-vf", zoom, *_ENC, str(dst)]  # fmt: skip
 
 
+def segment_key(pick: ScenePick, frames: int, w: int, h: int, fps: int) -> str:
+    """Fingerprint of everything that shapes one scene's clip; same key = the file is reusable."""
+    source = ""
+    if pick.asset and pick.local_path:
+        p = Path(pick.local_path)
+        source = f"{pick.asset.id}|{pick.asset.kind}|{p.stat().st_size if p.exists() else 0}"
+    return hashlib.sha1(f"{source}|{frames}|{w}x{h}@{fps}|v1".encode()).hexdigest()[:16]
+
+
 def build_segments(
     scenes: list[Scene], picks: list[ScenePick], out_dir: Path, w: int, h: int, fps: int
 ) -> list[Path]:
+    """One clip per scene. Clips whose inputs did not change are reused (a visual swap
+    re-encodes one scene instead of all of them)."""
     out_dir.mkdir(parents=True, exist_ok=True)
+    manifest_path = out_dir / "manifest.json"
+    try:
+        manifest: dict[str, str] = json.loads(manifest_path.read_text("utf-8"))
+    except (OSError, ValueError):
+        manifest = {}
     by_scene = {p.scene_id: p for p in picks}
     paths: list[Path] = []
     for scene, frames in zip(scenes, scene_frames(scenes, fps)):
         dst = out_dir / f"seg_{scene.id:03d}.mp4"
         pick = by_scene.get(scene.id) or ScenePick(scene_id=scene.id)
+        key = segment_key(pick, frames, w, h, fps)
+        if dst.exists() and manifest.get(dst.name) == key:
+            paths.append(dst)
+            continue
+        manifest.pop(dst.name, None)  # never trust a half-written or outdated file
         try:
             ffmpeg.run(_segment_args(pick, frames, w, h, fps, dst))
         except ffmpeg.FfmpegError as e:
             log.warning("scene %d: could not use %s (%s); black placeholder", scene.id, pick.local_path, e)
             ffmpeg.run(_segment_args(ScenePick(scene_id=scene.id), frames, w, h, fps, dst))
+            key = "placeholder"  # not a valid key for the real pick: it is retried next time
+        manifest[dst.name] = key
+        manifest_path.write_text(json.dumps(manifest), "utf-8")
         paths.append(dst)
+    keep = {p.name for p in paths}
+    for old in out_dir.glob("seg_*.mp4"):  # scenes that no longer exist
+        if old.name not in keep:
+            old.unlink(missing_ok=True)
+            manifest.pop(old.name, None)
+    manifest_path.write_text(json.dumps(manifest), "utf-8")
     return paths
 
 

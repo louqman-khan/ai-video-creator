@@ -18,6 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import ValidationError
 
+from app.api import scenes as scenes_api
 from app.api.jobs import JobRunner, ProvidersFactory
 from app.api.store import ProjectInfo, ProjectNotFound, ProjectStore
 from app.config import Settings, get_settings
@@ -190,4 +191,5 @@ def create_app(settings: Settings | None = None, providers_factory: ProvidersFac
             raise HTTPException(409, "This project is still processing")
         store.delete(pid)
 
+    scenes_api.register(app, store, jobs, settings)
     return app
