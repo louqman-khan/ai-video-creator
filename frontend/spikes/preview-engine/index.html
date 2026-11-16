@@ -1,0 +1,96 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>preview engine spike</title>
+<body style="margin:0;background:#111">
+<canvas id="c" width="960" height="540" style="width:480px"></canvas>
+<script>
+// Spike: 3 video layers composited on a canvas + 2 audio tracks through WebAudio.
+// Measures what the real preview engine would have to do. Not product code.
+const q = new URLSearchParams(location.search);
+const variant = q.get("v") || "proxy";          // proxy | longgop | source
+const layers = +(q.get("layers") || 3);
+const canvas = document.getElementById("c"), g = canvas.getContext("2d");
+const vids = [], auds = [];
+const stats = { frames: 0, intervals: [], drift: [], corrections: 0, sync: q.get("sync") === "1" };
+
+function el(tag, src) {
+  const e = document.createElement(tag);
+  e.src = src; e.preload = "auto"; e.muted = tag === "video"; e.playsInline = true; e.crossOrigin = "anonymous";
+  return e;
+}
+const ready = (e) => new Promise((res, rej) => {
+  if (e.readyState >= 3) return res();
+  e.addEventListener("canplaythrough", res, { once: true });
+  e.addEventListener("error", () => rej(new Error("load failed " + e.src)), { once: true });
+});
+
+let actx, last = 0, running = false;
+function loop(ts) {
+  if (!running) return;
+  if (last) stats.intervals.push(ts - last);
+  last = ts;
+  g.clearRect(0, 0, 960, 540);
+  vids.forEach((v, i) => { g.globalAlpha = i === 0 ? 1 : 0.6; g.drawImage(v, 0, 0, 960, 540); });   // composite
+  stats.frames++;
+  requestAnimationFrame(loop);
+}
+
+async function boot() {
+  for (let i = 0; i < layers; i++) vids.push(el("video", `/media/${variant}_${i}.mp4`));
+  auds.push(el("audio", "/media/narration.m4a"), el("audio", "/media/music.m4a"));
+  await Promise.all([...vids, ...auds].map(ready));
+  actx = new AudioContext();
+  auds.forEach((a, i) => { const s = actx.createMediaElementSource(a), gn = actx.createGain(); gn.gain.value = i ? 0.3 : 1; s.connect(gn).connect(actx.destination); });
+}
+
+async function seekAll(t) {
+  await Promise.all([...vids, ...auds].map((m) => new Promise((res) => {
+    if (Math.abs(m.currentTime - t) < 0.001) return res();
+    m.addEventListener("seeked", res, { once: true }); m.currentTime = t;
+  })));
+}
+
+const frameShown = (v) => new Promise((res) => v.requestVideoFrameCallback(() => res()));
+
+window.spike = {
+  boot,
+  async play(seconds) {
+    await actx.resume(); await seekAll(0);
+    Object.assign(stats, { frames: 0, intervals: [], drift: [], corrections: 0 }); last = 0; running = true;
+    requestAnimationFrame(loop);
+    const start = performance.now();
+    await Promise.all([...vids, ...auds].map((m) => m.play()));
+    const master = auds[0];
+    const timer = setInterval(() => {
+      const d = [...vids, auds[1]].map((m) => Math.abs(m.currentTime - master.currentTime));
+      stats.drift.push(Math.max(...d));
+      if (stats.sync) for (const m of [...vids, auds[1]]) if (Math.abs(m.currentTime - master.currentTime) > 0.04) { m.currentTime = master.currentTime; stats.corrections++; }
+    }, 250);
+    await new Promise((r) => setTimeout(r, seconds * 1000));
+    clearInterval(timer); running = false;
+    [...vids, ...auds].forEach((m) => m.pause());
+    const wall = (performance.now() - start) / 1000;
+    const q = vids.map((v) => v.getVideoPlaybackQuality());
+    const total = q.reduce((a, x) => a + x.totalVideoFrames, 0), dropped = q.reduce((a, x) => a + x.droppedVideoFrames, 0);
+    const iv = [...stats.intervals].sort((a, b) => a - b), pick = (p) => iv[Math.floor(iv.length * p)] || 0;
+    return { seconds: wall, canvasFps: stats.frames / wall, p95FrameMs: pick(0.95), maxFrameMs: iv[iv.length - 1] || 0,
+      videoFrames: total, dropped, droppedPct: total ? (100 * dropped) / total : 0,
+      maxDriftMs: Math.max(...stats.drift) * 1000, medianDriftMs: [...stats.drift].sort((a, b) => a - b)[Math.floor(stats.drift.length / 2)] * 1000, corrections: stats.corrections };
+  },
+  async scrub(n) {
+    const out = [];
+    for (let i = 0; i < n; i++) {
+      const t = 1 + Math.random() * (variant === "source" ? 18 : 55);
+      const t0 = performance.now();
+      const shown = vids.map(frameShown);                   // a frame must actually be presented
+      vids.forEach((v) => (v.currentTime = t));
+      await Promise.all(vids.map((v) => new Promise((r) => v.addEventListener("seeked", r, { once: true }))));
+      await Promise.all(shown);
+      out.push(performance.now() - t0);
+      await new Promise((r) => setTimeout(r, 80));
+    }
+    out.sort((a, b) => a - b);
+    return { n, medianMs: out[Math.floor(n / 2)], p95Ms: out[Math.floor(n * 0.95)], maxMs: out[n - 1] };
+  },
+};
+</script>

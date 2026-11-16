@@ -79,7 +79,7 @@ The human only needs to say **"continue"** (or "next task") to move forward.
 
 Approved plan: `docs/STEP4_PLAN.md` (decisions D1–D7, phases, tests, risks). Order matters: document → renderer → UI → editing → live preview → layers/audio → transitions → transform → chroma key → import/export.
 
-- [~] 4.0 Decisions and spikes. Run the two spikes (browser preview engine; DOM timeline at 300 clips) and record all decisions in `docs/decisions.md` (render approach, UI tech, Remotion, music sources, export encoders). *Done when:* both spikes have pass/fail numbers on this Mac, and the fallback is chosen if one fails.
+- [x] 4.0 Decisions and spikes. Run the two spikes (browser preview engine; DOM timeline at 300 clips) and record all decisions in `docs/decisions.md` (render approach, UI tech, Remotion, music sources, export encoders). *Done when:* both spikes have pass/fail numbers on this Mac, and the fallback is chosen if one fails.
 - [ ] 4.1 Timeline document v1: schema (integer frames), validator, migration from scenes/assets/captions, `GET/PUT /timeline` with a revision check. *Done when:* an existing project round-trips to a timeline and back to the same scenes, and renders SSIM >= 0.99 against today's output.
 - [ ] 4.2 Editor media pipeline: import checks (`ffprobe`, size/duration caps), variable-frame-rate to constant, rotation baked in, 960x540 short-GOP proxies, waveform peaks, filmstrip thumbnails, in the background worker; per-project disk usage.
 - [ ] 4.3 Timeline renderer v1: flatten the timeline into cacheable segments + audio mixdown + caption burn; encoder profile (x264 / VideoToolbox). *Done when:* editing one clip re-renders only its segments, and "whole vs split" renders match.
@@ -112,6 +112,8 @@ Approved plan: `docs/STEP4_PLAN.md` (decisions D1–D7, phases, tests, risks). O
 ## Progress log
 
 <!-- Agent: add one line per completed task, newest first. Format: YYYY-MM-DD — task id — what changed — how verified -->
+
+- 2026-11-16 — 4.0 — both spikes PASSED and decisions recorded in `docs/decisions.md`. Preview engine (`frontend/spikes/preview-engine`, 3 video layers on a canvas + 2 audio tracks, real stock clips, Chrome on the dev Mac under normal load): 60 fps, 0 of 5,412 frames dropped in 60 s, drift max 4 ms, scrub median 21 ms / p95 37 ms with short-GOP proxies — vs 169/253 ms for the same size with a long GOP and 152/317 ms for raw 1080p, so **proxies need a keyframe every 0.5 s** (requirement for 4.2). DOM timeline (`frontend/spikes/timeline`, React + zustand, snapping on every move): 60 fps at 100, 300 and 1000 clips, 0 frames over 33 ms; drag/snap verified to be real (moved 602 px for 600 px, guide shown, edge snapped). Caveats to re-measure in 4.6/4.4: transforms, shader, clip switching, UI contention, waveforms/filmstrips. Incident: my media script's unquoted glob turned extra matches into ffmpeg *output* files and overwrote one project's derived `audio_clean.flac` (grew to 12.9 GB); stopped it, deleted the file, the pipeline regenerated it and the project re-rendered normally; script fixed (no globs/paths into ffmpeg) and the lesson noted in `frontend/spikes/README.md`
 
 - 2026-11-16 — plan — Step 4 plan approved (`docs/STEP4_PLAN.md`: timeline document as single truth, FFmpeg server render with cacheable segments, browser live preview behind a spike, DOM-first timeline UI, no Remotion, Openverse audio + uploads, hardware export option); roadmap Step 4 replaced by tasks 4.0–4.13 (old 4.1→4.4, 4.2→4.5, 4.3→4.7+4.8, 4.4→4.9, 4.5→4.10, 4.6→4.11, 4.7→4.2+4.12, 4.8→4.0)
 
