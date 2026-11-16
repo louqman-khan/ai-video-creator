@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import logging
 import shutil
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TypeVar
@@ -65,6 +66,8 @@ def credits_text(picks: list[ScenePick]) -> str:
 class Pipeline:
     def __init__(self, settings: Settings, providers: Providers, run_dir: Path) -> None:
         self.s, self.p, self.run_dir = settings, providers, run_dir
+        # progress(stage, fraction 0..1, message): the web API shows this; the CLI ignores it
+        self.progress: Callable[[str, float, str], None] = lambda stage, fraction, message: None
         run_dir.mkdir(parents=True, exist_ok=True)
 
     def transcribe(self, audio: Path, language: str | None, force: bool = False) -> Transcript:
@@ -153,8 +156,10 @@ class Pipeline:
         min_gap = min_gap or self.s.silence_min_gap_s
         keep_gap = self.s.silence_keep_gap_s
         lufs = lufs if lufs is not None else self.s.target_lufs
+        self.progress("transcribe", 0.05, "Listening to the audio")
         transcript = self.transcribe(audio, language, force)
         log.info("transcript: %s, %d words", transcript.language, len(transcript.words))
+        self.progress("transcribe", 0.30, f"Recognised {len(transcript.words)} words")
         if script:
             transcript = self.align(script, transcript)
 
@@ -181,16 +186,21 @@ class Pipeline:
         scenes = self._cached("scenes.json", Scene, force)
         if scenes is None:
             log.info("planning scenes...")
+            self.progress("plan", 0.35, "Planning scenes")
             scenes = self.p.planner.plan(transcript)
             _save(self.run_dir / "scenes.json", scenes)
         log.info("%d scenes", len(scenes))
+        self.progress("plan", 0.45, f"{len(scenes)} scenes planned")
 
         picks = self._cached("assets.json", ScenePick, force)
         if picks is None:
             log.info("fetching media...")
             cache = MediaCache(Path(self.s.work_dir) / "cache" / "media")
             orientation = "portrait" if h > w else "landscape"
-            picks = fetch_media(scenes, self.p.search, self.p.ranker, cache, orientation)
+            picks = fetch_media(
+                scenes, self.p.search, self.p.ranker, cache, orientation,
+                on_scene=lambda i, n: self.progress("fetch", 0.45 + 0.30 * i / n, f"Finding visuals {i + 1}/{n}"),
+            )
             _save(self.run_dir / "assets.json", picks)
         (self.run_dir / "CREDITS.txt").write_text(credits_text(picks), "utf-8")
 
@@ -207,6 +217,7 @@ class Pipeline:
                 final_audio = norm_path
 
         log.info("rendering...")
+        self.progress("render", 0.78, "Rendering the video")
         seg_dir = self.run_dir / "segments"
         shutil.rmtree(seg_dir, ignore_errors=True)
         segments = assemble.build_segments(scenes, picks, seg_dir, w, h, self.s.fps)
@@ -214,4 +225,5 @@ class Pipeline:
         assemble.concat_and_finish(
             segments, final_audio, ass, out, self.run_dir, Path(self.s.fonts_dir), transcript.duration
         )
+        self.progress("done", 1.0, "Finished")
         return out

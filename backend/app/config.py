@@ -41,6 +41,12 @@ class Settings(BaseSettings):
     # loudness (EBU R128)
     target_lufs: float = -14.0
 
+    # web API
+    projects_dir: str = str(ROOT / "work" / "projects")
+    max_upload_mb: int = 200
+    max_audio_minutes: float = 30.0  # CPU-only start: keep jobs bounded
+    cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"  # the Vite dev server
+
     # scene chunking
     scene_min_s: float = 3.0
     scene_max_s: float = 8.0

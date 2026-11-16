@@ -144,6 +144,19 @@ def transcribe(
 RNNOISE_URL = "https://raw.githubusercontent.com/GregorR/rnnoise-models/master/conjoined-burgers-2018-08-28/cb.rnnn"
 
 
+@app.command()
+def serve(
+    host: Annotated[str, typer.Option(help="Bind address (localhost only by default)")] = "127.0.0.1",
+    port: Annotated[int, typer.Option()] = 8000,
+) -> None:
+    """Start the web API (upload audio, follow progress, download the video)."""
+    import uvicorn
+
+    from app.api.main import create_app
+
+    uvicorn.run(create_app(), host=host, port=port)
+
+
 @app.command("fetch-models")
 def fetch_models() -> None:
     """Download the RNNoise speech-denoise model (used by the audio cleaner) into assets/models/."""

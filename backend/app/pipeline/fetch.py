@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 
 from app.media.cache import MediaCache
 from app.models import MediaKind, Scene, ScenePick
@@ -18,10 +19,13 @@ def fetch_media(
     ranker: MediaRanker,
     cache: MediaCache,
     orientation: str = "landscape",
+    on_scene: Callable[[int, int], None] | None = None,
 ) -> list[ScenePick]:
     picks: list[ScenePick] = []
     used: set[str] = set()
-    for scene in scenes:
+    for n, scene in enumerate(scenes):
+        if on_scene:
+            on_scene(n, len(scenes))
         queries = [q for q in [scene.query_en, *scene.keywords] if q]
         kinds: list[MediaKind] = ["image", "video"] if scene.preferred_kind == "image" else ["video", "image"]
         pick = ScenePick(scene_id=scene.id)

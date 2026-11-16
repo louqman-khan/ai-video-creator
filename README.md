@@ -48,6 +48,14 @@ Flags: `--font`, `--font-size` (% of height), `--color`, `--outline-color`, `--o
 `--position bottom|center|top`, `--words-per-line`, or a file: `--style docs/caption-style.example.toml`.
 Flags override the file; unknown keys or bad colours stop the run with a clear message.
 
+## Web API (Step 3)
+
+`avc serve` (http://127.0.0.1:8000, interactive docs at `/docs`). Upload audio with
+`curl -F file=@talk.mp3 -F language=ur localhost:8000/api/projects`, poll
+`GET /api/projects/<id>` (status, stage, progress), then `GET /api/projects/<id>/video`.
+Projects live in `work/projects/`. The server binds to localhost only and has no login yet:
+do not expose it to a network as is.
+
 ## Layout
 
 `backend/app/providers/*` one folder per swappable provider, chosen by env vars (see `.env.example`);

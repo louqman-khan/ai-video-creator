@@ -66,7 +66,7 @@ The human only needs to say **"continue"** (or "next task") to move forward.
 
 ## Step 3 — Web app (React + TypeScript + Vite frontend, FastAPI backend)
 
-- [ ] 3.1 FastAPI: project model (JSON on disk to start), upload endpoint, background job queue for the pipeline, progress via polling or SSE.
+- [x] 3.1 FastAPI: project model (JSON on disk to start), upload endpoint, background job queue for the pipeline, progress via polling or SSE.
 - [ ] 3.2 Frontend scaffold: React + TS + Vite + Zustand; routes for Projects, New Project and Editor.
 - [ ] 3.3 New Project: upload audio or paste a script, choose language and aspect ratio, start the job, show progress.
 - [ ] 3.4 Scene list view: each scene's text, time range and chosen visual; "swap visual" shows other candidates and runs a new search.
@@ -103,6 +103,8 @@ The human only needs to say **"continue"** (or "next task") to move forward.
 ## Progress log
 
 <!-- Agent: add one line per completed task, newest first. Format: YYYY-MM-DD — task id — what changed — how verified -->
+
+- 2026-11-16 — 3.1 — `app/api/` (FastAPI): `POST /api/projects` (multipart upload + options), `GET /api/projects[/id]` (status, stage, progress 0..1, message, error), `/video`, `/credits`, `DELETE`; projects as JSON on disk under `work/projects/<uuid>/`; one background worker thread; `avc serve`; pipeline `progress` hook. Safety: upload streamed with size cap, `ffprobe` check + max length, only the extension allowlist, user filename never used as a path, 32-hex ids (no path traversal), secrets redacted from errors, interrupted jobs marked failed on restart, localhost-only bind + CORS for the Vite dev server — 6 API tests with fake providers (happy path, bad files, limits, bad ids, redaction, delete-while-running, restart recovery), 69 tests pass; real server + curl: Urdu clip → transcribe → plan → fetch 1/2, 2/2 → render → done in 56 s, 9.7 MB 1080p MP4 downloaded, scan found neither API key in responses, project folder or server log. Not built yet: auth (not needed while localhost-only), SSE (polling is enough), multi-worker queue
 
 - 2026-11-16 — 1.12 — cause: `gemini-3.5-flash` itself is slow/variable (43–145 s for ~220 output tokens, also with thinking off), not our code. Fix: `GEMINI_MODEL` is now a comma-separated fail-over list (default `gemini-flash-lite-latest,gemini-3-flash-preview,gemini-3.5-flash`), 45 s timeout, one attempt per model, log line per request with model + seconds — compared 6 models (Urdu queries equally good on the fast ones); live: planning 1.5 s and 2.4 s (was up to 225 s), whole run 40–51 s; 5 new fail-over tests with mocked HTTP (503, timeout, garbage answer, all failing; no key in the error), 63 pass
 

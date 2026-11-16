@@ -19,6 +19,10 @@ class FfmpegError(RuntimeError):
     pass
 
 
+def has_tools() -> bool:
+    return bool(shutil.which("ffmpeg") and shutil.which("ffprobe"))
+
+
 def require_ffmpeg() -> None:
     for tool in ("ffmpeg", "ffprobe"):
         if not shutil.which(tool):
