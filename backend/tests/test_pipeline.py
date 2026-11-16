@@ -137,3 +137,11 @@ def test_providers_selected_from_env_without_code_edits(monkeypatch):
     monkeypatch.setenv("SCENE_PLANNER", "nope")
     with pytest.raises(ValueError, match="Available"):
         create_planner(Settings(_env_file=None))
+
+
+def test_httpx_request_logging_is_silenced_so_api_keys_cannot_leak():
+    import logging
+
+    import app.http  # noqa: F401  (import side effect sets the log levels)
+
+    assert logging.getLogger("httpx").level >= logging.WARNING

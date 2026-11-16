@@ -1,9 +1,18 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 from pathlib import Path
+
+from app.config import ROOT
+
+# A project-local ffmpeg (<repo>/tools/bin) wins over the system one, so the app works on
+# machines where installing ffmpeg system-wide is impractical (e.g. old macOS + Homebrew).
+_LOCAL_BIN = ROOT / "tools" / "bin"
+if _LOCAL_BIN.is_dir():
+    os.environ["PATH"] = f"{_LOCAL_BIN}{os.pathsep}{os.environ.get('PATH', '')}"
 
 
 class FfmpegError(RuntimeError):
@@ -13,7 +22,7 @@ class FfmpegError(RuntimeError):
 def require_ffmpeg() -> None:
     for tool in ("ffmpeg", "ffprobe"):
         if not shutil.which(tool):
-            raise FfmpegError(f"{tool} not found on PATH. Install it with: brew install ffmpeg")
+            raise FfmpegError(f"{tool} not found on PATH. Install it with: brew install ffmpeg, or put static ffmpeg/ffprobe in tools/bin")
 
 
 def run(args: list[str], cwd: Path | None = None) -> None:

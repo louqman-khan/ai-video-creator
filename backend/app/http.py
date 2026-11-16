@@ -6,6 +6,13 @@ from __future__ import annotations
 import httpx
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
+import logging
+
+# httpx logs every request URL at INFO, and several providers put the API key in the query
+# string. Silence it here so no caller (CLI, tests, scripts) can leak a key into logs.
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+
 USER_AGENT = "AIVideoCreator/0.1 (open-source video tool)"
 _RETRY_STATUS = {429, 500, 502, 503, 504}
 

@@ -7,6 +7,8 @@ Step 1 is a command-line pipeline; see `docs/ROADMAP.md` for status and `CLAUDE.
 
 ```bash
 brew install ffmpeg                      # must include libass for captions
+# Old macOS where Homebrew has to compile everything? Put static ffmpeg + ffprobe (with libass,
+# HarfBuzz) in tools/bin/ instead; the app picks them up first. tools/ is git-ignored.
 python3.12 -m venv .venv
 .venv/bin/pip install -e "backend[dev]"
 cp .env.example .env                     # then fill in the keys

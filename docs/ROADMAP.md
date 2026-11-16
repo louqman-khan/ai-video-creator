@@ -31,7 +31,7 @@ The human only needs to say **"continue"** (or "next task") to move forward.
 - [ ] Urdu sample audio at `samples/urdu.mp3` (30–60 s)
 - [ ] English sample audio at `samples/english.mp3` (30–60 s)
 - [ ] Fonts in `assets/fonts/`: `NotoNastaliqUrdu-*.ttf` (default, free for commercial use) and `Jameel Noori Nastaleeq.ttf` (optional; its license is unclear)
-- [ ] Rotated Pixabay and Gemini keys added to `.env` (the old ones were exposed in screenshots)
+- [ ] Rotate the Pixabay key again: a test script printed it into a session log on 2026-11-16 (httpx INFO logging; now silenced in `app/http.py`). Gemini key was never printed.
 - [ ] Pexels key — new key issuance is paused by Pexels; the pipeline must work without it
 
 ---
@@ -45,8 +45,8 @@ The human only needs to say **"continue"** (or "next task") to move forward.
 - [x] 1.5 ScenePlanner: 3–8 s scenes + English search query per scene via Gemini (or Ollama), with a sentence-split fallback that needs no LLM → `scenes.json`. (Gemini only; Ollama not built, not required.)
 - [~] 1.6 MediaSearch: Pixabay (videos preferred, images as fallback), Openverse + Wikimedia Commons (images, no key), Pexels optional (skipped when no key). Cache downloads; store source/license/attribution per asset. *Built and mock-tested;* Pixabay (video search + download, image search) and Openverse checked live. Wikimedia not tested live (commons.wikimedia.org times out from this network).
 - [x] 1.7 Heuristic MediaRanker (default): keyword match, orientation, resolution, duration fit.
-- [~] 1.8 Assembler (FFmpeg): trim/loop clips to scene duration, slow zoom on still images, scale/crop to 1920x1080, original audio, burned-in ASS captions from word timestamps. *Code written, never run* (FFmpeg not installed yet).
-- [~] 1.9 `--vertical` flag → 1080x1920 (9:16) with smart crop. *Built:* `--vertical` / `--aspect 9:16` (centre crop). *Missing:* smart crop; render not verified (needs FFmpeg).
+- [x] 1.8 Assembler (FFmpeg): trim/loop clips to scene duration, slow zoom on still images, scale/crop to 1920x1080, original audio, burned-in ASS captions from word timestamps.
+- [~] 1.9 `--vertical` flag → 1080x1920 (9:16) with smart crop. *Built:* `--vertical` / `--aspect 9:16` (centre crop). *Missing:* smart crop; image + video segments verified at 1080x1920.
 - [~] 1.10 `avc make <audio>` runs the full pipeline with progress logs; writes `output.mp4` + `credits.txt` (attributions). *Done when:* English sample → watchable MP4. *Wired up, never run end to end.*
 - [~] 1.11 Basic tests for timing math and scene splitting; README with setup + usage. *Built:* 21 passing tests and `README.md`. *Left:* README commands (`make` etc.) get re-checked once 1.10 runs end to end, then tick this.
 
@@ -102,6 +102,8 @@ The human only needs to say **"continue"** (or "next task") to move forward.
 
 <!-- Agent: add one line per completed task, newest first. Format: YYYY-MM-DD — task id — what changed — how verified -->
 
+- 2026-11-16 — 1.8 — assembler verified with a real render: Pixabay clips, 14 s tone audio, burned English + Urdu captions; output 1920x1080 30 fps H.264/AAC, duration 14.000 s = audio; still image zoom 3.3 s = 99 frames at 1920x1080 and 1080x1920. Static FFmpeg 9.0.2 (libass + HarfBuzz) installed in `tools/bin` (git-ignored, SHA-256 checked) because Homebrew would have compiled 14 dependencies on macOS 12; the app prepends `tools/bin` to PATH
+- 2026-11-16 — security — `app/http.py` now silences httpx/httpcore request logging (it printed full URLs incl. the Pixabay key); regression test added
 - 2026-11-16 — 1.5 — Gemini planner verified live; default model changed to `gemini-3.5-flash` (`gemini-2.5-flash` returned 404 on generateContent) — English and Urdu scenes returned sensible English queries, keywords and video/image preference; timings come from word timestamps
 - 2026-11-16 — 1.3 — TTS + AvatarRenderer interface stubs (`none` provider); all 7 providers selectable via env — test sets `SCENE_PLANNER`/`WHISPER_MODEL` env vars and checks the chosen classes, unknown name gives a clear error; `pytest` 21 passed
 - 2026-11-16 — 1.2 — `avc doctor` rewritten (`app/doctor.py`): Python version, FFmpeg + libass, `.env`, keys, fonts, network reachability — ran it live: PASS/WARN/FAIL list printed, exit 1 because FFmpeg is missing, Wikimedia Commons unreachable from this network

@@ -10,3 +10,6 @@ work/
 .DS_Store
 # Jameel Noori Nastaleeq: check its license before committing the font file
 assets/fonts/*.ttf
+
+# project-local tools (static ffmpeg/ffprobe), see README
+tools/
