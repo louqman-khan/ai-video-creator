@@ -8,8 +8,8 @@ work/
 *.mp4
 *.wav
 .DS_Store
-# Jameel Noori Nastaleeq: check its license before committing the font file
-assets/fonts/*.ttf
+# Jameel Noori Nastaleeq: license unclear, never commit it. (Noto Nastaliq Urdu is OFL: committed with its license.)
+assets/fonts/*ameel*
 
 # project-local tools (static ffmpeg/ffprobe), see README
 tools/

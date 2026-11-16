@@ -51,7 +51,8 @@ def test_ass_time_and_urdu_style():
     assert ass_time(3725.5) == "1:02:05.50"
     tr = make_transcript("یہ ایک جملہ ہے۔", lang="ur")
     ass = build_ass(tr)
-    assert "Jameel Noori Nastaleeq" in ass and "Dialogue:" in ass and "یہ ایک" in ass
+    assert "Noto Nastaliq Urdu" in ass and "Dialogue:" in ass and "یہ ایک" in ass
+    assert "Jameel Noori Nastaleeq" in build_ass(tr, font="Jameel Noori Nastaleeq")  # --font override
     assert "Arial" in build_ass(make_transcript("hello world"))
 
 
@@ -172,3 +173,25 @@ def test_load_wav_reads_16k_mono(tmp_path):
         w.writeframes((b"\x00\x40" * 1600))
     arr = FasterWhisperTranscriber._load_wav(p)
     assert arr.shape == (1600,) and 0.49 < float(arr[0]) < 0.51
+
+
+def test_captions_never_merge_across_segments():
+    from app.pipeline.captions import build_ass
+
+    tr = make_transcript("a b c d")  # one segment of 4 words, then split it into two segments
+    w = tr.words
+    tr = Transcript(language="en", duration=tr.duration, segments=[
+        Segment(text="a b", start=0, end=1, words=w[:2]),
+        Segment(text="c d", start=1, end=2, words=w[2:]),
+    ])
+    lines = [x for x in build_ass(tr).splitlines() if x.startswith("Dialogue")]
+    assert len(lines) == 2 and lines[0].endswith("a b") and lines[1].endswith("c d")
+
+
+def test_caption_grouping_avoids_one_word_orphan():
+    from app.pipeline.captions import group_words
+
+    ws = [Word(text=t, start=i * 0.4, end=i * 0.4 + 0.35) for i, t in enumerate(["ab"] * 8 + ["cd."])]
+    assert [len(c) for c in group_words(ws, max_words=8)] == [9]  # 8 + a lone 9th word -> merged
+    ws2 = [Word(text=t, start=i * 0.4, end=i * 0.4 + 0.35) for i, t in enumerate(["ab"] * 8 + ["cd", "ef"])]
+    assert [len(c) for c in group_words(ws2, max_words=8)] == [8, 2]  # two words is not an orphan: kept

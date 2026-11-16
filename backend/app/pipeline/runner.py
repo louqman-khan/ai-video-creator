@@ -119,7 +119,7 @@ class Pipeline:
         ass = None
         if captions:
             ass = self.run_dir / "captions.ass"
-            ass.write_text(build_ass(transcript, w, h), "utf-8")
+            ass.write_text(build_ass(transcript, w, h, self.s.caption_font or None), "utf-8")
 
         log.info("rendering...")
         seg_dir = self.run_dir / "segments"

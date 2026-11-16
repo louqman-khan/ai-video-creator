@@ -19,8 +19,9 @@ Keys (all free): `PIXABAY_API_KEY` (https://pixabay.com/api/docs/) and `GEMINI_A
 `PEXELS_API_KEY` is optional and skipped when empty. Openverse and Wikimedia Commons need no key.
 Without a Gemini key use `SCENE_PLANNER=heuristic` (English only).
 
-Fonts for Urdu captions go in `assets/fonts/` (Noto Nastaliq Urdu by default; Jameel Noori
-Nastaleeq optional). Font files are git-ignored.
+Urdu captions use Noto Nastaliq Urdu (included in `assets/fonts/`, SIL OFL). To use another font
+family: `avc make ... --font "Jameel Noori Nastaleeq"` after putting its `.ttf` in `assets/fonts/`
+(Jameel is git-ignored; check its license before shipping it).
 
 ## Usage
 

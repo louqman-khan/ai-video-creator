@@ -44,6 +44,7 @@ def make(
     vertical: Annotated[bool, typer.Option("--vertical", help="Shortcut for --aspect 9:16")] = False,
     planner: Annotated[Optional[str], typer.Option(help="gemini | heuristic")] = None,
     whisper_model: Annotated[Optional[str], typer.Option(help="tiny/base/small/medium/large-v3")] = None,
+    font: Annotated[Optional[str], typer.Option(help="Caption font family, e.g. 'Jameel Noori Nastaleeq'")] = None,
     no_captions: Annotated[bool, typer.Option("--no-captions")] = False,
     force: Annotated[bool, typer.Option(help="Redo all stages, ignore saved results")] = False,
     run_dir: Annotated[Optional[Path], typer.Option()] = None,
@@ -60,6 +61,8 @@ def make(
         s.scene_planner = planner
     if whisper_model:
         s.whisper_model = whisper_model
+    if font:
+        s.caption_font = font
     rd = _run_dir(audio, run_dir, s.work_dir)
     try:
         providers = Providers(

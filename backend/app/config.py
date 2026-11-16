@@ -37,6 +37,9 @@ class Settings(BaseSettings):
     scene_min_s: float = 3.0
     scene_max_s: float = 8.0
 
+    # captions: empty = Noto Nastaliq Urdu for Urdu, Arial otherwise
+    caption_font: str = ""
+
     # output
     fps: int = 30
     fonts_dir: str = str(ROOT / "assets" / "fonts")

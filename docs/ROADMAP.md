@@ -30,7 +30,7 @@ The human only needs to say **"continue"** (or "next task") to move forward.
 
 - [ ] Urdu sample audio at `samples/urdu.mp3` (30–60 s)
 - [ ] English sample audio at `samples/english.mp3` (30–60 s)
-- [ ] Fonts in `assets/fonts/`: `NotoNastaliqUrdu-*.ttf` (default, free for commercial use) and `Jameel Noori Nastaleeq.ttf` (optional; its license is unclear)
+- [ ] Optional: `Jameel Noori Nastaleeq.ttf` in `assets/fonts/` (license unclear; use with `--font "Jameel Noori Nastaleeq"`). Noto Nastaliq Urdu is already installed and committed (OFL).
 - [ ] Rotate the Pixabay key again: a test script printed it into a session log on 2026-11-16 (httpx INFO logging; now silenced in `app/http.py`). Gemini key was never printed.
 - [ ] Pexels key — new key issuance is paused by Pexels; the pipeline must work without it
 
@@ -53,7 +53,7 @@ The human only needs to say **"continue"** (or "next task") to move forward.
 ## Step 2 — Urdu + audio quality
 
 - [x] 2.1 Urdu transcription (`--lang ur`, auto-detect by default); Urdu text normalization.
-- [ ] 2.2 Urdu captions: correct RTL + Nastaleeq shaping through libass; Noto Nastaliq Urdu default, `--font` to choose Jameel Noori Nastaleeq. *Done when:* the Urdu sample has correctly joined, right-to-left captions.
+- [x] 2.2 Urdu captions: correct RTL + Nastaleeq shaping through libass; Noto Nastaliq Urdu default, `--font` to choose Jameel Noori Nastaleeq. *Done when:* the Urdu sample has correctly joined, right-to-left captions.
 - [ ] 2.3 Urdu → English search-query translation in the ScenePlanner (keep the original Urdu text for captions).
 - [ ] 2.4 Caption styling options: font, size, color, outline, position, words per line (CLI flags + config file).
 - [ ] 2.5 AudioCleaner: DeepFilterNet (or RNNoise fallback) noise removal; `--no-clean` to skip.
@@ -101,6 +101,8 @@ The human only needs to say **"continue"** (or "next task") to move forward.
 ## Progress log
 
 <!-- Agent: add one line per completed task, newest first. Format: YYYY-MM-DD — task id — what changed — how verified -->
+
+- 2026-11-16 — 2.2 — Urdu captions in Noto Nastaliq Urdu (OFL, `assets/fonts/` + license) by default, `--font`/`CAPTION_FONT` override, Urdu size 11% of height, captions never merge across ASR segments, no one-word orphan cues — rendered the Urdu clip with libass: frames show joined right-to-left Nastaleeq; 31 tests pass
 
 - 2026-11-16 — 2.1 — `app/text/urdu.py`: Arabic→Urdu letters (ي ك ه), Arabic-Indic→Urdu digits, ? , ; . → ؟ ، ؛ ۔, strips tatweel/tashkeel, adds ۔ after a segment that ends in a pause; raw text kept in `transcript.raw.json` — 5 new unit tests (29 pass); real Urdu clip: language auto-detected, last sentence now ends with ۔, raw vs normalized files differ only there
 

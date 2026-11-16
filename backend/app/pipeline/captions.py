@@ -40,6 +40,11 @@ def group_words(
         cur.append(w)
     if cur:
         cues.append(cur)
+    # no one-word orphan at the end of a run: fold it into the previous cue (allow some overflow)
+    if len(cues) > 1 and len(cues[-1]) == 1:
+        merged = cues[-2] + cues[-1]
+        if sum(len(x.text) + 1 for x in merged) <= max_chars * 1.5 and merged[-1].end - merged[0].start <= max_s * 1.5:
+            cues[-2:] = [merged]
     return cues
 
 
@@ -47,8 +52,8 @@ def build_ass(
     transcript: Transcript, width: int = 1920, height: int = 1080, font: str | None = None
 ) -> str:
     urdu = transcript.language == "ur"
-    font = font or ("Jameel Noori Nastaleeq" if urdu else "Arial")
-    size = round(height * (0.085 if urdu else 0.06))  # Nastaleeq glyphs render small
+    font = font or ("Noto Nastaliq Urdu" if urdu else "Arial")
+    size = round(height * (0.11 if urdu else 0.06))  # Nastaleeq glyphs render small
     margin_v = round(height * 0.07)
     header = (
         "[Script Info]\nScriptType: v4.00+\n"
@@ -61,7 +66,9 @@ def build_ass(
         f"0,0,0,0,100,100,0,0,1,3,1,2,{round(width * 0.05)},{round(width * 0.05)},{margin_v},1\n\n"
         "[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
     )
-    cues = group_words([w for w in transcript.words if w.text.strip()])
+    cues: list[list[Word]] = []
+    for seg in transcript.segments:  # never merge words across ASR segment boundaries
+        cues += group_words([w for w in seg.words if w.text.strip()])
     lines = []
     for i, cue in enumerate(cues):
         start, end = cue[0].start, cue[-1].end
