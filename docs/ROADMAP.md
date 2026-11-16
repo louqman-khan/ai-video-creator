@@ -62,7 +62,7 @@ The human only needs to say **"continue"** (or "next task") to move forward.
 - [x] 2.6 Silence/gap removal with VAD (`--remove-silence`, configurable min gap); keep caption/scene timings consistent after the cut.
 - [x] 2.7 Loudness normalization (EBU R128, -14 LUFS) on export. (Lands within ~0.6 LU of the target on peaky speech because of the -1.5 dBTP ceiling; true peak stays below it.)
 - [ ] 2.8 Benchmark: Urdu and English WER on the samples with `small` vs `medium`; record the results in `docs/benchmarks.md`.
-- [ ] 2.9 Script input: `avc make --script script.txt --audio narration.mp3` aligns a known script to the audio (forced alignment).
+- [x] 2.9 Script input: `avc make narration.mp3 --script script.txt` aligns a known script to the audio (forced alignment). (Audio stays the positional argument. Also `avc transcribe --script` to preview. Alignment is sequence matching against Whisper word times, no PyTorch/WhisperX.)
 
 ## Step 3 — Web app (React + TypeScript + Vite frontend, FastAPI backend)
 
@@ -103,6 +103,8 @@ The human only needs to say **"continue"** (or "next task") to move forward.
 ## Progress log
 
 <!-- Agent: add one line per completed task, newest first. Format: YYYY-MM-DD — task id — what changed — how verified -->
+
+- 2026-11-16 — 2.9 — `app/pipeline/align.py` + `--script`: script words replace the recognised ones (script spelling/punctuation, sentences become caption segments) with timing from the ASR words; misheard spans spread over their time slot, unheard words interpolated, extra spoken words dropped; warns when <50% match; script hash is a timeline option (changing it re-plans scenes) — 8 new tests (58 pass); Urdu clip: ASR had سیاہ / ان وادیوں merged / دھکے, aligned output has the correct ڈھکے, سیاح ان وادیوں, کے لیے with the same timings (27/33 exact matches), wrong English script on Urdu audio: 0/15 → warning; full `avc make --script` rendered frame shows the corrected caption
 
 - 2026-11-16 — 2.7 — `app/media/loudness.py`: two-pass `loudnorm` (measure, then linear gain), default -14 LUFS / -1.5 dBTP, `--lufs`, `--no-normalize`; silent audio is left alone; last audio step, so it measures what ends up in the video — measured the finished MP4s: no normalisation -18.10 LUFS → default -14.61 LUFS (peak -1.45 dBTP), `--lufs -18` → -18.43 LUFS; 2 new tests incl. a real ffmpeg run (50 pass). Cache invalidation made per-option: only silence removal re-plans scenes/media (changing the loudness target had re-run Gemini planning)
 

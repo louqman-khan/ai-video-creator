@@ -16,7 +16,10 @@ from app.config import Settings
 from app.media import ffmpeg, loudness
 from app.media.cache import MediaCache
 from app.models import Scene, ScenePick, Transcript
+import hashlib
+
 from app.pipeline import assemble
+from app.pipeline.align import align_script
 from app.pipeline.silence import cut_audio, plan_cuts, remap_transcript
 from app.pipeline.caption_style import CaptionStyle
 from app.pipeline.captions import build_ass
@@ -84,11 +87,12 @@ class Pipeline:
 
     # What each option invalidates. Silence removal moves the timeline, so scenes and media picks
     # must be redone (an LLM call + downloads). Cleaner and loudness only change the audio files.
-    _TIMELINE = ("silence",)
-    _TIMELINE_FILES = ("scenes.json", "assets.json", "transcript.cut.json", "audio_cut.flac")
+    _TIMELINE = ("silence", "script")
+    _TIMELINE_FILES = ("scenes.json", "assets.json", "transcript.cut.json", "audio_cut.flac", "transcript.aligned.json")
     _AUDIO_FILES = {"cleaner": ("audio_clean.flac", "audio_cut.flac", "audio_norm.flac"),
                     "lufs": ("audio_norm.flac",),
-                    "silence": ("audio_cut.flac", "audio_norm.flac")}
+                    "silence": ("audio_cut.flac", "audio_norm.flac"),
+                    "script": ("audio_norm.flac",)}
 
     def _sync_options(self, options: dict) -> None:
         """Forget derived results when the options that shape them changed since the last run."""
@@ -113,6 +117,17 @@ class Pipeline:
             return self.p.cleaner.clean(audio, clean_path)  # may return `audio` itself (noop/failure)
         return clean_path
 
+    def align(self, script: str, transcript: Transcript) -> Transcript:
+        """Replace the recognised text with the script's own words, keeping the audio's timing."""
+        aligned, stats = align_script(script, transcript)
+        log.info("script aligned: %d/%d words matched the audio exactly (%.0f%%)",
+                 stats.exact, stats.script_words, 100 * stats.match_ratio)
+        if stats.match_ratio < 0.5:
+            log.warning("less than half of the script words were heard in the audio: "
+                        "is this the right script for this recording?")
+        _save(self.run_dir / "transcript.aligned.json", aligned)
+        return aligned
+
     def _cached(self, name: str, model: type[M], force: bool) -> list[M] | None:
         path = self.run_dir / name
         if path.exists() and not force:
@@ -132,6 +147,7 @@ class Pipeline:
         min_gap: float | None = None,
         normalize: bool = True,
         lufs: float | None = None,
+        script: str | None = None,
     ) -> Path:
         w, h = ASPECTS[aspect]
         min_gap = min_gap or self.s.silence_min_gap_s
@@ -139,10 +155,13 @@ class Pipeline:
         lufs = lufs if lufs is not None else self.s.target_lufs
         transcript = self.transcribe(audio, language, force)
         log.info("transcript: %s, %d words", transcript.language, len(transcript.words))
+        if script:
+            transcript = self.align(script, transcript)
 
         # options that change the audio/timeline: results derived from them must not be reused
         self._sync_options({"cleaner": self.s.audio_cleaner, "silence": [min_gap, keep_gap] if remove_silence else None,
-                            "lufs": lufs if normalize else None})
+                            "lufs": lufs if normalize else None,
+                            "script": hashlib.sha1(script.encode()).hexdigest()[:12] if script else None})
 
         final_audio = self._clean(audio, force)
         if remove_silence:

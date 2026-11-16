@@ -55,6 +55,7 @@ def make(
     words_per_line: Annotated[Optional[int], typer.Option(help="Max words per caption")] = None,
     no_captions: Annotated[bool, typer.Option("--no-captions")] = False,
     no_clean: Annotated[bool, typer.Option("--no-clean", help="Skip noise removal")] = False,
+    script: Annotated[Optional[Path], typer.Option("--script", exists=True, dir_okay=False, help="Known script text: captions use its exact words, timing comes from the audio")] = None,
     no_normalize: Annotated[bool, typer.Option("--no-normalize", help="Skip loudness normalisation")] = False,
     lufs: Annotated[Optional[float], typer.Option(help="Target loudness in LUFS (default -14)")] = None,
     remove_silence: Annotated[bool, typer.Option("--remove-silence", help="Shorten long pauses")] = False,
@@ -97,6 +98,7 @@ def make(
         result = Pipeline(s, providers, rd).run(
             audio, out or rd / f"{audio.stem}.mp4", lang, aspect, not no_captions, force, style,
             remove_silence, min_gap, not no_normalize, lufs,
+            script.read_text("utf-8") if script else None,
         )
     except (PlannerError, ffmpeg.FfmpegError, RuntimeError, ValueError) as e:
         console.print(f"[red]Error:[/red] {e}")
@@ -111,6 +113,7 @@ def transcribe(
     whisper_model: Annotated[Optional[str], typer.Option()] = None,
     run_dir: Annotated[Optional[Path], typer.Option()] = None,
     force: Annotated[bool, typer.Option()] = False,
+    script: Annotated[Optional[Path], typer.Option("--script", exists=True, dir_okay=False, help="Align this script to the audio and show the result")] = None,
 ) -> None:
     """Only run speech recognition; writes transcript.json into the run dir."""
     _logging(False)
@@ -128,6 +131,11 @@ def transcribe(
     except ffmpeg.FfmpegError as e:
         console.print(f"[red]Error:[/red] {e}")
         raise typer.Exit(1) from None
+    if script:
+        from app.pipeline.align import align_script
+
+        t, stats = align_script(script.read_text("utf-8"), t)
+        console.print(f"script words matched exactly: {stats.exact}/{stats.script_words} ({100 * stats.match_ratio:.0f}%)")
     for seg in t.segments:
         console.print(f"[dim]{seg.start:6.1f}-{seg.end:6.1f}[/dim] {seg.text}")
     console.print(f"\nlanguage={t.language} duration={t.duration:.1f}s -> {rd / 'transcript.json'}")
