@@ -33,6 +33,10 @@ class Settings(BaseSettings):
     tts: str = "none"
     avatar_renderer: str = "none"
 
+    # silence removal (avc make --remove-silence)
+    silence_min_gap_s: float = 0.8   # pauses at least this long are shortened
+    silence_keep_gap_s: float = 0.4  # ... to this length
+
     # scene chunking
     scene_min_s: float = 3.0
     scene_max_s: float = 8.0

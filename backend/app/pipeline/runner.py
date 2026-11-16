@@ -17,6 +17,7 @@ from app.media import ffmpeg
 from app.media.cache import MediaCache
 from app.models import Scene, ScenePick, Transcript
 from app.pipeline import assemble
+from app.pipeline.silence import cut_audio, plan_cuts, remap_transcript
 from app.pipeline.caption_style import CaptionStyle
 from app.pipeline.captions import build_ass
 from app.pipeline.fetch import fetch_media
@@ -81,6 +82,25 @@ class Pipeline:
         _save(path, t)
         return t
 
+    _DERIVED = ("scenes.json", "assets.json", "audio_clean.flac", "audio_cut.flac", "transcript.cut.json")
+
+    def _sync_options(self, options: dict) -> None:
+        """Forget derived results when the options that shape them changed since the last run."""
+        path = self.run_dir / "run_config.json"
+        old = json.loads(path.read_text("utf-8")) if path.exists() else None
+        if old is not None and old != options:
+            log.info("options changed since the last run: rebuilding scenes, media picks and audio")
+            for name in self._DERIVED:
+                (self.run_dir / name).unlink(missing_ok=True)
+        path.write_text(json.dumps(options), "utf-8")
+
+    def _clean(self, audio: Path, force: bool) -> Path:
+        clean_path = self.run_dir / "audio_clean.flac"
+        if force or not clean_path.exists():
+            clean_path.unlink(missing_ok=True)
+            return self.p.cleaner.clean(audio, clean_path)  # may return `audio` itself (noop/failure)
+        return clean_path
+
     def _cached(self, name: str, model: type[M], force: bool) -> list[M] | None:
         path = self.run_dir / name
         if path.exists() and not force:
@@ -96,10 +116,32 @@ class Pipeline:
         captions: bool = True,
         force: bool = False,
         style: CaptionStyle | None = None,
+        remove_silence: bool = False,
+        min_gap: float | None = None,
     ) -> Path:
         w, h = ASPECTS[aspect]
+        min_gap = min_gap or self.s.silence_min_gap_s
+        keep_gap = self.s.silence_keep_gap_s
         transcript = self.transcribe(audio, language, force)
         log.info("transcript: %s, %d words", transcript.language, len(transcript.words))
+
+        # options that change the audio/timeline: results derived from them must not be reused
+        self._sync_options({"cleaner": self.s.audio_cleaner, "silence": [min_gap, keep_gap] if remove_silence else None})
+
+        final_audio = self._clean(audio, force)
+        if remove_silence:
+            cuts = plan_cuts(transcript.words, transcript.duration, min_gap, keep_gap)
+            if cuts:
+                removed = sum(b - a for a, b in cuts)
+                log.info("removing %.1f s of silence in %d gaps", removed, len(cuts))
+                cut_path = self.run_dir / "audio_cut.flac"
+                if force or not cut_path.exists():
+                    cut_audio(final_audio, cut_path, cuts, transcript.duration)
+                final_audio = cut_path
+                transcript = remap_transcript(transcript, cuts)
+                _save(self.run_dir / "transcript.cut.json", transcript)
+            else:
+                log.info("no pauses of %.1f s or longer: nothing to remove", min_gap)
 
         scenes = self._cached("scenes.json", Scene, force)
         if scenes is None:
@@ -122,18 +164,12 @@ class Pipeline:
             ass = self.run_dir / "captions.ass"
             ass.write_text(build_ass(transcript, w, h, style), "utf-8")
 
-        clean_path = self.run_dir / "audio_clean.flac"
-        if force or not clean_path.exists():
-            clean_path.unlink(missing_ok=True)
-            cleaned = self.p.cleaner.clean(audio, clean_path)  # may return `audio` itself (noop/failure)
-        else:
-            cleaned = clean_path
         log.info("rendering...")
         seg_dir = self.run_dir / "segments"
         shutil.rmtree(seg_dir, ignore_errors=True)
         segments = assemble.build_segments(scenes, picks, seg_dir, w, h, self.s.fps)
         out.parent.mkdir(parents=True, exist_ok=True)
         assemble.concat_and_finish(
-            segments, cleaned, ass, out, self.run_dir, Path(self.s.fonts_dir), transcript.duration
+            segments, final_audio, ass, out, self.run_dir, Path(self.s.fonts_dir), transcript.duration
         )
         return out

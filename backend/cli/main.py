@@ -55,6 +55,8 @@ def make(
     words_per_line: Annotated[Optional[int], typer.Option(help="Max words per caption")] = None,
     no_captions: Annotated[bool, typer.Option("--no-captions")] = False,
     no_clean: Annotated[bool, typer.Option("--no-clean", help="Skip noise removal")] = False,
+    remove_silence: Annotated[bool, typer.Option("--remove-silence", help="Shorten long pauses")] = False,
+    min_gap: Annotated[Optional[float], typer.Option(help="With --remove-silence: pauses >= this many seconds are shortened (default 0.8)")] = None,
     force: Annotated[bool, typer.Option(help="Redo all stages, ignore saved results")] = False,
     run_dir: Annotated[Optional[Path], typer.Option()] = None,
     verbose: Annotated[bool, typer.Option("--verbose", "-v")] = False,
@@ -91,7 +93,8 @@ def make(
             cleaner=create_cleaner(s),
         )
         result = Pipeline(s, providers, rd).run(
-            audio, out or rd / f"{audio.stem}.mp4", lang, aspect, not no_captions, force, style
+            audio, out or rd / f"{audio.stem}.mp4", lang, aspect, not no_captions, force, style,
+            remove_silence, min_gap,
         )
     except (PlannerError, ffmpeg.FfmpegError, RuntimeError, ValueError) as e:
         console.print(f"[red]Error:[/red] {e}")

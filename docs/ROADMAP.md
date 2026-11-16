@@ -50,6 +50,8 @@ The human only needs to say **"continue"** (or "next task") to move forward.
 - [x] 1.10 `avc make <audio>` runs the full pipeline with progress logs; writes `output.mp4` + `credits.txt` (attributions). *Done when:* English sample → watchable MP4. (Verified on synthetic TTS audio; re-check with a real human sample. Visual relevance is weak: heuristic ranker only, CLIP is 5.3.)
 - [x] 1.11 Basic tests for timing math and scene splitting; README with setup + usage. *Built:* 24 passing tests and `README.md`; README commands checked against a real run.
 
+- [ ] 1.12 (found 2026-11-16) Gemini planning latency: one `avc make` spent 3 min 43 s in the planning step (others took seconds). Log per-request timing and retries, find the cause (thinking model? 120 s timeout + retries? 503s), and consider a faster model or a lower thinking budget. Also add a visible "still waiting for Gemini" log line.
+
 ## Step 2 — Urdu + audio quality
 
 - [x] 2.1 Urdu transcription (`--lang ur`, auto-detect by default); Urdu text normalization.
@@ -57,7 +59,7 @@ The human only needs to say **"continue"** (or "next task") to move forward.
 - [x] 2.3 Urdu → English search-query translation in the ScenePlanner (keep the original Urdu text for captions).
 - [x] 2.4 Caption styling options: font, size, color, outline, position, words per line (CLI flags + config file).
 - [x] 2.5 AudioCleaner: DeepFilterNet (or RNNoise fallback) noise removal; `--no-clean` to skip. (RNNoise via FFmpeg `arnndn`; DeepFilterNet not used: needs PyTorch, risky on Intel macOS 12. Can be added later behind the same `AudioCleaner` interface.)
-- [ ] 2.6 Silence/gap removal with VAD (`--remove-silence`, configurable min gap); keep caption/scene timings consistent after the cut.
+- [x] 2.6 Silence/gap removal with VAD (`--remove-silence`, configurable min gap); keep caption/scene timings consistent after the cut.
 - [ ] 2.7 Loudness normalization (EBU R128, -14 LUFS) on export.
 - [ ] 2.8 Benchmark: Urdu and English WER on the samples with `small` vs `medium`; record the results in `docs/benchmarks.md`.
 - [ ] 2.9 Script input: `avc make --script script.txt --audio narration.mp3` aligns a known script to the audio (forced alignment).
@@ -101,6 +103,8 @@ The human only needs to say **"continue"** (or "next task") to move forward.
 ## Progress log
 
 <!-- Agent: add one line per completed task, newest first. Format: YYYY-MM-DD — task id — what changed — how verified -->
+
+- 2026-11-16 — 2.6 — `--remove-silence` / `--min-gap` (default 0.8 s → shortened to 0.4 s, half kept each side): cuts from word-timestamp gaps, audio cut with atrim+concat (5 ms fades), transcript remapped with the same cut list so scenes/captions/visuals share the new timeline; run folder now records its options (`run_config.json`) and discards derived files when they change (also fixes a stale `audio_clean.flac` being reused after `--no-clean`) — 7 new tests (48 pass); real run on speech with 1.5/2.5/3 s pauses: 19.92 s → 12.73 s (7.2 s removed in 3 gaps); fresh Whisper transcription of the cut audio vs the remapped transcript: 31/31 words, mean start diff 0.02 s, max 0.16 s
 
 - 2026-11-16 — 2.5 — `FfmpegCleaner` (80 Hz high-pass + RNNoise `arnndn`, or `afftdn` if the model is missing; FLAC intermediate; failure → original audio), default on, `--no-clean` to skip, `avc fetch-models`, doctor check; ASR keeps hearing the original, the final mix uses the cleaned audio — measured on speech + white noise + 50 Hz hum, full `avc make`: pause level -32.8 → -53.2 dB (original clean -53.1), speech -17.0 → -17.8 dB, duration unchanged; `afftdn` fallback -32.6 → -48.6 dB after tuning (`tn=1` did nothing); 41 tests pass. Model not committed (author's "not subject to copyright" claim is unusual: check before shipping)
 
