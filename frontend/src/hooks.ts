@@ -40,3 +40,53 @@ export function useProject(id: string | undefined, intervalMs = 1500) {
 
   return { project, error, refresh: () => setNonce((n) => n + 1) };
 }
+
+/**
+ * A real caption frame from the server, re-requested (debounced) whenever the text or style
+ * changes. Older requests are cancelled so a slow one can never overwrite a newer picture.
+ */
+export function useCaptionPreview(
+  projectId: string,
+  request: { cue_id: number; text: string; style: import("./api/types").CaptionStyle } | null,
+  debounceMs = 400,
+) {
+  const [url, setUrl] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const key = request ? JSON.stringify(request) : "";
+
+  useEffect(() => {
+    if (!request || !request.text.trim()) {
+      setError(request ? "Type some text to preview." : null);
+      setLoading(false);
+      return;
+    }
+    const ctl = new AbortController();
+    const timer = setTimeout(async () => {
+      setLoading(true);
+      try {
+        const blob = await api.previewCaption(projectId, request, ctl.signal);
+        if (ctl.signal.aborted) return;
+        setUrl((old) => {
+          if (old) URL.revokeObjectURL(old);
+          return URL.createObjectURL(blob);
+        });
+        setError(null);
+      } catch (e) {
+        if (ctl.signal.aborted) return;
+        setError(e instanceof Error ? e.message : "Preview failed");
+      } finally {
+        if (!ctl.signal.aborted) setLoading(false);
+      }
+    }, debounceMs);
+    return () => {
+      clearTimeout(timer);
+      ctl.abort();
+    };
+    // `key` captures the whole request
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId, key, debounceMs]);
+
+  useEffect(() => () => setUrl((old) => (old && URL.revokeObjectURL(old), null)), []);
+  return { url, loading, error };
+}

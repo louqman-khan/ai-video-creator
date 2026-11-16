@@ -68,6 +68,13 @@ Run `avc serve` in another terminal, then open the page and use **New project** 
 are often taken by other dev servers, and `localhost` can resolve to IPv6 and hit a different app.
 Set `VITE_API_TARGET` to point the dev proxy somewhere else.
 
+### What the editor can do
+
+Open a finished project: the **Scenes** list lets you swap any scene's visual (search again, pick a
+candidate); the **Captions** panel lets you fix the text of any caption and change font, size,
+colour, outline and position, with a live preview rendered by the same engine as the final video.
+Changes are applied together with one re-render.
+
 ## Layout
 
 `backend/app/providers/*` one folder per swappable provider, chosen by env vars (see `.env.example`);

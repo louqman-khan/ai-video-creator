@@ -23,7 +23,7 @@ from app.pipeline import assemble
 from app.pipeline.align import align_script
 from app.pipeline.silence import cut_audio, plan_cuts, remap_transcript
 from app.pipeline.caption_style import CaptionStyle
-from app.pipeline.captions import build_ass
+from app.pipeline.captions import Cue, build_ass, cues_to_ass
 from app.pipeline.fetch import fetch_media
 from app.text.urdu import normalize_transcript
 from app.providers.audio_cleaner import AudioCleaner
@@ -91,7 +91,8 @@ class Pipeline:
     # What each option invalidates. Silence removal moves the timeline, so scenes and media picks
     # must be redone (an LLM call + downloads). Cleaner and loudness only change the audio files.
     _TIMELINE = ("silence", "script")
-    _TIMELINE_FILES = ("scenes.json", "assets.json", "transcript.cut.json", "audio_cut.flac", "transcript.aligned.json")
+    _TIMELINE_FILES = ("scenes.json", "assets.json", "transcript.cut.json", "audio_cut.flac", "transcript.aligned.json",
+                       "captions.json", "transcript.final.json")  # edited captions are tied to the old timeline
     _AUDIO_FILES = {"cleaner": ("audio_clean.flac", "audio_cut.flac", "audio_norm.flac"),
                     "lufs": ("audio_norm.flac",),
                     "silence": ("audio_cut.flac", "audio_norm.flac"),
@@ -204,10 +205,16 @@ class Pipeline:
             _save(self.run_dir / "assets.json", picks)
         (self.run_dir / "CREDITS.txt").write_text(credits_text(picks), "utf-8")
 
+        _save(self.run_dir / "transcript.final.json", transcript)  # exactly what the captions are built from
         ass = None
         if captions:
             ass = self.run_dir / "captions.ass"
-            ass.write_text(build_ass(transcript, w, h, style), "utf-8")
+            edited = self.run_dir / "captions.json"  # user-edited cues win over the derived ones
+            if edited.exists():
+                cues = [Cue.model_validate(c) for c in json.loads(edited.read_text("utf-8"))]
+                ass.write_text(cues_to_ass(cues, transcript.language, w, h, style), "utf-8")
+            else:
+                ass.write_text(build_ass(transcript, w, h, style), "utf-8")
 
         if normalize:  # last audio step: loudness is measured on exactly what ends up in the video
             norm_path = self.run_dir / "audio_norm.flac"

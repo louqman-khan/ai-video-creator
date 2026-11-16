@@ -2,6 +2,7 @@ import { Link, useParams } from "react-router-dom";
 import { api } from "../api/client";
 import { isActive } from "../api/types";
 import { ProgressBar } from "../components/ProgressBar";
+import { CaptionEditor } from "../components/CaptionEditor";
 import { SceneList } from "../components/SceneList";
 import { StatusBadge } from "../components/StatusBadge";
 import { useProjects } from "../store/projects";
@@ -57,7 +58,9 @@ export function EditorPage() {
       {(project.status === "done" || project.video_ready) && (
         <SceneList project={project} onSwapped={(p) => { upsert(p); refresh(); }} />
       )}
-      <p className="muted small">Caption editing arrives in task 3.5.</p>
+      {(project.status === "done" || project.video_ready) && project.options.captions !== false && (
+        <CaptionEditor project={project} onChanged={(p) => { upsert(p); refresh(); }} />
+      )}
     </section>
   );
 }

@@ -10,7 +10,7 @@ import { ProjectsPage } from "./ProjectsPage";
 const P = (id: string, over: Partial<Project> = {}): Project => ({
   id, name: `Project ${id}`, status: "done", stage: "done", progress: 1, message: "", error: null,
   created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z",
-  original_filename: "", language: "ur", aspect: "16:9", video_ready: true, ...over,
+  original_filename: "", language: "ur", aspect: "16:9", options: {}, video_ready: true, ...over,
 });
 
 const renderPage = () => render(<MemoryRouter><ProjectsPage /></MemoryRouter>);

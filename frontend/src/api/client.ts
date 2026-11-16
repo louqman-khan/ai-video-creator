@@ -1,4 +1,4 @@
-import type { Asset, Project, Scene } from "./types";
+import type { Asset, CaptionsView, CaptionStyle, Project, Scene } from "./types";
 
 export class ApiError extends Error {
   constructor(
@@ -95,6 +95,37 @@ export const api = {
   /** `version` (the asset id) busts the browser cache when a visual is swapped. */
   thumbUrl: (id: string, sceneId: number, version: string) =>
     `/api/projects/${encodeURIComponent(id)}/scenes/${sceneId}/thumb?v=${encodeURIComponent(version)}`,
+  getCaptions: (id: string) => request<CaptionsView>(`/api/projects/${encodeURIComponent(id)}/captions`),
+  /** Send only what the user changed: `cues` (id + new text) and/or `style`. Starts a re-render. */
+  updateCaptions: (id: string, body: { cues?: { id: number; text: string }[]; style?: CaptionStyle }) =>
+    request<Project>(`/api/projects/${encodeURIComponent(id)}/captions`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  resetCaptions: (id: string) =>
+    request<Project>(`/api/projects/${encodeURIComponent(id)}/captions`, { method: "DELETE" }),
+  /** A real frame rendered by the server (same engine as the final video). */
+  previewCaption: async (
+    id: string,
+    body: { cue_id: number; text: string; style: CaptionStyle },
+    signal?: AbortSignal,
+  ): Promise<Blob> => {
+    let res: Response;
+    try {
+      res = await fetch(`/api/projects/${encodeURIComponent(id)}/captions/preview`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+        signal,
+      });
+    } catch (e) {
+      if (e instanceof DOMException && e.name === "AbortError") throw e;
+      throw new ApiError("Cannot reach the server. Is `avc serve` running?", 0);
+    }
+    if (!res.ok) throw new ApiError(await errorMessage(res), res.status);
+    return res.blob();
+  },
   videoUrl: (id: string) => `/api/projects/${encodeURIComponent(id)}/video`,
   creditsUrl: (id: string) => `/api/projects/${encodeURIComponent(id)}/credits`,
 };

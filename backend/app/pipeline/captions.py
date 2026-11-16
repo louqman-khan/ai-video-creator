@@ -3,6 +3,8 @@ Urdu is right-to-left; libass shapes it with HarfBuzz/FriBidi, so the text is pa
 
 from __future__ import annotations
 
+from pydantic import BaseModel
+
 from app.models import Transcript, Word
 from app.pipeline.caption_style import ALIGNMENT, CaptionStyle, hex_to_ass
 
@@ -47,21 +49,39 @@ def group_words(
     return cues
 
 
-def build_ass(
-    transcript: Transcript,
-    width: int = 1920,
-    height: int = 1080,
-    style: CaptionStyle | None = None,
-    font: str | None = None,
-) -> str:
+class Cue(BaseModel):
+    """One caption shown on screen. Times follow the audio; only the text is user-editable."""
+
+    start: float
+    end: float
+    text: str
+
+
+def build_cues(transcript: Transcript, style: CaptionStyle | None = None) -> list[Cue]:
     st = style or CaptionStyle()
-    urdu = transcript.language == "ur"
+    groups: list[list[Word]] = []
+    for seg in transcript.segments:  # never merge words across ASR segment boundaries
+        groups += group_words(
+            [w for w in seg.words if w.text.strip()], max_words=st.words_per_line, max_chars=st.max_chars
+        )
+    cues = []
+    for i, cue in enumerate(groups):
+        start, end = cue[0].start, cue[-1].end
+        if i + 1 < len(groups) and groups[i + 1][0].start - end < 0.3:
+            end = groups[i + 1][0].start  # close tiny gaps: no flicker between cues
+        cues.append(Cue(start=start, end=end, text=" ".join(w.text for w in cue)))
+    return cues
+
+
+def ass_header(language: str, width: int, height: int, style: CaptionStyle | None = None, font: str | None = None) -> str:
+    st = style or CaptionStyle()
+    urdu = language == "ur"
     font = font or st.font or ("Noto Nastaliq Urdu" if urdu else "Arial")
     # Nastaleeq glyphs render small, so Urdu defaults larger
     size = round(height * (st.size_pct or (11.0 if urdu else 6.0)) / 100)
     margin_v = round(height * st.margin_pct / 100)
     outline = st.outline_width * height / 1080
-    header = (
+    return (
         "[Script Info]\nScriptType: v4.00+\n"
         f"PlayResX: {width}\nPlayResY: {height}\nWrapStyle: 0\nScaledBorderAndShadow: yes\n\n"
         "[V4+ Styles]\n"
@@ -73,16 +93,24 @@ def build_ass(
         f"{round(width * 0.05)},{round(width * 0.05)},{margin_v},1\n\n"
         "[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
     )
-    cues: list[list[Word]] = []
-    for seg in transcript.segments:  # never merge words across ASR segment boundaries
-        cues += group_words(
-            [w for w in seg.words if w.text.strip()], max_words=st.words_per_line, max_chars=st.max_chars
-        )
-    lines = []
-    for i, cue in enumerate(cues):
-        start, end = cue[0].start, cue[-1].end
-        if i + 1 < len(cues) and cues[i + 1][0].start - end < 0.3:
-            end = cues[i + 1][0].start  # close tiny gaps: no flicker between cues
-        text = _escape(" ".join(w.text for w in cue))
-        lines.append(f"Dialogue: 0,{ass_time(start)},{ass_time(end)},Default,,0,0,0,,{text}")
-    return header + "\n".join(lines) + "\n"
+
+
+def cues_to_ass(
+    cues: list[Cue], language: str, width: int = 1920, height: int = 1080,
+    style: CaptionStyle | None = None, font: str | None = None,
+) -> str:
+    lines = [
+        f"Dialogue: 0,{ass_time(c.start)},{ass_time(c.end)},Default,,0,0,0,,{_escape(c.text)}"
+        for c in cues if c.text.strip()  # an emptied cue simply disappears
+    ]
+    return ass_header(language, width, height, style, font) + "\n".join(lines) + "\n"
+
+
+def build_ass(
+    transcript: Transcript,
+    width: int = 1920,
+    height: int = 1080,
+    style: CaptionStyle | None = None,
+    font: str | None = None,
+) -> str:
+    return cues_to_ass(build_cues(transcript, style), transcript.language, width, height, style, font)

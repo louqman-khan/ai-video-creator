@@ -18,6 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import ValidationError
 
+from app.api import captions as captions_api
 from app.api import scenes as scenes_api
 from app.api.jobs import JobRunner, ProvidersFactory
 from app.api.store import ProjectInfo, ProjectNotFound, ProjectStore
@@ -192,4 +193,5 @@ def create_app(settings: Settings | None = None, providers_factory: ProvidersFac
         store.delete(pid)
 
     scenes_api.register(app, store, jobs, settings)
+    captions_api.register(app, store, jobs, settings)
     return app

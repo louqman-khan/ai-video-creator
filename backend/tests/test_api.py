@@ -273,3 +273,107 @@ def test_failed_swap_keeps_the_existing_video(env, tmp_path):
         assert done["status"] == "done" and done["video_ready"] and "Could not apply the change" in done["error"]
         assert c.get(f"/api/projects/{pid}/video").status_code == 200
         assert c.get(f"/api/projects/{pid}/scenes").json()[0]["asset"]["id"] == current  # unchanged
+
+
+# ---------------------------------------------------------------- captions (task 3.5)
+
+def ass_of(settings, pid):
+    return (Path(settings.projects_dir) / pid / "captions.ass").read_text("utf-8")
+
+
+def test_read_edit_and_reset_caption_text(env):
+    settings, _, tone, _ = env
+    with client(env) as c:
+        pid = finished_project(c, tone)
+        cap = c.get(f"/api/projects/{pid}/captions").json()
+        assert cap["edited"] is False and cap["language"] == "en" and cap["style"] == {}
+        assert [x["id"] for x in cap["cues"]] == list(range(len(cap["cues"]))) and cap["cues"]
+        original = cap["cues"][0]["text"]
+
+        edits = [{"id": x["id"], "text": x["text"]} for x in cap["cues"]]
+        edits[0]["text"] = "  Corrected\x00 text \n here  "  # control characters and spacing are cleaned
+        r = c.put(f"/api/projects/{pid}/captions", json={"cues": edits})
+        assert r.status_code == 202 and r.json()["status"] in ("queued", "running")
+        assert wait_done(c, pid)["status"] == "done"
+        after = c.get(f"/api/projects/{pid}/captions").json()
+        assert after["edited"] is True and after["cues"][0]["text"] == "Corrected text here"
+        assert [x["start"] for x in after["cues"]] == [x["start"] for x in cap["cues"]]  # timing untouched
+        assert "Corrected text here" in ass_of(settings, pid)  # and it reached the render
+
+        assert c.delete(f"/api/projects/{pid}/captions").status_code == 202
+        assert wait_done(c, pid)["status"] == "done"
+        back = c.get(f"/api/projects/{pid}/captions").json()
+        assert back["edited"] is False and back["cues"][0]["text"] == original
+        assert c.delete(f"/api/projects/{pid}/captions").status_code == 400  # nothing left to reset
+
+
+def test_style_change_is_stored_and_rendered(env):
+    settings, _, tone, _ = env
+    with client(env) as c:
+        pid = finished_project(c, tone)
+        r = c.put(f"/api/projects/{pid}/captions", json={"style": {"color": "#FFFF00", "position": "top"}})
+        assert r.status_code == 202
+        assert wait_done(c, pid)["status"] == "done"
+        cap = c.get(f"/api/projects/{pid}/captions").json()
+        assert cap["style"]["color"] == "#FFFF00" and cap["edited"] is False
+        style_line = next(l for l in ass_of(settings, pid).splitlines() if l.startswith("Style:"))
+        assert "&H0000FFFF" in style_line and ",8," in style_line  # yellow, top alignment
+        # sending the same style again is a no-op, not another render
+        assert c.put(f"/api/projects/{pid}/captions", json={"style": {"color": "#FFFF00", "position": "top"}}).status_code == 400
+
+
+def test_caption_update_validation_and_injection(env):
+    settings, _, tone, _ = env
+    with client(env) as c:
+        pid = finished_project(c, tone)
+        cap = c.get(f"/api/projects/{pid}/captions").json()
+        n = len(cap["cues"])
+        put = lambda body: c.put(f"/api/projects/{pid}/captions", json=body)  # noqa: E731
+        assert put({}).status_code == 400
+        assert put({"cues": [{"id": x["id"], "text": x["text"]} for x in cap["cues"]]}).status_code == 400  # no change
+        assert put({"cues": [{"id": 0, "text": "x"}]}).status_code == 409 if n > 1 else True               # stale list
+        assert put({"cues": [{"id": i + 1, "text": "x"} for i in range(n)]}).status_code == 409              # wrong ids
+        assert put({"cues": [{"id": 0, "text": "x" * 301}]}).status_code == 422
+        assert put({"style": {"color": "yellow"}}).status_code == 422
+        assert put({"style": {"font": "Arial,0,0\nStyle: Evil"}}).status_code == 422                          # ASS injection
+        assert put({"style": {"colour": "#fff"}}).status_code == 422                                          # unknown key
+        # ASS override tags in the text are neutralised
+        edits = [{"id": x["id"], "text": x["text"]} for x in cap["cues"]]
+        edits[0]["text"] = r"{\fs300\pos(0,0)}Big \Nbreak"
+        assert put({"cues": edits}).status_code == 202
+        wait_done(c, pid)
+        ass = ass_of(settings, pid)
+        assert "{\\fs300" not in ass and "\\N" not in ass.split("[Events]")[1]
+
+
+def test_caption_endpoints_blocked_while_processing_or_unknown(env):
+    _, _, tone, gate = env
+    gate.clear()
+    with client(env) as c:
+        p = upload(c, tone).json()
+        assert c.get(f"/api/projects/{p['id']}/captions").status_code == 409
+        assert c.put(f"/api/projects/{p['id']}/captions", json={"style": {"bold": True}}).status_code == 409
+        assert c.delete(f"/api/projects/{p['id']}/captions").status_code == 409
+        assert c.post(f"/api/projects/{p['id']}/captions/preview", json={}).status_code == 409
+        gate.set()
+        wait_done(c, p["id"])
+        assert c.get(f"/api/projects/{'0' * 32}/captions").status_code == 404
+
+
+def test_preview_renders_a_real_frame_with_the_requested_style(env):
+    _, _, tone, _ = env
+    with client(env) as c:
+        pid = finished_project(c, tone)
+        url = f"/api/projects/{pid}/captions/preview"
+        plain = c.post(url, json={"text": "Preview text"})
+        yellow = c.post(url, json={"text": "Preview text", "style": {"color": "#FFFF00", "size_pct": 12}})
+        assert plain.status_code == 200 and plain.headers["content-type"] == "image/jpeg"
+        assert plain.content[:2] == b"\xff\xd8" and yellow.content[:2] == b"\xff\xd8"
+        assert plain.content != yellow.content                      # the style really changed the picture
+        assert plain.headers["cache-control"] == "no-store"
+        assert c.post(url, json={"text": "   "}).status_code == 422
+        assert c.post(url, json={"cue_id": 999}).status_code == 404
+        assert c.post(url, json={"text": "x" * 301}).status_code == 422
+        assert c.post(url, json={"style": {"font": "a,b"}}).status_code == 422
+        # nothing was left behind in the project folder
+        assert list((Path(env[0].projects_dir) / pid / "preview").glob("*")) == []

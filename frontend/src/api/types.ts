@@ -14,6 +14,7 @@ export interface Project {
   original_filename: string;
   language: string | null;
   aspect: string;
+  options: { captions?: boolean; [key: string]: unknown };
   video_ready: boolean;
 }
 
@@ -47,4 +48,32 @@ export interface Scene {
   preferred_kind: "video" | "image" | null;
   asset: Asset | null;
   has_thumb: boolean;
+}
+
+/** Mirrors backend `CaptionStyle`. font/size_pct unset = automatic (depends on the language). */
+export interface CaptionStyle {
+  font?: string | null;
+  size_pct?: number | null;
+  color: string;
+  outline_color: string;
+  outline_width: number;
+  position: "bottom" | "center" | "top";
+  margin_pct: number;
+  bold: boolean;
+  words_per_line: number;
+  max_chars: number;
+}
+
+export interface Cue {
+  id: number;
+  start: number;
+  end: number;
+  text: string;
+}
+
+export interface CaptionsView {
+  cues: Cue[];
+  edited: boolean;
+  language: string;
+  style: Partial<CaptionStyle>;
 }

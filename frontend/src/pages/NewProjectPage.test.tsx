@@ -11,7 +11,7 @@ import { NewProjectPage } from "./NewProjectPage";
 const PROJECT: Project = {
   id: "abc", name: "talk", status: "queued", stage: "", progress: 0, message: "", error: null,
   created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z", original_filename: "talk.mp3",
-  language: null, aspect: "16:9", video_ready: false,
+  language: null, aspect: "16:9", options: {}, video_ready: false,
 };
 
 function renderPage() {

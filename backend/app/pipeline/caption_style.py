@@ -36,6 +36,14 @@ class CaptionStyle(BaseModel):
     words_per_line: int = Field(7, ge=1, le=30)
     max_chars: int = Field(40, ge=10, le=120)
 
+    @field_validator("font")
+    @classmethod
+    def _check_font(cls, v: str | None) -> str | None:
+        # the name is written into an ASS style line: commas/newlines would inject other fields
+        if v is not None and not re.fullmatch(r"[\w .\-]{1,60}", v):
+            raise ValueError("font names may only contain letters, digits, spaces, '.' and '-'")
+        return v
+
     @field_validator("color", "outline_color")
     @classmethod
     def _check_hex(cls, v: str) -> str:
