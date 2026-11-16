@@ -31,6 +31,7 @@ The human only needs to say **"continue"** (or "next task") to move forward.
 - [ ] Urdu sample audio at `samples/urdu.mp3` (30–60 s) **and its exact text** at `samples/urdu.txt` (needed for task 2.8: WER needs a reference)
 - [ ] English sample audio at `samples/english.mp3` (30–60 s) **and its exact text** at `samples/english.txt` (task 2.8)
 - [ ] Optional: `Jameel Noori Nastaleeq.ttf` in `assets/fonts/` (license unclear; use with `--font "Jameel Noori Nastaleeq"`). Noto Nastaliq Urdu is already installed and committed (OFL).
+- [ ] Step 4 test media (needed from 4.2 / 4.11 on): a real green-screen clip, a phone video (ideally rotated and variable frame rate), and a short music file you are allowed to use. Put them in `samples/`.
 - [ ] Rotate the Pixabay key again: a test script printed it into a session log on 2026-11-16 (httpx INFO logging; now silenced in `app/http.py`). Gemini key was never printed.
 - [ ] Pexels key — new key issuance is paused by Pexels; the pipeline must work without it
 
@@ -76,14 +77,22 @@ The human only needs to say **"continue"** (or "next task") to move forward.
 
 ## Step 4 — Timeline editor
 
-- [ ] 4.1 Canvas timeline (react-konva or WebGL) with zoom, playhead and snapping; video, image, audio and caption tracks.
-- [ ] 4.2 Cut / trim / split / merge; drag to move and rearrange; undo/redo.
-- [ ] 4.3 Multiple video and audio tracks; per-clip volume; background music and sound-effect library (free sources).
-- [ ] 4.4 Transitions (crossfade, slide, zoom) and basic effects (brightness, contrast, blur).
-- [ ] 4.5 Crop / resize / position on canvas; change project aspect ratio.
-- [ ] 4.6 Chroma key (green screen) in a WebGL shader for preview, with a matching FFmpeg filter for export.
-- [ ] 4.7 Import formats (mp4, mov, webm, mp3, wav, m4a, png, jpg); export resolutions (720p, 1080p, 4K).
-- [ ] 4.8 Evaluate Remotion (check the license) vs FFmpeg server render; decide and record the decision in `docs/decisions.md`.
+Approved plan: `docs/STEP4_PLAN.md` (decisions D1–D7, phases, tests, risks). Order matters: document → renderer → UI → editing → live preview → layers/audio → transitions → transform → chroma key → import/export.
+
+- [~] 4.0 Decisions and spikes. Run the two spikes (browser preview engine; DOM timeline at 300 clips) and record all decisions in `docs/decisions.md` (render approach, UI tech, Remotion, music sources, export encoders). *Done when:* both spikes have pass/fail numbers on this Mac, and the fallback is chosen if one fails.
+- [ ] 4.1 Timeline document v1: schema (integer frames), validator, migration from scenes/assets/captions, `GET/PUT /timeline` with a revision check. *Done when:* an existing project round-trips to a timeline and back to the same scenes, and renders SSIM >= 0.99 against today's output.
+- [ ] 4.2 Editor media pipeline: import checks (`ffprobe`, size/duration caps), variable-frame-rate to constant, rotation baked in, 960x540 short-GOP proxies, waveform peaks, filmstrip thumbnails, in the background worker; per-project disk usage.
+- [ ] 4.3 Timeline renderer v1: flatten the timeline into cacheable segments + audio mixdown + caption burn; encoder profile (x264 / VideoToolbox). *Done when:* editing one clip re-renders only its segments, and "whole vs split" renders match.
+- [ ] 4.4 Timeline UI, read-only: tracks, ruler, zoom, playhead, waveform, filmstrip, click to seek, synced with the player.
+- [ ] 4.5 Editing operations: move, trim, split, merge, delete (lift) and ripple-delete (range), duplicate, reorder; snapping; undo/redo; autosave with revision check; keyboard shortcuts; captions re-flow from the remaining words. *Done when:* property tests keep all invariants for random operation sequences.
+- [ ] 4.6 Live preview engine: browser compositor over proxies + WebAudio (or the chunked server fallback if the 4.0 spike failed); parity suite against FFmpeg.
+- [ ] 4.7 Multiple video and audio tracks: picture-in-picture, per-clip volume, fades, mute, music ducking under narration.
+- [ ] 4.8 Media bin: stock search (video, image, music and SFX from Openverse audio), uploads with a rights confirmation, credits and `CREDITS.txt` extended to audio.
+- [ ] 4.9 Transitions (crossfade, dip, slide, zoom) and basic effects (brightness, contrast, saturation, blur).
+- [ ] 4.10 Crop / resize / position with on-canvas handles; change the project aspect ratio (fit / fill / blurred-background reframe).
+- [ ] 4.11 Chroma key: FFmpeg `chromakey` + `despill` for export, WebGL shader for preview, eyedropper UI; parity-checked.
+- [ ] 4.12 Import formats (mp4, mov, webm, mp3, wav, m4a, png, jpg incl. HEVC/ProRes/VP9, HDR tone-mapping) and export presets (720p, 1080p, 4K; quality vs hardware encoder) with time estimates.
+- [ ] 4.13 Hardening: performance budgets (drag >= 50 fps at 300 clips, seek < 150 ms), accessibility/keyboard, disk cleanup, conflict UX, docs.
 
 ## Step 5 — Voice + avatars (requires a GPU)
 
@@ -103,6 +112,8 @@ The human only needs to say **"continue"** (or "next task") to move forward.
 ## Progress log
 
 <!-- Agent: add one line per completed task, newest first. Format: YYYY-MM-DD — task id — what changed — how verified -->
+
+- 2026-11-16 — plan — Step 4 plan approved (`docs/STEP4_PLAN.md`: timeline document as single truth, FFmpeg server render with cacheable segments, browser live preview behind a spike, DOM-first timeline UI, no Remotion, Openverse audio + uploads, hardware export option); roadmap Step 4 replaced by tasks 4.0–4.13 (old 4.1→4.4, 4.2→4.5, 4.3→4.7+4.8, 4.4→4.9, 4.5→4.10, 4.6→4.11, 4.7→4.2+4.12, 4.8→4.0)
 
 - 2026-11-16 — 3.7 — credits panel (**Step 3 complete**). Backend `GET /attributions`: unique visuals with license, author, source and the scenes that use them (credit-required ones first; no download URLs). Frontend `CreditsPanel`: one entry per visual (scenes, creator, source link, license link, "Credit required" badge), a notice saying how many visuals legally need a credit (CC BY etc.) or that none do, copy-to-clipboard of the exact `CREDITS.txt` text (selectable text box if the browser blocks the clipboard), download link, http(s)-only links, reloads after every re-render — 89 backend tests (2 new) and 76 vitest tests (9 new) pass, tsc + build clean; real Chrome on the Urdu project: 3 Pixabay entries with working source/license links, notice shown, clipboard text identical to CREDITS.txt, console clean
 
