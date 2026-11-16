@@ -73,7 +73,9 @@ Set `VITE_API_TARGET` to point the dev proxy somewhere else.
 Open a finished project: the **Scenes** list lets you swap any scene's visual (search again, pick a
 candidate); the **Captions** panel lets you fix the text of any caption and change font, size,
 colour, outline and position, with a live preview rendered by the same engine as the final video.
-Changes are applied together with one re-render.
+Changes are applied together with one re-render of the quick low-resolution preview (a few
+seconds). When you are happy, **Export** renders the full-quality 1080p video in 16:9 or 9:16 and
+lets you download it; editing afterwards makes that export stale until you export again.
 
 ## Layout
 

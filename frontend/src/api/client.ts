@@ -126,6 +126,16 @@ export const api = {
     if (!res.ok) throw new ApiError(await errorMessage(res), res.status);
     return res.blob();
   },
-  videoUrl: (id: string) => `/api/projects/${encodeURIComponent(id)}/video`,
+  /** Full-quality (1080p) export in 16:9 or 9:16. Edits use the fast preview; this is the final step. */
+  exportProject: (id: string, aspect: "16:9" | "9:16") =>
+    request<Project>(`/api/projects/${encodeURIComponent(id)}/export`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ aspect }),
+    }),
+  exportUrl: (id: string) => `/api/projects/${encodeURIComponent(id)}/export`,
+  /** `version` changes when a render finishes, so the browser never plays an outdated copy. */
+  videoUrl: (id: string, version?: string) =>
+    `/api/projects/${encodeURIComponent(id)}/video${version ? `?v=${encodeURIComponent(version)}` : ""}`,
   creditsUrl: (id: string) => `/api/projects/${encodeURIComponent(id)}/credits`,
 };

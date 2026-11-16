@@ -26,7 +26,7 @@ from app.media import ffmpeg
 from app.models import Transcript
 from app.pipeline.caption_style import CaptionStyle
 from app.pipeline.captions import Cue, build_cues, cues_to_ass
-from app.pipeline.runner import ASPECTS
+from app.pipeline.runner import ASPECTS, PREVIEW_SIZES
 
 log = logging.getLogger("avc.captions")
 MAX_TEXT = 300
@@ -163,9 +163,13 @@ def build_router(store: ProjectStore, jobs: JobRunner, settings: Settings) -> AP
     async def preview(pid: str, body: PreviewRequest) -> Response:
         info = project(pid)
         d = store.path(pid)
-        base = d / "concat.mp4"  # the finished video minus captions
+        # the caption-free video: preview quality (960 px wide, crisp at the size shown) or, for projects made
+        # before previews existed, the full-size one
+        preview_base, full_base = d / "concat_preview.mp4", d / "concat.mp4"
+        base = preview_base if preview_base.is_file() else full_base
         if not base.is_file():
             raise HTTPException(409, "The video is not ready yet")
+        sizes = PREVIEW_SIZES if base == preview_base else ASPECTS
         cues, _, language = current_cues(d, info)
         if body.cue_id >= len(cues):
             raise HTTPException(404, "Caption not found")
@@ -174,7 +178,7 @@ def build_router(store: ProjectStore, jobs: JobRunner, settings: Settings) -> AP
         if not text:
             raise HTTPException(422, "Type some text to preview")
         style = body.style or style_of(info)
-        width, height = ASPECTS[info.aspect]
+        width, height = sizes[info.aspect]
         at = max(0.0, (cue.start + cue.end) / 2)
         ass = cues_to_ass([Cue(start=0, end=30, text=text)], language, width, height, style)
 

@@ -8,7 +8,7 @@ import { SceneList } from "./SceneList";
 const project = (over: Partial<Project> = {}): Project => ({
   id: "p1", name: "demo", status: "done", stage: "done", progress: 1, message: "", error: null,
   created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:01Z", original_filename: "",
-  language: "ur", aspect: "16:9", options: {}, video_ready: true, ...over,
+  language: "ur", aspect: "16:9", options: {}, video_ready: true, export_ready: false, export_aspect: null, ...over,
 });
 const asset = (id: string, over: Partial<Asset> = {}): Asset => ({
   id, source: "pixabay", kind: "video", thumb_url: `https://cdn.example/${id}.jpg`, page_url: "https://pixabay.com/videos/x/",

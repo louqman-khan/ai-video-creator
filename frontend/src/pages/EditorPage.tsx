@@ -3,6 +3,7 @@ import { api } from "../api/client";
 import { isActive } from "../api/types";
 import { ProgressBar } from "../components/ProgressBar";
 import { CaptionEditor } from "../components/CaptionEditor";
+import { ExportPanel } from "../components/ExportPanel";
 import { SceneList } from "../components/SceneList";
 import { StatusBadge } from "../components/StatusBadge";
 import { useProjects } from "../store/projects";
@@ -22,6 +23,9 @@ export function EditorPage() {
       <p className="muted">Loading…</p>
     );
   }
+
+  // changes only when a render finishes (not on every progress update)
+  const playerVersion = isActive(project) ? "rendering" : project.updated_at;
 
   return (
     <section>
@@ -43,17 +47,14 @@ export function EditorPage() {
       )}
       {project.video_ready && (
         <div className="panel">
-          {/* key: reload the player if the video is re-rendered */}
-          <video key={project.updated_at} className="player" controls src={api.videoUrl(project.id)} />
-          <div className="card-actions">
-            <a className="btn btn-primary" href={api.videoUrl(project.id)} download>
-              Download video
-            </a>
-            <a className="btn" href={api.creditsUrl(project.id)} target="_blank" rel="noreferrer">
-              Media credits
-            </a>
-          </div>
+          {/* key: reload the player once a re-render has finished (not on every progress update) */}
+          <video key={playerVersion} className="player" controls preload="metadata"
+            src={api.videoUrl(project.id, playerVersion)} />
+          <p className="muted small">Preview (low resolution). Edits re-render it in a few seconds.</p>
         </div>
+      )}
+      {project.video_ready && (
+        <ExportPanel project={project} onStarted={(p) => { upsert(p); refresh(); }} />
       )}
       {(project.status === "done" || project.video_ready) && (
         <SceneList project={project} onSwapped={(p) => { upsert(p); refresh(); }} />

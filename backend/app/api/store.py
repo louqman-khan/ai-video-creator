@@ -37,7 +37,9 @@ class ProjectInfo(BaseModel):
     language: str | None = None
     aspect: str = "16:9"
     options: dict = Field(default_factory=dict)
-    video_ready: bool = False
+    video_ready: bool = False  # a playable preview (or, for old projects, the full video) exists
+    export_ready: bool = False  # a full-quality export exists and matches the current edits
+    export_aspect: str | None = None
 
 
 class ProjectNotFound(KeyError):

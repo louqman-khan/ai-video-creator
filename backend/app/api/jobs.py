@@ -28,20 +28,27 @@ class JobRunner:
         self.store, self.settings, self.factory = store, settings, providers_factory
         self._pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="avc-job")
 
-    def submit(self, project_id: str, prepare: Callable[[], None] | None = None) -> None:
-        """Queue a (re-)run of the pipeline. `prepare` runs first inside the worker (e.g. download
-        the replacement visual of a swap); if it fails the previous video is kept."""
-        self._pool.submit(self._run, project_id, prepare)
+    def submit(self, project_id: str, prepare: Callable[[], None] | None = None, *, export_aspect: str | None = None) -> None:
+        """Queue a render. Default: the fast preview (edits re-render this). With `export_aspect`:
+        the full-quality 1080p export. `prepare` runs first inside the worker (e.g. download the
+        replacement visual of a swap); if it fails the previous video is kept."""
+        self._pool.submit(self._run, project_id, prepare, export_aspect)
 
     def shutdown(self) -> None:
         self._pool.shutdown(wait=False, cancel_futures=True)
 
-    def _run(self, pid: str, prepare: Callable[[], None] | None = None) -> None:
+    def _run(self, pid: str, prepare: Callable[[], None] | None = None, export_aspect: str | None = None) -> None:
         store = self.store
+        export = export_aspect is not None
         try:
-            info = store.update(pid, status="running", stage="start", progress=0.0, message="Starting", error=None)
+            info = store.update(pid, status="running", stage="start", progress=0.0, message="Starting", error=None,
+                                export_ready=False)
         except Exception:  # project deleted while queued
             return
+        d = store.path(pid)
+        if not export:
+            (d / "output.mp4").unlink(missing_ok=True)  # an older export no longer matches the edits
+            store.update(pid, export_aspect=None)
         if prepare:
             try:
                 prepare()
@@ -53,20 +60,27 @@ class JobRunner:
                 return
         try:
             opts = info.options
-            d = store.path(pid)
             settings = self.settings.model_copy(update={"audio_cleaner": "ffmpeg" if opts.get("clean", True) else "noop"})
             pipe = Pipeline(settings, self.factory(settings, opts), d)
             pipe.progress = lambda stage, frac, msg: store.update(pid, stage=stage, progress=round(frac, 3), message=msg)
             script_file = d / "script.txt"
             style = CaptionStyle.model_validate(opts["style"]) if opts.get("style") else None
             pipe.run(
-                d / info.audio_file, d / "output.mp4", opts.get("language") or None, info.aspect,
+                d / info.audio_file, d / ("output.mp4" if export else "preview.mp4"), opts.get("language") or None,
+                export_aspect or info.aspect,
                 captions=opts.get("captions", True), style=style,
                 remove_silence=opts.get("remove_silence", False), min_gap=opts.get("min_gap"),
                 normalize=opts.get("normalize", True), lufs=opts.get("lufs"),
                 script=script_file.read_text("utf-8") if script_file.exists() else None,
+                quality="final" if export else "preview",
             )
-            store.update(pid, status="done", stage="done", progress=1.0, message="Finished", video_ready=True)
+            store.update(pid, status="done", stage="done", progress=1.0, message="Finished", video_ready=True,
+                         export_ready=export, export_aspect=export_aspect)
         except Exception as e:  # report to the user, keep the worker alive for the next job
             log.exception("project %s failed", pid)
-            store.update(pid, status="failed", error=redact(f"{type(e).__name__}: {e}", self.settings)[:500])
+            msg = redact(f"{type(e).__name__}: {e}", self.settings)[:500]
+            if export and (d / "preview.mp4").is_file():  # a failed export must not break the project
+                store.update(pid, status="done", stage="done", progress=1.0, message="", video_ready=True,
+                             export_ready=False, error=f"The export failed: {msg}")
+            else:
+                store.update(pid, status="failed", error=msg)

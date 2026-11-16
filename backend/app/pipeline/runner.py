@@ -35,7 +35,17 @@ from app.providers.transcriber import Transcriber
 log = logging.getLogger("avc.pipeline")
 M = TypeVar("M", bound=BaseModel)
 
-ASPECTS = {"16:9": (1920, 1080), "9:16": (1080, 1920)}
+ASPECTS = {"16:9": (1920, 1080), "9:16": (1080, 1920)}  # final quality
+PREVIEW_SIZES = {"16:9": (960, 540), "9:16": (540, 960)}  # fast edit-loop renders (a quarter of the pixels)
+
+
+def render_size(aspect: str, quality: str) -> tuple[int, int]:
+    return (PREVIEW_SIZES if quality == "preview" else ASPECTS)[aspect]
+
+
+def base_video_name(quality: str) -> str:
+    """The caption-free video of each quality (the caption preview draws onto it)."""
+    return "concat_preview.mp4" if quality == "preview" else "concat.mp4"
 
 
 @dataclass
@@ -152,8 +162,11 @@ class Pipeline:
         normalize: bool = True,
         lufs: float | None = None,
         script: str | None = None,
+        quality: str = "final",
     ) -> Path:
-        w, h = ASPECTS[aspect]
+        preview = quality == "preview"
+        w, h = render_size(aspect, quality)
+        profile = assemble.PREVIEW if preview else assemble.FINAL
         min_gap = min_gap or self.s.silence_min_gap_s
         keep_gap = self.s.silence_keep_gap_s
         lufs = lufs if lufs is not None else self.s.target_lufs
@@ -208,7 +221,7 @@ class Pipeline:
         _save(self.run_dir / "transcript.final.json", transcript)  # exactly what the captions are built from
         ass = None
         if captions:
-            ass = self.run_dir / "captions.ass"
+            ass = self.run_dir / ("captions_preview.ass" if preview else "captions.ass")
             edited = self.run_dir / "captions.json"  # user-edited cues win over the derived ones
             if edited.exists():
                 cues = [Cue.model_validate(c) for c in json.loads(edited.read_text("utf-8"))]
@@ -224,14 +237,15 @@ class Pipeline:
                 final_audio = norm_path
 
         log.info("rendering...")
-        self.progress("render", 0.78, "Rendering the video")
-        seg_dir = self.run_dir / "segments"
+        self.progress("render", 0.78, "Rendering the preview" if preview else "Rendering the full-quality video")
+        seg_dir = self.run_dir / ("segments_preview" if preview else "segments")
         if force:
             shutil.rmtree(seg_dir, ignore_errors=True)
-        segments = assemble.build_segments(scenes, picks, seg_dir, w, h, self.s.fps)
+        segments = assemble.build_segments(scenes, picks, seg_dir, w, h, self.s.fps, profile)
         out.parent.mkdir(parents=True, exist_ok=True)
         assemble.concat_and_finish(
-            segments, final_audio, ass, out, self.run_dir, Path(self.s.fonts_dir), transcript.duration
+            segments, final_audio, ass, out, self.run_dir, Path(self.s.fonts_dir), transcript.duration,
+            profile, base_video_name(quality),
         )
         self.progress("done", 1.0, "Finished")
         return out

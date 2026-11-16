@@ -16,7 +16,9 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
-from pydantic import ValidationError
+from typing import Literal
+
+from pydantic import BaseModel, ValidationError
 
 from app.api import captions as captions_api
 from app.api import scenes as scenes_api
@@ -31,6 +33,13 @@ log = logging.getLogger("avc.api")
 
 AUDIO_EXTENSIONS = {".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg", ".opus"}
 MAX_SCRIPT_CHARS = 100_000
+# The same URL serves a different file after every re-render: browsers must revalidate (ETag) instead of
+# reusing an old copy for minutes (heuristic freshness).
+NO_STALE = {"Cache-Control": "no-cache"}
+
+
+class ExportRequest(BaseModel):
+    aspect: Literal["16:9", "9:16"] | None = None  # default: the project's own format
 CHUNK = 1024 * 1024
 
 
@@ -172,10 +181,37 @@ def create_app(settings: Settings | None = None, providers_factory: ProvidersFac
     @app.get("/api/projects/{pid}/video")
     def video(pid: str) -> FileResponse:
         info = get_project(pid)
-        f = store.path(pid) / "output.mp4"
-        if not (info.video_ready and f.is_file()):
+        d = store.path(pid)
+        # the fast preview if there is one; projects made before previews existed only have output.mp4
+        f = next((p for p in (d / "preview.mp4", d / "output.mp4") if p.is_file()), None)
+        if not (info.video_ready and f):
             raise HTTPException(409, "The video is not ready yet")
-        return FileResponse(f, media_type="video/mp4", filename=f"{_safe_name(info.name)}.mp4")
+        return FileResponse(f, media_type="video/mp4", filename=f"{_safe_name(info.name)}-preview.mp4",
+                            headers=NO_STALE)
+
+    @app.post("/api/projects/{pid}/export", status_code=202, response_model=ProjectInfo)
+    def start_export(pid: str, body: ExportRequest | None = None) -> ProjectInfo:
+        """Render the full-quality 1080p video (16:9 or 9:16). Edits use the fast preview instead."""
+        info = get_project(pid)
+        if info.status in ("queued", "running"):
+            raise HTTPException(409, "This project is still processing")
+        d = store.path(pid)
+        if not ((d / "scenes.json").is_file() and (d / "assets.json").is_file()):
+            raise HTTPException(409, "The project is not ready to export")
+        aspect = (body.aspect if body else None) or info.aspect
+        queued = store.update(pid, status="queued", stage="export", progress=0.0, message="Preparing the export",
+                              error=None, export_ready=False)
+        jobs.submit(pid, export_aspect=aspect)
+        return queued
+
+    @app.get("/api/projects/{pid}/export")
+    def download_export(pid: str) -> FileResponse:
+        info = get_project(pid)
+        f = store.path(pid) / "output.mp4"
+        if not (info.export_ready and f.is_file()):
+            raise HTTPException(409, "No export yet. Start one first, or the edits changed since the last export.")
+        return FileResponse(f, media_type="video/mp4", headers=NO_STALE,
+                            filename=f"{_safe_name(info.name)}-{info.export_aspect or info.aspect}.mp4".replace(":", "x"))
 
     @app.get("/api/projects/{pid}/credits")
     def credits(pid: str) -> FileResponse:

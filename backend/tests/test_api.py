@@ -278,7 +278,7 @@ def test_failed_swap_keeps_the_existing_video(env, tmp_path):
 # ---------------------------------------------------------------- captions (task 3.5)
 
 def ass_of(settings, pid):
-    return (Path(settings.projects_dir) / pid / "captions.ass").read_text("utf-8")
+    return (Path(settings.projects_dir) / pid / "captions_preview.ass").read_text("utf-8")  # edits re-render the preview
 
 
 def test_read_edit_and_reset_caption_text(env):
@@ -377,3 +377,117 @@ def test_preview_renders_a_real_frame_with_the_requested_style(env):
         assert c.post(url, json={"style": {"font": "a,b"}}).status_code == 422
         # nothing was left behind in the project folder
         assert list((Path(env[0].projects_dir) / pid / "preview").glob("*")) == []
+
+
+# ---------------------------------------------------------------- preview + export (task 3.6)
+
+def dims(path):
+    out = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height",
+                          "-of", "csv=p=0", str(path)], capture_output=True, text=True, check=True).stdout.strip()
+    w, h = out.split(",")
+    return int(w), int(h)
+
+
+def test_new_projects_get_a_fast_preview_and_no_export_yet(env):
+    settings, _, tone, _ = env
+    with client(env) as c:
+        pid = finished_project(c, tone)
+        d = Path(settings.projects_dir) / pid
+        info = c.get(f"/api/projects/{pid}").json()
+        assert info["video_ready"] is True and info["export_ready"] is False and info["export_aspect"] is None
+        assert dims(d / "preview.mp4") == (960, 540) and not (d / "output.mp4").exists()
+        v = c.get(f"/api/projects/{pid}/video")
+        assert v.status_code == 200 and b"ftyp" in v.content[:32]
+        assert c.get(f"/api/projects/{pid}/export").status_code == 409  # nothing exported yet
+
+
+def test_export_renders_full_quality_in_both_aspects(env):
+    settings, _, tone, _ = env
+    with client(env) as c:
+        pid = finished_project(c, tone)
+        d = Path(settings.projects_dir) / pid
+        r = c.post(f"/api/projects/{pid}/export")  # no body: the project's own format
+        assert r.status_code == 202 and r.json()["status"] in ("queued", "running")
+        done = wait_done(c, pid)
+        assert done["status"] == "done" and done["export_ready"] is True and done["export_aspect"] == "16:9" and done["error"] is None
+        got = c.get(f"/api/projects/{pid}/export")
+        assert got.status_code == 200 and got.headers["content-type"] == "video/mp4" and b"ftyp" in got.content[:32]
+        assert "attachment" in got.headers["content-disposition"] and "16x9" in got.headers["content-disposition"]
+        assert dims(d / "output.mp4") == (1920, 1080)
+        assert dims(d / "preview.mp4") == (960, 540)  # the preview is untouched by an export
+
+        c.post(f"/api/projects/{pid}/export", json={"aspect": "9:16"})
+        done = wait_done(c, pid)
+        assert done["export_ready"] is True and done["export_aspect"] == "9:16"
+        assert dims(d / "output.mp4") == (1080, 1920)
+        assert dims(d / "preview.mp4") == (960, 540)
+
+
+def test_edits_make_the_export_stale_and_rerender_only_the_preview(env):
+    settings, _, tone, _ = env
+    with client(env) as c:
+        pid = finished_project(c, tone)
+        d = Path(settings.projects_dir) / pid
+        c.post(f"/api/projects/{pid}/export")
+        assert wait_done(c, pid)["export_ready"] is True
+        assert (d / "output.mp4").exists()
+        c.put(f"/api/projects/{pid}/captions", json={"style": {"bold": True}})
+        done = wait_done(c, pid)
+        assert done["status"] == "done" and done["export_ready"] is False and done["export_aspect"] is None
+        assert not (d / "output.mp4").exists()                       # a stale export is never offered
+        assert c.get(f"/api/projects/{pid}/export").status_code == 409
+        assert dims(d / "preview.mp4") == (960, 540)
+        # exporting again picks the edit up
+        c.post(f"/api/projects/{pid}/export")
+        assert wait_done(c, pid)["export_ready"] is True
+        style_line = next(l for l in (d / "captions.ass").read_text().splitlines() if l.startswith("Style:"))
+        assert ",-1,0,0,0," in style_line  # bold made it into the full-quality file
+
+
+def test_export_validation_and_busy_rules(env):
+    _, _, tone, gate = env
+    gate.clear()
+    with client(env) as c:
+        p = upload(c, tone).json()
+        assert c.post(f"/api/projects/{p['id']}/export").status_code == 409        # still processing
+        gate.set()
+        wait_done(c, p["id"])
+        assert c.post(f"/api/projects/{p['id']}/export", json={"aspect": "4:3"}).status_code == 422
+        assert c.post(f"/api/projects/{p['id']}/export", json={"aspect": "9:16"}).status_code == 202
+        assert c.post(f"/api/projects/{p['id']}/export").status_code == 409        # already exporting
+        wait_done(c, p["id"])
+        assert c.post(f"/api/projects/{'0' * 32}/export").status_code == 404
+        assert c.get(f"/api/projects/{'0' * 32}/export").status_code == 404
+
+
+def test_failed_export_keeps_the_project_usable(env, monkeypatch):
+    from app.pipeline import assemble
+
+    _, _, tone, _ = env
+    real = assemble.concat_and_finish
+
+    def flaky(*args, **kwargs):  # only the full-quality encode breaks
+        profile = args[7] if len(args) > 7 else kwargs.get("profile")
+        if profile is not None and profile.name == "final":
+            raise assemble.ffmpeg.FfmpegError("disk full")
+        return real(*args, **kwargs)
+
+    with client(env) as c:
+        pid = finished_project(c, tone)
+        monkeypatch.setattr(assemble, "concat_and_finish", flaky)
+        c.post(f"/api/projects/{pid}/export")
+        done = wait_done(c, pid)
+        assert done["status"] == "done" and done["video_ready"] is True and done["export_ready"] is False
+        assert "The export failed" in done["error"] and "disk full" in done["error"]
+        assert c.get(f"/api/projects/{pid}/video").status_code == 200   # the preview still plays
+        assert c.get(f"/api/projects/{pid}/captions").status_code == 200  # and the editor still works
+
+
+def test_videos_are_never_served_from_a_stale_browser_cache(env):
+    _, _, tone, _ = env
+    with client(env) as c:
+        pid = finished_project(c, tone)
+        assert c.get(f"/api/projects/{pid}/video").headers["cache-control"] == "no-cache"
+        c.post(f"/api/projects/{pid}/export")
+        wait_done(c, pid)
+        assert c.get(f"/api/projects/{pid}/export").headers["cache-control"] == "no-cache"

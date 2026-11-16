@@ -7,7 +7,7 @@ import { useProject } from "./hooks";
 const P = (over: Partial<Project> = {}): Project => ({
   id: "a", name: "a", status: "running", stage: "plan", progress: 0.4, message: "", error: null,
   created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z", original_filename: "",
-  language: null, aspect: "16:9", options: {}, video_ready: false, ...over,
+  language: null, aspect: "16:9", options: {}, video_ready: false, export_ready: false, export_aspect: null, ...over,
 });
 
 beforeEach(() => vi.restoreAllMocks());
