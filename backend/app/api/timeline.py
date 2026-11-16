@@ -3,6 +3,7 @@ revision it was based on; the server validates everything and never exposes path
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 
 from fastapi import APIRouter, FastAPI, HTTPException, Query
@@ -43,7 +44,34 @@ def view_of(tl: Timeline) -> TimelineView:
                         assets={k: AssetOut.of(a) for k, a in tl.assets.items()}, caption_style=tl.caption_style)
 
 
-def build_router(store: ProjectStore, settings: Settings) -> APIRouter:
+def load_or_build(store: ProjectStore, settings: Settings, pid: str, info: ProjectInfo, create: bool = True,
+                  on_built: Callable[[str, Timeline], None] | None = None) -> Timeline:
+    """The project's timeline, built from its scenes/captions the first time it is needed."""
+    d: Path = store.path(pid)
+    try:
+        tl = convert.load(d)
+    except ValueError:  # unreadable file: treat it as absent and rebuild (never serve a broken document)
+        tl = None
+    if tl is None:
+        if not create:
+            raise HTTPException(409, "Open the timeline first")
+        try:
+            tl = convert.build_timeline(d, info, settings)
+        except convert.ProjectNotReady as e:
+            raise HTTPException(409, str(e)) from None
+        problems = check(tl)
+        if problems:  # a migration bug must be loud, not saved
+            raise HTTPException(500, "The timeline could not be built: " + "; ".join(problems[:MAX_PROBLEMS_SHOWN]))
+        convert.save(d, tl)
+        if on_built:
+            try:
+                on_built(pid, tl)  # e.g. start preparing proxies; must never make reading the timeline fail
+            except Exception:  # noqa: BLE001
+                pass
+    return tl
+
+
+def build_router(store: ProjectStore, settings: Settings, on_built: Callable[[str, Timeline], None] | None = None) -> APIRouter:
     router = APIRouter(prefix="/api/projects/{pid}/timeline")
 
     def project(pid: str) -> ProjectInfo:
@@ -57,23 +85,7 @@ def build_router(store: ProjectStore, settings: Settings) -> APIRouter:
             raise HTTPException(409, "This project is still processing")
 
     def current(pid: str, info: ProjectInfo, create: bool) -> Timeline:
-        d: Path = store.path(pid)
-        try:
-            tl = convert.load(d)
-        except ValueError:  # unreadable file: treat it as absent and rebuild (never serve a broken document)
-            tl = None
-        if tl is None:
-            if not create:
-                raise HTTPException(409, "Open the timeline first")
-            try:
-                tl = convert.build_timeline(d, info, settings)
-            except convert.ProjectNotReady as e:
-                raise HTTPException(409, str(e)) from None
-            problems = check(tl)
-            if problems:  # a migration bug must be loud, not saved
-                raise HTTPException(500, "The timeline could not be built: " + "; ".join(problems[:MAX_PROBLEMS_SHOWN]))
-            convert.save(d, tl)
-        return tl
+        return load_or_build(store, settings, pid, info, create, on_built)
 
     @router.get("", response_model=TimelineView)
     def get_timeline(pid: str) -> TimelineView:
@@ -125,5 +137,6 @@ def build_router(store: ProjectStore, settings: Settings) -> APIRouter:
     return router
 
 
-def register(app: FastAPI, store: ProjectStore, settings: Settings) -> None:
-    app.include_router(build_router(store, settings))
+def register(app: FastAPI, store: ProjectStore, settings: Settings,
+             on_built: Callable[[str, Timeline], None] | None = None) -> None:
+    app.include_router(build_router(store, settings, on_built))

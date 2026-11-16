@@ -176,3 +176,27 @@ def test_composite_interleaves_survives_failure_and_skips_cache_on_error(tmp_pat
 def test_asset_requires_license():
     with pytest.raises(Exception):
         MediaAsset(id="x:1", source="x", kind="image", url="u")
+
+
+# ---- downloads are checked before they are accepted
+
+@respx.mock
+def test_cache_rejects_downloads_that_are_not_media_and_keeps_real_ones(tmp_path):
+    from app.media.cache import MediaCache
+
+    jpeg = b"\xff\xd8\xff\xe0" + b"\x00" * 100
+    respx.get("https://cdn.example/photo.jpg").mock(return_value=httpx.Response(200, content=jpeg))
+    respx.get("https://cdn.example/page.jpg").mock(return_value=httpx.Response(200, content=b"<html>not an image</html>"))
+    respx.get("https://cdn.example/list.mp4").mock(return_value=httpx.Response(200, content=b"#EXTM3U\n#EXTINF:1,\nhttp://x/seg.ts\n"))
+    cache = MediaCache(tmp_path)
+
+    def asset(name):
+        return MediaAsset(id=f"x:{name}", source="x", kind="image", url=f"https://cdn.example/{name}", license="L")
+
+    ok = cache.get(asset("photo.jpg"))
+    assert ok.read_bytes() == jpeg
+    for bad in ("page.jpg", "list.mp4"):
+        with pytest.raises(ValueError, match="not a supported"):
+            cache.get(asset(bad))
+        assert not cache.path_for(asset(bad)).exists()                # nothing bad left in the cache
+        assert not list(tmp_path.glob("*.part"))

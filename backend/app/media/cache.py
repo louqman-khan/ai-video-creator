@@ -9,6 +9,7 @@ from urllib.request import url2pathname
 import httpx
 
 from app.http import HttpError, make_client, safe_url
+from app.media.ingest import sniff
 from app.models import MediaAsset
 
 
@@ -35,7 +36,7 @@ class MediaCache:
             return dst
         if asset.url.startswith("file:"):  # user-provided local media
             shutil.copyfile(url2pathname(unquote(urlparse(asset.url).path)), dst)
-            return dst
+            return self._accept(dst)
         part = dst.with_suffix(dst.suffix + ".part")
         try:
             with self.client.stream("GET", asset.url) as r:
@@ -47,4 +48,12 @@ class MediaCache:
             part.replace(dst)
         finally:
             part.unlink(missing_ok=True)
-        return dst
+        return self._accept(dst)
+
+    @staticmethod
+    def _accept(path: Path) -> Path:
+        """A host can answer 200 with a web page or anything else: keep only real media files."""
+        if sniff(path) is None:
+            path.unlink(missing_ok=True)
+            raise ValueError("the downloaded file is not a supported image, video or audio file")
+        return path

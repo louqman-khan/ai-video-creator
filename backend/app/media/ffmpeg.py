@@ -29,9 +29,12 @@ def require_ffmpeg() -> None:
             raise FfmpegError(f"{tool} not found on PATH. Install it with: brew install ffmpeg, or put static ffmpeg/ffprobe in tools/bin")
 
 
-def run(args: list[str], cwd: Path | None = None) -> None:
+def run(args: list[str], cwd: Path | None = None, timeout: float | None = None) -> None:
     cmd = ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", *args]
-    p = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True)
+    try:
+        p = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        raise FfmpegError(f"ffmpeg did not finish within {timeout:.0f} s and was stopped") from None
     if p.returncode != 0:
         tail = "\n".join(p.stderr.strip().splitlines()[-8:])
         raise FfmpegError(f"ffmpeg failed ({p.returncode}):\n{tail}")

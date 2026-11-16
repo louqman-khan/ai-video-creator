@@ -21,6 +21,7 @@ from typing import Literal
 from pydantic import BaseModel, ValidationError
 
 from app.api import captions as captions_api
+from app.api import media as media_api
 from app.api import scenes as scenes_api
 from app.api import timeline as timeline_api
 from app.api.jobs import JobRunner, ProvidersFactory
@@ -84,6 +85,7 @@ def create_app(settings: Settings | None = None, providers_factory: ProvidersFac
             log.warning("marked %d interrupted project(s) as failed", n)
         yield
         jobs.shutdown()
+        app.state.media.shutdown()
 
     app = FastAPI(title="AI Video Creator", version="0.1.0", lifespan=lifespan)
     origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
@@ -234,5 +236,8 @@ def create_app(settings: Settings | None = None, providers_factory: ProvidersFac
 
     scenes_api.register(app, store, jobs, settings)
     captions_api.register(app, store, jobs, settings)
-    timeline_api.register(app, store, settings)
+    media_worker = media_api.MediaWorker(settings)
+    timeline_api.register(app, store, settings, on_built=media_worker.ensure_timeline)
+    media_api.register(app, store, settings, media_worker)
+    app.state.media = media_worker
     return app

@@ -47,6 +47,14 @@ class Settings(BaseSettings):
     max_audio_minutes: float = 30.0  # CPU-only start: keep jobs bounded
     cors_origins: str = "http://127.0.0.1:5742,http://localhost:5742"  # the Vite dev server
 
+    # imported media (editor)
+    max_media_upload_mb: int = 500
+    max_media_minutes: float = 30.0
+    max_image_megapixels: int = 64
+    max_media_fps: int = 240
+    max_uploads_per_project: int = 100
+    proxy_dir: str = ""  # empty: <work_dir>/cache/proxies
+
     # scene chunking
     scene_min_s: float = 3.0
     scene_max_s: float = 8.0

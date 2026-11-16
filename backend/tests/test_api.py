@@ -684,3 +684,201 @@ def test_an_unedited_timeline_follows_step3_changes_but_an_edited_one_blocks_the
         c.delete(f"/api/projects/{pid}/timeline", params={"discard_edits": "true"})
         assert c.put(f"/api/projects/{pid}/captions", json={"style": {"bold": False}}).status_code == 202
         wait_done(c, pid)
+
+
+# ---------------------------------------------------------------- editor media pipeline (task 4.2)
+
+def wait_media(c, pid, ids=None, timeout=180):
+    end = time.time() + timeout
+    while time.time() < end:
+        items = c.get(f"/api/projects/{pid}/media").json()
+        pick = [m for m in items if ids is None or m["asset_id"] in ids]
+        if pick and all(m["status"] in ("ready", "failed") for m in pick):
+            return {m["asset_id"]: m for m in pick}
+        time.sleep(0.3)
+    raise AssertionError("media was not prepared in time")
+
+
+def make_clip(path, seconds=2, audio=True):
+    args = ["-f", "lavfi", "-i", f"testsrc=s=320x180:r=30:d={seconds}"]
+    if audio:
+        args += ["-f", "lavfi", "-i", f"sine=frequency=440:duration={seconds}"]
+    ff(*args, "-c:v", "libx264", "-pix_fmt", "yuv420p", *(["-c:a", "aac", "-shortest"] if audio else []), str(path))
+
+
+def post_media(c, pid, path, **data):
+    data.setdefault("rights_confirmed", "true")
+    with open(path, "rb") as f:
+        return c.post(f"/api/projects/{pid}/media", files={"file": (path.name, f, "application/octet-stream")}, data=data)
+
+
+def test_stock_and_narration_are_prepared_when_the_timeline_is_first_built(env):
+    _, _, tone, _ = env
+    with client(env) as c:
+        pid = finished_project(c, tone)
+        assert c.get(f"/api/projects/{pid}/timeline").status_code == 200          # first build triggers preparation
+        media = wait_media(c, pid)
+        assert "narration" in media and all(m["status"] == "ready" for m in media.values()), media
+        nar = media["narration"]
+        assert set(nar["derived"]) == {"audio", "peaks"} and nar["uploaded"] is False and nar["has_audio"]
+        img = next(m for m in media.values() if m["kind"] == "image")
+        assert img["derived"] == ["proxy"] and img["width"] == 640 and img["bytes"] > 0
+        r = c.get(f"/api/projects/{pid}/media/proxy", params={"asset": img["asset_id"]})   # ids with spaces/colons work
+        assert r.status_code == 200 and r.headers["content-type"] == "image/jpeg" and r.content[:2] == b"\xff\xd8"
+        assert c.get(f"/api/projects/{pid}/media/audio", params={"asset": "narration"}).headers["content-type"] == "audio/mp4"
+        peaks = c.get(f"/api/projects/{pid}/media/peaks", params={"asset": "narration"}).json()
+        assert set(peaks["rates"]) == {"100", "10"} and len(peaks["rates"]["100"]) > 100
+        assert c.get(f"/api/projects/{pid}/media/film", params={"asset": img["asset_id"]}).status_code == 404   # images have none
+        # unknown ids and path-like ids never reach the file system
+        for bad in ("nope", "../../etc/passwd", "/etc/passwd", "upload:../x"):
+            assert c.get(f"/api/projects/{pid}/media/proxy", params={"asset": bad}).status_code == 404, bad
+        assert c.get(f"/api/projects/{pid}/media/proxy").status_code == 422        # asset is required
+        assert c.get(f"/api/projects/{'0' * 32}/media").status_code == 404
+
+
+def test_upload_media_full_lifecycle(env, tmp_path):
+    settings, _, tone, _ = env
+    clip = tmp_path / "my holiday.mp4"
+    make_clip(clip, 2)
+    with client(env) as c:
+        pid = finished_project(c, tone)
+        rev = c.get(f"/api/projects/{pid}/timeline").json()["rev"]
+        r = post_media(c, pid, clip, title="  Beach  ")
+        assert r.status_code == 201
+        m = r.json()
+        assert m["uploaded"] is True and m["kind"] == "video" and m["title"] == "Beach" and m["asset_id"].startswith("upload:")
+        assert m["status"] in ("pending", "processing", "ready") and abs(m["duration"] - 2) < 0.3
+        # it is on the timeline now, appended without changing the revision, and without exposing paths
+        tl = c.get(f"/api/projects/{pid}/timeline")
+        assert tl.json()["rev"] == rev and m["asset_id"] in tl.json()["assets"]
+        a = tl.json()["assets"][m["asset_id"]]
+        assert a["license"] == "User-provided" and a["duration"] == 60 and a["kind"] == "video"
+        assert "uploads" not in tl.text and "my holiday" not in tl.text and ".mp4" not in tl.text
+        # stored under a server-chosen name, never the user's
+        files = list((Path(settings.projects_dir) / pid / "uploads").iterdir())
+        assert len(files) == 1 and files[0].name.endswith(".mp4") and "holiday" not in files[0].name
+
+        ready = wait_media(c, pid, {m["asset_id"]})[m["asset_id"]]
+        assert ready["status"] == "ready" and set(ready["derived"]) == {"proxy", "film", "audio", "peaks"}
+        proxy = c.get(f"/api/projects/{pid}/media/proxy", params={"asset": m["asset_id"]})
+        assert proxy.status_code == 200 and proxy.headers["content-type"] == "video/mp4" and b"ftyp" in proxy.content[:32]
+        film = c.get(f"/api/projects/{pid}/media/film.json", params={"asset": m["asset_id"]}).json()
+        assert film["thumb_width"] == 160 and film["count"] >= 4
+        assert c.get(f"/api/projects/{pid}/media/film", params={"asset": m["asset_id"]}).headers["content-type"] == "image/jpeg"
+        usage = c.get(f"/api/projects/{pid}/disk").json()
+        assert usage["uploads_bytes"] > 0 and usage["derived_bytes"] > 0 and usage["total_bytes"] >= usage["project_bytes"] + usage["derived_bytes"] - 1
+
+        # a clip using it blocks deletion; removing the clip frees it
+        tl = c.get(f"/api/projects/{pid}/timeline").json()
+        tl["clips"].append({"id": "mine", "track": "V1", "kind": "video", "asset": m["asset_id"], "start": tl["duration"] + 30, "duration": 30})
+        assert put_tl(c, pid, tl).status_code == 200
+        assert c.delete(f"/api/projects/{pid}/media", params={"asset": m["asset_id"]}).status_code == 409
+        tl = c.get(f"/api/projects/{pid}/timeline").json()
+        tl["clips"] = [x for x in tl["clips"] if x["id"] != "mine"]
+        assert put_tl(c, pid, tl).status_code == 200
+        assert c.delete(f"/api/projects/{pid}/media", params={"asset": m["asset_id"]}).status_code == 204
+        assert m["asset_id"] not in c.get(f"/api/projects/{pid}/timeline").json()["assets"]
+        assert list((Path(settings.projects_dir) / pid / "uploads").iterdir()) == []
+        assert c.delete(f"/api/projects/{pid}/media", params={"asset": m["asset_id"]}).status_code == 404
+
+
+def test_upload_rejections_leave_nothing_behind(env, tmp_path):
+    settings, _, tone, _ = env
+    good = tmp_path / "ok.mp4"
+    make_clip(good, 2)
+    playlist = tmp_path / "evil.mp4"
+    playlist.write_text("#EXTM3U\n#EXTINF:1,\nhttp://127.0.0.1:9/seg.ts\n")
+    truncated = tmp_path / "cut.mp4"
+    truncated.write_bytes(good.read_bytes()[:64])
+    notmedia = tmp_path / "doc.pdf"
+    notmedia.write_bytes(b"%PDF-1.4\n")
+    with client(env) as c:
+        pid = finished_project(c, tone)
+        uploads = Path(settings.projects_dir) / pid / "uploads"
+        assert post_media(c, pid, good, rights_confirmed="false").status_code == 400
+        assert "right to use" in post_media(c, pid, good, rights_confirmed="false").json()["detail"]
+        r = c.post(f"/api/projects/{pid}/media", files={"file": ("a.mp4", good.read_bytes())})            # field missing
+        assert r.status_code == 400
+        for bad in (playlist, truncated, notmedia):
+            r = post_media(c, pid, bad)
+            assert r.status_code == 400, (bad.name, r.status_code, r.text[:120])
+        assert list(uploads.iterdir()) == []                                   # no .part files, no orphans
+        assert c.post(f"/api/projects/{'0' * 32}/media", files={"file": ("a.mp4", b"x")}, data={"rights_confirmed": "true"}).status_code == 404
+        assert c.get(f"/api/projects/{pid}/media").status_code == 200
+    with client(env, max_media_minutes=0.01) as c:                             # 0.6 s limit; the clip is 2 s
+        r = post_media(c, pid, good)
+        assert r.status_code == 400 and "longer than" in r.json()["detail"]
+    with client(env, max_media_upload_mb=0) as c:
+        assert post_media(c, pid, good).status_code == 413
+    with client(env, max_uploads_per_project=1) as c:
+        assert post_media(c, pid, good).status_code == 201
+        assert post_media(c, pid, good).status_code == 409
+        wait_media(c, pid)
+    assert [p for p in uploads.iterdir() if p.suffix == ".part"] == []
+
+
+def test_only_uploaded_files_can_be_deleted(env):
+    _, _, tone, _ = env
+    with client(env) as c:
+        pid = finished_project(c, tone)
+        assert c.delete(f"/api/projects/{pid}/media", params={"asset": "narration"}).status_code == 400
+        assert c.delete(f"/api/projects/{pid}/media", params={"asset": "nope"}).status_code == 404
+        wait_media(c, pid)
+
+
+def test_failed_preparation_is_reported_and_can_be_retried(env, tmp_path, monkeypatch):
+    from app.api import media as media_mod
+
+    real = media_mod.derive.derive_all
+    calls = {"n": 0}
+
+    def flaky(*args, **kwargs):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("disk full at /secret/path")
+        return real(*args, **kwargs)
+
+    clip = tmp_path / "v.mp4"
+    make_clip(clip, 2, audio=False)
+    with client(env) as c:
+        pid = finished_project(c, tone := env[2])
+        wait_media(c, pid)                                                     # let the stock/narration finish first
+        monkeypatch.setattr(media_mod.derive, "derive_all", flaky)
+        m = post_media(c, pid, clip).json()
+        failed = wait_media(c, pid, {m["asset_id"]})[m["asset_id"]]
+        assert failed["status"] == "failed" and failed["error"] == "this file could not be processed"
+        assert "secret" not in json.dumps(failed)                              # internal error text never reaches the browser
+        assert c.get(f"/api/projects/{pid}/media/proxy", params={"asset": m["asset_id"]}).status_code == 404
+        assert c.post(f"/api/projects/{pid}/media/prepare").status_code == 202  # retry
+        ok = wait_media(c, pid, {m["asset_id"]})[m["asset_id"]]
+        assert ok["status"] == "ready" and ok["derived"] == ["proxy", "film"]   # silent video: no audio files
+        assert c.get(f"/api/projects/{pid}/media/audio", params={"asset": m["asset_id"]}).status_code == 404
+
+
+def test_worker_is_idempotent_and_remembers_state_across_restarts(tmp_path, monkeypatch):
+    from app.api import media as media_mod
+    from app.config import Settings
+
+    settings = Settings(_env_file=None, work_dir=str(tmp_path / "work"))
+    src = tmp_path / "pic.png"
+    ff("-f", "lavfi", "-i", "testsrc=s=64x64", "-frames:v", "1", str(src))
+    counter = {"n": 0}
+    real = media_mod.derive.derive_all
+    monkeypatch.setattr(media_mod.derive, "derive_all", lambda *a, **k: (counter.__setitem__("n", counter["n"] + 1), real(*a, **k))[1])
+    w = media_mod.MediaWorker(settings)
+    assert w.status(src)[0] == "pending"
+    w.ensure(src); w.ensure(src); w.ensure(src)
+    for _ in range(100):
+        if w.status(src)[0] == "ready":
+            break
+        time.sleep(0.1)
+    assert w.status(src)[0] == "ready" and counter["n"] == 1                   # three requests, one job
+    w.ensure(src)
+    time.sleep(0.3)
+    assert counter["n"] == 1                                                   # ready: nothing to do
+    w.shutdown()
+    again = media_mod.MediaWorker(settings)                                    # "server restart"
+    assert again.status(src)[0] == "ready"
+    src.write_bytes(src.read_bytes() + b"\x00")                                # the file changed: derived files are stale
+    assert again.status(src)[0] == "pending"
+    again.shutdown()
