@@ -34,6 +34,7 @@ avc make samples/urdu.mp3 --lang ur --whisper-model medium
 avc make samples/english.mp3 --aspect 9:16 --no-captions
 avc make samples/english.mp3 --no-clean  # skip noise removal
 avc make samples/english.mp3 --remove-silence --min-gap 0.8  # shorten long pauses (scenes/captions follow)
+avc make samples/english.mp3 --lufs -16    # loudness target (default -14 LUFS); --no-normalize to skip
 ```
 
 Each run keeps its files in `work/runs/<audio name>/`: `transcript.json`, `scenes.json`,

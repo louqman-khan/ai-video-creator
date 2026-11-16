@@ -62,18 +62,32 @@ def test_kept_intervals_and_filter():
     assert f.count("atrim") == 2 and f.endswith("[a0][a1]concat=n=2:v=0:a=1[out]")
 
 
-def test_options_change_discards_derived_files(tmp_path):
+def test_option_changes_invalidate_only_what_depends_on_them(tmp_path):
     from app.config import Settings
     from app.pipeline.runner import Pipeline, Providers
 
     p = Pipeline(Settings(_env_file=None), Providers(None, None, None, None, None), tmp_path)  # type: ignore[arg-type]
-    for n in ("scenes.json", "assets.json", "audio_clean.flac", "transcript.json"):
-        (tmp_path / n).write_text("x")
-    p._sync_options({"silence": None, "cleaner": "ffmpeg"})   # first run: nothing deleted
-    assert (tmp_path / "scenes.json").exists()
-    p._sync_options({"silence": None, "cleaner": "ffmpeg"})   # same options: kept
-    assert (tmp_path / "audio_clean.flac").exists()
-    p._sync_options({"silence": [0.8, 0.4], "cleaner": "ffmpeg"})  # changed
-    assert not (tmp_path / "scenes.json").exists() and not (tmp_path / "audio_clean.flac").exists()
-    assert (tmp_path / "transcript.json").exists()  # the ASR result does not depend on these options
+    names = ("scenes.json", "assets.json", "audio_clean.flac", "audio_cut.flac", "audio_norm.flac", "transcript.json")
+
+    def fresh():
+        for n in names:
+            (tmp_path / n).write_text("x")
+
+    def left():
+        return {n for n in names if (tmp_path / n).exists()}
+
+    base = {"cleaner": "ffmpeg", "silence": None, "lufs": -14.0}
+    fresh(); p._sync_options(base)
+    assert left() == set(names)                                    # first run: nothing deleted
+    p._sync_options(base)
+    assert left() == set(names)                                    # same options: all kept
+
+    p._sync_options({**base, "lufs": -18.0})                       # loudness: only the normalised audio
+    assert left() == set(names) - {"audio_norm.flac"}
+    fresh(); p._sync_options({**base, "lufs": -18.0, "cleaner": "noop"})
+    assert {"scenes.json", "assets.json"} <= left()                # cleaner never re-plans scenes
+    assert not ({"audio_clean.flac", "audio_cut.flac", "audio_norm.flac"} & left())
+
+    fresh(); p._sync_options({"cleaner": "noop", "lufs": -18.0, "silence": [0.8, 0.4]})  # timeline moved
+    assert left() == {"audio_clean.flac", "transcript.json"}       # scenes/media/cut audio redone
     assert json.loads((tmp_path / "run_config.json").read_text())["silence"] == [0.8, 0.4]

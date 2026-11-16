@@ -55,6 +55,8 @@ def make(
     words_per_line: Annotated[Optional[int], typer.Option(help="Max words per caption")] = None,
     no_captions: Annotated[bool, typer.Option("--no-captions")] = False,
     no_clean: Annotated[bool, typer.Option("--no-clean", help="Skip noise removal")] = False,
+    no_normalize: Annotated[bool, typer.Option("--no-normalize", help="Skip loudness normalisation")] = False,
+    lufs: Annotated[Optional[float], typer.Option(help="Target loudness in LUFS (default -14)")] = None,
     remove_silence: Annotated[bool, typer.Option("--remove-silence", help="Shorten long pauses")] = False,
     min_gap: Annotated[Optional[float], typer.Option(help="With --remove-silence: pauses >= this many seconds are shortened (default 0.8)")] = None,
     force: Annotated[bool, typer.Option(help="Redo all stages, ignore saved results")] = False,
@@ -94,7 +96,7 @@ def make(
         )
         result = Pipeline(s, providers, rd).run(
             audio, out or rd / f"{audio.stem}.mp4", lang, aspect, not no_captions, force, style,
-            remove_silence, min_gap,
+            remove_silence, min_gap, not no_normalize, lufs,
         )
     except (PlannerError, ffmpeg.FfmpegError, RuntimeError, ValueError) as e:
         console.print(f"[red]Error:[/red] {e}")

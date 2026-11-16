@@ -37,6 +37,9 @@ class Settings(BaseSettings):
     silence_min_gap_s: float = 0.8   # pauses at least this long are shortened
     silence_keep_gap_s: float = 0.4  # ... to this length
 
+    # loudness (EBU R128)
+    target_lufs: float = -14.0
+
     # scene chunking
     scene_min_s: float = 3.0
     scene_max_s: float = 8.0

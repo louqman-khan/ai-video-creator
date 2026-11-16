@@ -13,7 +13,7 @@ from typing import TypeVar
 from pydantic import BaseModel
 
 from app.config import Settings
-from app.media import ffmpeg
+from app.media import ffmpeg, loudness
 from app.media.cache import MediaCache
 from app.models import Scene, ScenePick, Transcript
 from app.pipeline import assemble
@@ -82,16 +82,28 @@ class Pipeline:
         _save(path, t)
         return t
 
-    _DERIVED = ("scenes.json", "assets.json", "audio_clean.flac", "audio_cut.flac", "transcript.cut.json")
+    # What each option invalidates. Silence removal moves the timeline, so scenes and media picks
+    # must be redone (an LLM call + downloads). Cleaner and loudness only change the audio files.
+    _TIMELINE = ("silence",)
+    _TIMELINE_FILES = ("scenes.json", "assets.json", "transcript.cut.json", "audio_cut.flac")
+    _AUDIO_FILES = {"cleaner": ("audio_clean.flac", "audio_cut.flac", "audio_norm.flac"),
+                    "lufs": ("audio_norm.flac",),
+                    "silence": ("audio_cut.flac", "audio_norm.flac")}
 
     def _sync_options(self, options: dict) -> None:
         """Forget derived results when the options that shape them changed since the last run."""
         path = self.run_dir / "run_config.json"
         old = json.loads(path.read_text("utf-8")) if path.exists() else None
-        if old is not None and old != options:
-            log.info("options changed since the last run: rebuilding scenes, media picks and audio")
-            for name in self._DERIVED:
-                (self.run_dir / name).unlink(missing_ok=True)
+        if old is not None:
+            changed = [k for k in options if options[k] != old.get(k)]
+            if changed:
+                log.info("options changed since the last run (%s): rebuilding what depends on them", ", ".join(changed))
+            for k in changed:
+                files = list(self._AUDIO_FILES.get(k, ()))
+                if k in self._TIMELINE:
+                    files += self._TIMELINE_FILES
+                for name in files:
+                    (self.run_dir / name).unlink(missing_ok=True)
         path.write_text(json.dumps(options), "utf-8")
 
     def _clean(self, audio: Path, force: bool) -> Path:
@@ -118,15 +130,19 @@ class Pipeline:
         style: CaptionStyle | None = None,
         remove_silence: bool = False,
         min_gap: float | None = None,
+        normalize: bool = True,
+        lufs: float | None = None,
     ) -> Path:
         w, h = ASPECTS[aspect]
         min_gap = min_gap or self.s.silence_min_gap_s
         keep_gap = self.s.silence_keep_gap_s
+        lufs = lufs if lufs is not None else self.s.target_lufs
         transcript = self.transcribe(audio, language, force)
         log.info("transcript: %s, %d words", transcript.language, len(transcript.words))
 
         # options that change the audio/timeline: results derived from them must not be reused
-        self._sync_options({"cleaner": self.s.audio_cleaner, "silence": [min_gap, keep_gap] if remove_silence else None})
+        self._sync_options({"cleaner": self.s.audio_cleaner, "silence": [min_gap, keep_gap] if remove_silence else None,
+                            "lufs": lufs if normalize else None})
 
         final_audio = self._clean(audio, force)
         if remove_silence:
@@ -163,6 +179,13 @@ class Pipeline:
         if captions:
             ass = self.run_dir / "captions.ass"
             ass.write_text(build_ass(transcript, w, h, style), "utf-8")
+
+        if normalize:  # last audio step: loudness is measured on exactly what ends up in the video
+            norm_path = self.run_dir / "audio_norm.flac"
+            if force or not norm_path.exists():
+                final_audio = loudness.normalize(final_audio, norm_path, lufs)
+            else:
+                final_audio = norm_path
 
         log.info("rendering...")
         seg_dir = self.run_dir / "segments"

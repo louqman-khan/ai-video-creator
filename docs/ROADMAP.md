@@ -60,7 +60,7 @@ The human only needs to say **"continue"** (or "next task") to move forward.
 - [x] 2.4 Caption styling options: font, size, color, outline, position, words per line (CLI flags + config file).
 - [x] 2.5 AudioCleaner: DeepFilterNet (or RNNoise fallback) noise removal; `--no-clean` to skip. (RNNoise via FFmpeg `arnndn`; DeepFilterNet not used: needs PyTorch, risky on Intel macOS 12. Can be added later behind the same `AudioCleaner` interface.)
 - [x] 2.6 Silence/gap removal with VAD (`--remove-silence`, configurable min gap); keep caption/scene timings consistent after the cut.
-- [ ] 2.7 Loudness normalization (EBU R128, -14 LUFS) on export.
+- [x] 2.7 Loudness normalization (EBU R128, -14 LUFS) on export. (Lands within ~0.6 LU of the target on peaky speech because of the -1.5 dBTP ceiling; true peak stays below it.)
 - [ ] 2.8 Benchmark: Urdu and English WER on the samples with `small` vs `medium`; record the results in `docs/benchmarks.md`.
 - [ ] 2.9 Script input: `avc make --script script.txt --audio narration.mp3` aligns a known script to the audio (forced alignment).
 
@@ -103,6 +103,8 @@ The human only needs to say **"continue"** (or "next task") to move forward.
 ## Progress log
 
 <!-- Agent: add one line per completed task, newest first. Format: YYYY-MM-DD — task id — what changed — how verified -->
+
+- 2026-11-16 — 2.7 — `app/media/loudness.py`: two-pass `loudnorm` (measure, then linear gain), default -14 LUFS / -1.5 dBTP, `--lufs`, `--no-normalize`; silent audio is left alone; last audio step, so it measures what ends up in the video — measured the finished MP4s: no normalisation -18.10 LUFS → default -14.61 LUFS (peak -1.45 dBTP), `--lufs -18` → -18.43 LUFS; 2 new tests incl. a real ffmpeg run (50 pass). Cache invalidation made per-option: only silence removal re-plans scenes/media (changing the loudness target had re-run Gemini planning)
 
 - 2026-11-16 — 2.6 — `--remove-silence` / `--min-gap` (default 0.8 s → shortened to 0.4 s, half kept each side): cuts from word-timestamp gaps, audio cut with atrim+concat (5 ms fades), transcript remapped with the same cut list so scenes/captions/visuals share the new timeline; run folder now records its options (`run_config.json`) and discards derived files when they change (also fixes a stale `audio_clean.flac` being reused after `--no-clean`) — 7 new tests (48 pass); real run on speech with 1.5/2.5/3 s pauses: 19.92 s → 12.73 s (7.2 s removed in 3 gaps); fresh Whisper transcription of the cut audio vs the remapped transcript: 31/31 words, mean start diff 0.02 s, max 0.16 s
 
