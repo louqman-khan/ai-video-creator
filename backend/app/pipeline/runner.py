@@ -19,6 +19,7 @@ from app.models import Scene, ScenePick, Transcript
 from app.pipeline import assemble
 from app.pipeline.captions import build_ass
 from app.pipeline.fetch import fetch_media
+from app.text.urdu import normalize_transcript
 from app.providers.audio_cleaner import AudioCleaner
 from app.providers.media_ranker import MediaRanker
 from app.providers.media_search import CompositeSearch
@@ -74,6 +75,9 @@ class Pipeline:
         log.info("transcribing (%s model)...", self.s.whisper_model)
         t = self.p.transcriber.transcribe(wav, language)
         t.duration = ffmpeg.probe_duration(audio)
+        if t.language == "ur":
+            _save(self.run_dir / "transcript.raw.json", t)  # keep what the model really said
+            t = normalize_transcript(t)
         _save(path, t)
         return t
 

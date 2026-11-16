@@ -52,7 +52,7 @@ The human only needs to say **"continue"** (or "next task") to move forward.
 
 ## Step 2 — Urdu + audio quality
 
-- [ ] 2.1 Urdu transcription (`--lang ur`, auto-detect by default); Urdu text normalization.
+- [x] 2.1 Urdu transcription (`--lang ur`, auto-detect by default); Urdu text normalization.
 - [ ] 2.2 Urdu captions: correct RTL + Nastaleeq shaping through libass; Noto Nastaliq Urdu default, `--font` to choose Jameel Noori Nastaleeq. *Done when:* the Urdu sample has correctly joined, right-to-left captions.
 - [ ] 2.3 Urdu → English search-query translation in the ScenePlanner (keep the original Urdu text for captions).
 - [ ] 2.4 Caption styling options: font, size, color, outline, position, words per line (CLI flags + config file).
@@ -101,6 +101,8 @@ The human only needs to say **"continue"** (or "next task") to move forward.
 ## Progress log
 
 <!-- Agent: add one line per completed task, newest first. Format: YYYY-MM-DD — task id — what changed — how verified -->
+
+- 2026-11-16 — 2.1 — `app/text/urdu.py`: Arabic→Urdu letters (ي ك ه), Arabic-Indic→Urdu digits, ? , ; . → ؟ ، ؛ ۔, strips tatweel/tashkeel, adds ۔ after a segment that ends in a pause; raw text kept in `transcript.raw.json` — 5 new unit tests (29 pass); real Urdu clip: language auto-detected, last sentence now ends with ۔, raw vs normalized files differ only there
 
 - 2026-11-16 — 1.10/1.11 — `avc make` ran end to end on a 12.9 s synthetic English clip (Gemini TTS): Whisper → 3 scenes via Gemini → 3 Pixabay videos → captions → MP4 (H.264 1080p + AAC, 12.933 s = audio, no extra tmcd track) + `CREDITS.txt` with license per clip; full run 1 min 24 s, re-render from cache 24 s. Fixes found on the way: LLM timeout 120 s + friendly `PlannerError` + heuristic fallback for English; timecode/metadata stripped from output
 - 2026-11-16 — 1.4 — transcriber returns 31 words with start/end for the English clip, text exactly right; reads the 16 kHz WAV directly because PyAV 19 breaks faster-whisper's own decoder (`metadata_errors` TypeError) — `avc transcribe` run; unit test for the WAV loader. Urdu smoke test: language auto-detected, ~90% correct with `small` (sample for 2.8, not a benchmark)
