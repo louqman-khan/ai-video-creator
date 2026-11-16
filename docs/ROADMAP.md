@@ -46,7 +46,7 @@ The human only needs to say **"continue"** (or "next task") to move forward.
 - [~] 1.6 MediaSearch: Pixabay (videos preferred, images as fallback), Openverse + Wikimedia Commons (images, no key), Pexels optional (skipped when no key). Cache downloads; store source/license/attribution per asset. *Built and mock-tested;* Openverse also checked live. Pixabay not tested live (no key). Wikimedia not tested live (commons.wikimedia.org times out from this network).
 - [x] 1.7 Heuristic MediaRanker (default): keyword match, orientation, resolution, duration fit.
 - [~] 1.8 Assembler (FFmpeg): trim/loop clips to scene duration, slow zoom on still images, scale/crop to 1920x1080, original audio, burned-in ASS captions from word timestamps. *Code written, never run* (FFmpeg not installed yet).
-- [~] 1.9 `--vertical` flag → 1080x1920 (9:16) with smart crop. *Built:* `--aspect 9:16` (centre crop). *Missing:* `--vertical` alias, smart crop.
+- [~] 1.9 `--vertical` flag → 1080x1920 (9:16) with smart crop. *Built:* `--vertical` / `--aspect 9:16` (centre crop). *Missing:* smart crop; render not verified (needs FFmpeg).
 - [~] 1.10 `avc make <audio>` runs the full pipeline with progress logs; writes `output.mp4` + `credits.txt` (attributions). *Done when:* English sample → watchable MP4. *Wired up, never run end to end.*
 - [~] 1.11 Basic tests for timing math and scene splitting; README with setup + usage. *Built:* 21 passing tests and `README.md`. *Left:* README commands (`make` etc.) get re-checked once 1.10 runs end to end, then tick this.
 

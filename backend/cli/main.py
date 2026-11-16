@@ -41,6 +41,7 @@ def make(
     out: Annotated[Optional[Path], typer.Option("--out", "-o")] = None,
     lang: Annotated[Optional[str], typer.Option(help="ur / en. Default: auto-detect")] = None,
     aspect: Annotated[str, typer.Option(help="16:9 or 9:16")] = "16:9",
+    vertical: Annotated[bool, typer.Option("--vertical", help="Shortcut for --aspect 9:16")] = False,
     planner: Annotated[Optional[str], typer.Option(help="gemini | heuristic")] = None,
     whisper_model: Annotated[Optional[str], typer.Option(help="tiny/base/small/medium/large-v3")] = None,
     no_captions: Annotated[bool, typer.Option("--no-captions")] = False,
@@ -50,6 +51,8 @@ def make(
 ) -> None:
     """Audio file -> transcript -> scenes -> stock visuals -> captioned MP4."""
     _logging(verbose)
+    if vertical:
+        aspect = "9:16"
     if aspect not in ASPECTS:
         raise typer.BadParameter(f"aspect must be one of {', '.join(ASPECTS)}")
     s = get_settings()
