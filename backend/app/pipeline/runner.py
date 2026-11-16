@@ -68,8 +68,7 @@ class Pipeline:
         wav = self.run_dir / "audio.wav"
         if force or not wav.exists():
             log.info("ingest: converting audio to 16 kHz mono")
-            src = self.p.cleaner.clean(audio, self.run_dir / "audio_clean.wav")
-            ffmpeg.run(["-i", str(src), "-vn", "-ac", "1", "-ar", "16000", str(wav)])
+            ffmpeg.run(["-i", str(audio), "-vn", "-ac", "1", "-ar", "16000", str(wav)])  # ASR hears the original
         path = self.run_dir / "transcript.json"
         if path.exists() and not force:
             return Transcript.model_validate_json(path.read_text("utf-8"))
@@ -123,12 +122,18 @@ class Pipeline:
             ass = self.run_dir / "captions.ass"
             ass.write_text(build_ass(transcript, w, h, style), "utf-8")
 
+        clean_path = self.run_dir / "audio_clean.flac"
+        if force or not clean_path.exists():
+            clean_path.unlink(missing_ok=True)
+            cleaned = self.p.cleaner.clean(audio, clean_path)  # may return `audio` itself (noop/failure)
+        else:
+            cleaned = clean_path
         log.info("rendering...")
         seg_dir = self.run_dir / "segments"
         shutil.rmtree(seg_dir, ignore_errors=True)
         segments = assemble.build_segments(scenes, picks, seg_dir, w, h, self.s.fps)
         out.parent.mkdir(parents=True, exist_ok=True)
         assemble.concat_and_finish(
-            segments, audio, ass, out, self.run_dir, Path(self.s.fonts_dir), transcript.duration
+            segments, cleaned, ass, out, self.run_dir, Path(self.s.fonts_dir), transcript.duration
         )
         return out

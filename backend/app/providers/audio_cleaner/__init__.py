@@ -8,6 +8,8 @@ from typing import Protocol
 from app.config import Settings
 from app.providers.base import Registry
 
+from .ffmpeg_cleaner import FfmpegCleaner
+
 
 class AudioCleaner(Protocol):
     def clean(self, src: Path, dst: Path) -> Path:
@@ -26,6 +28,11 @@ registry: Registry[AudioCleaner] = Registry("audio cleaner")
 @registry.register("noop")
 def _noop(settings: Settings) -> AudioCleaner:
     return NoopCleaner()
+
+
+@registry.register("ffmpeg")
+def _ffmpeg(settings: Settings) -> AudioCleaner:
+    return FfmpegCleaner(Path(settings.models_dir) / settings.rnnoise_model)
 
 
 def create_cleaner(settings: Settings) -> AudioCleaner:

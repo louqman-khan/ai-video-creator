@@ -13,3 +13,7 @@ assets/fonts/*ameel*
 
 # project-local tools (static ffmpeg/ffprobe), see README
 tools/
+
+# denoise models are downloaded on demand (avc fetch-models), not committed
+assets/models/*
+!assets/models/.gitkeep

@@ -64,6 +64,10 @@ def run_checks(s: Settings, network: bool = True) -> list[Check]:
     c.append(Check("PEXELS_API_KEY (optional)", "ok" if s.pexels_api_key else "ok",
                    "set" if s.pexels_api_key else "not set: Pexels is skipped"))
 
+    model = Path(s.models_dir) / s.rnnoise_model
+    c.append(Check("RNNoise denoise model", "ok" if model.is_file() else "warn",
+                   "" if model.is_file() else "run `avc fetch-models`; until then noise removal uses afftdn"))
+
     fonts = Path(s.fonts_dir)
     c.append(Check("font: Noto Nastaliq Urdu (default)",
                    "ok" if _font_present(fonts, "nastaliq") else "warn", f"put the .ttf in {fonts}"))

@@ -118,7 +118,8 @@ def test_doctor_reports_missing_keys_without_network():
 def test_providers_selected_from_env_without_code_edits(monkeypatch):
     from app.config import Settings
     from app.providers.avatar_renderer import create_avatar_renderer
-    from app.providers.audio_cleaner import NoopCleaner, create_cleaner
+    from app.providers.audio_cleaner import create_cleaner
+    from app.providers.audio_cleaner.ffmpeg_cleaner import FfmpegCleaner
     from app.providers.media_ranker import create_ranker
     from app.providers.scene_planner import create_planner
     from app.providers.scene_planner.heuristic import HeuristicPlanner
@@ -132,7 +133,7 @@ def test_providers_selected_from_env_without_code_edits(monkeypatch):
     assert isinstance(create_planner(s), HeuristicPlanner)
     t = create_transcriber(s)
     assert isinstance(t, FasterWhisperTranscriber) and t.model_size == "tiny"
-    assert isinstance(create_cleaner(s), NoopCleaner)
+    assert isinstance(create_cleaner(s), FfmpegCleaner)  # default since task 2.5
     create_ranker(s), create_tts(s), create_avatar_renderer(s)
 
     monkeypatch.setenv("SCENE_PLANNER", "nope")

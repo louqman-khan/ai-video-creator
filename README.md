@@ -13,6 +13,7 @@ python3.12 -m venv .venv
 .venv/bin/pip install -e "backend[dev]"
 cp .env.example .env                     # then fill in the keys
 .venv/bin/avc doctor                     # pass/fail list of everything below
+.venv/bin/avc fetch-models               # RNNoise model for noise removal (otherwise a weaker fallback)
 ```
 
 Keys (all free): `PIXABAY_API_KEY` (https://pixabay.com/api/docs/) and `GEMINI_API_KEY`.
@@ -31,6 +32,7 @@ avc transcribe samples/english.mp3       # transcript only -> work/runs/english/
 avc make samples/english.mp3 -o out.mp4  # full pipeline
 avc make samples/urdu.mp3 --lang ur --whisper-model medium
 avc make samples/english.mp3 --aspect 9:16 --no-captions
+avc make samples/english.mp3 --no-clean  # skip noise removal
 ```
 
 Each run keeps its files in `work/runs/<audio name>/`: `transcript.json`, `scenes.json`,

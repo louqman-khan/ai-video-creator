@@ -54,6 +54,7 @@ def make(
     position: Annotated[Optional[str], typer.Option(help="bottom | center | top")] = None,
     words_per_line: Annotated[Optional[int], typer.Option(help="Max words per caption")] = None,
     no_captions: Annotated[bool, typer.Option("--no-captions")] = False,
+    no_clean: Annotated[bool, typer.Option("--no-clean", help="Skip noise removal")] = False,
     force: Annotated[bool, typer.Option(help="Redo all stages, ignore saved results")] = False,
     run_dir: Annotated[Optional[Path], typer.Option()] = None,
     verbose: Annotated[bool, typer.Option("--verbose", "-v")] = False,
@@ -69,6 +70,8 @@ def make(
         s.scene_planner = planner
     if whisper_model:
         s.whisper_model = whisper_model
+    if no_clean:
+        s.audio_cleaner = "noop"
     try:
         style = load_style(
             style_file, font=font or (s.caption_font or None), size_pct=font_size, color=color,
@@ -123,6 +126,30 @@ def transcribe(
     for seg in t.segments:
         console.print(f"[dim]{seg.start:6.1f}-{seg.end:6.1f}[/dim] {seg.text}")
     console.print(f"\nlanguage={t.language} duration={t.duration:.1f}s -> {rd / 'transcript.json'}")
+
+
+RNNOISE_URL = "https://raw.githubusercontent.com/GregorR/rnnoise-models/master/conjoined-burgers-2018-08-28/cb.rnnn"
+
+
+@app.command("fetch-models")
+def fetch_models() -> None:
+    """Download the RNNoise speech-denoise model (used by the audio cleaner) into assets/models/."""
+    from app.http import make_client
+
+    s = get_settings()
+    dst = Path(s.models_dir) / s.rnnoise_model
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    with make_client() as c:
+        r = c.get(RNNOISE_URL)
+        if r.is_error:
+            console.print(f"[red]Download failed:[/red] HTTP {r.status_code}")
+            raise typer.Exit(1)
+    dst.write_bytes(r.content)
+    console.print(f"[green]Saved[/green] {dst} ({len(r.content) // 1024} KB)")
+    console.print(
+        "[dim]Source: github.com/GregorR/rnnoise-models (author states the models are not subject to "
+        "copyright). Check this is acceptable for your product before shipping it.[/dim]"
+    )
 
 
 @app.command()

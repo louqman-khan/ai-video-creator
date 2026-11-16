@@ -56,7 +56,7 @@ The human only needs to say **"continue"** (or "next task") to move forward.
 - [x] 2.2 Urdu captions: correct RTL + Nastaleeq shaping through libass; Noto Nastaliq Urdu default, `--font` to choose Jameel Noori Nastaleeq. *Done when:* the Urdu sample has correctly joined, right-to-left captions.
 - [x] 2.3 Urdu → English search-query translation in the ScenePlanner (keep the original Urdu text for captions).
 - [x] 2.4 Caption styling options: font, size, color, outline, position, words per line (CLI flags + config file).
-- [ ] 2.5 AudioCleaner: DeepFilterNet (or RNNoise fallback) noise removal; `--no-clean` to skip.
+- [x] 2.5 AudioCleaner: DeepFilterNet (or RNNoise fallback) noise removal; `--no-clean` to skip. (RNNoise via FFmpeg `arnndn`; DeepFilterNet not used: needs PyTorch, risky on Intel macOS 12. Can be added later behind the same `AudioCleaner` interface.)
 - [ ] 2.6 Silence/gap removal with VAD (`--remove-silence`, configurable min gap); keep caption/scene timings consistent after the cut.
 - [ ] 2.7 Loudness normalization (EBU R128, -14 LUFS) on export.
 - [ ] 2.8 Benchmark: Urdu and English WER on the samples with `small` vs `medium`; record the results in `docs/benchmarks.md`.
@@ -101,6 +101,8 @@ The human only needs to say **"continue"** (or "next task") to move forward.
 ## Progress log
 
 <!-- Agent: add one line per completed task, newest first. Format: YYYY-MM-DD — task id — what changed — how verified -->
+
+- 2026-11-16 — 2.5 — `FfmpegCleaner` (80 Hz high-pass + RNNoise `arnndn`, or `afftdn` if the model is missing; FLAC intermediate; failure → original audio), default on, `--no-clean` to skip, `avc fetch-models`, doctor check; ASR keeps hearing the original, the final mix uses the cleaned audio — measured on speech + white noise + 50 Hz hum, full `avc make`: pause level -32.8 → -53.2 dB (original clean -53.1), speech -17.0 → -17.8 dB, duration unchanged; `afftdn` fallback -32.6 → -48.6 dB after tuning (`tn=1` did nothing); 41 tests pass. Model not committed (author's "not subject to copyright" claim is unusual: check before shipping)
 
 - 2026-11-16 — 2.4 — `CaptionStyle` (font, size %, colour, outline colour/width, position, margin, bold, words per line, max chars) from TOML (`--style`) + CLI flags, flags win, unknown keys/bad colours rejected; words-per-line is a hard limit, orphan words rebalanced — 38 tests pass; ran `avc make` with yellow/top/3-words style: ASS style line and rendered frame match (`stands above a`, top, yellow, thick outline); typo'd key and `--color yellow` both give clear errors
 - 2026-11-16 — 2.3 — Urdu→English queries already done by the Gemini planner; captions keep the original Urdu — verified on the Urdu clip: `scenes.json` query_en = "snow covered mountains pakistan", frames show Urdu captions

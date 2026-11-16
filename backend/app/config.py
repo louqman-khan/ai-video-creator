@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     transcriber: str = "faster_whisper"
     whisper_model: str = "small"
     media_ranker: str = "heuristic"
-    audio_cleaner: str = "noop"
+    audio_cleaner: str = "ffmpeg"  # ffmpeg | noop (--no-clean)
     tts: str = "none"
     avatar_renderer: str = "none"
 
@@ -44,6 +44,8 @@ class Settings(BaseSettings):
     fps: int = 30
     fonts_dir: str = str(ROOT / "assets" / "fonts")
     work_dir: str = str(ROOT / "work")
+    models_dir: str = str(ROOT / "assets" / "models")
+    rnnoise_model: str = "cb.rnnn"  # file name inside models_dir
 
     @property
     def source_names(self) -> list[str]:
