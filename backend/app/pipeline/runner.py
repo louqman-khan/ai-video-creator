@@ -17,6 +17,7 @@ from app.media import ffmpeg
 from app.media.cache import MediaCache
 from app.models import Scene, ScenePick, Transcript
 from app.pipeline import assemble
+from app.pipeline.caption_style import CaptionStyle
 from app.pipeline.captions import build_ass
 from app.pipeline.fetch import fetch_media
 from app.text.urdu import normalize_transcript
@@ -95,6 +96,7 @@ class Pipeline:
         aspect: str = "16:9",
         captions: bool = True,
         force: bool = False,
+        style: CaptionStyle | None = None,
     ) -> Path:
         w, h = ASPECTS[aspect]
         transcript = self.transcribe(audio, language, force)
@@ -119,7 +121,7 @@ class Pipeline:
         ass = None
         if captions:
             ass = self.run_dir / "captions.ass"
-            ass.write_text(build_ass(transcript, w, h, self.s.caption_font or None), "utf-8")
+            ass.write_text(build_ass(transcript, w, h, style), "utf-8")
 
         log.info("rendering...")
         seg_dir = self.run_dir / "segments"

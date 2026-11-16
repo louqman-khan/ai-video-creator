@@ -4,6 +4,7 @@ Urdu is right-to-left; libass shapes it with HarfBuzz/FriBidi, so the text is pa
 from __future__ import annotations
 
 from app.models import Transcript, Word
+from app.pipeline.caption_style import ALIGNMENT, CaptionStyle, hex_to_ass
 
 SENTENCE_END = set(".?!۔؟…")
 
@@ -40,21 +41,26 @@ def group_words(
         cur.append(w)
     if cur:
         cues.append(cur)
-    # no one-word orphan at the end of a run: fold it into the previous cue (allow some overflow)
-    if len(cues) > 1 and len(cues[-1]) == 1:
-        merged = cues[-2] + cues[-1]
-        if sum(len(x.text) + 1 for x in merged) <= max_chars * 1.5 and merged[-1].end - merged[0].start <= max_s * 1.5:
-            cues[-2:] = [merged]
+    # no one-word orphan at the end: borrow a word from the previous cue (never exceeds max_words)
+    if len(cues) > 1 and len(cues[-1]) == 1 and len(cues[-2]) >= 3:
+        cues[-1].insert(0, cues[-2].pop())
     return cues
 
 
 def build_ass(
-    transcript: Transcript, width: int = 1920, height: int = 1080, font: str | None = None
+    transcript: Transcript,
+    width: int = 1920,
+    height: int = 1080,
+    style: CaptionStyle | None = None,
+    font: str | None = None,
 ) -> str:
+    st = style or CaptionStyle()
     urdu = transcript.language == "ur"
-    font = font or ("Noto Nastaliq Urdu" if urdu else "Arial")
-    size = round(height * (0.11 if urdu else 0.06))  # Nastaleeq glyphs render small
-    margin_v = round(height * 0.07)
+    font = font or st.font or ("Noto Nastaliq Urdu" if urdu else "Arial")
+    # Nastaleeq glyphs render small, so Urdu defaults larger
+    size = round(height * (st.size_pct or (11.0 if urdu else 6.0)) / 100)
+    margin_v = round(height * st.margin_pct / 100)
+    outline = st.outline_width * height / 1080
     header = (
         "[Script Info]\nScriptType: v4.00+\n"
         f"PlayResX: {width}\nPlayResY: {height}\nWrapStyle: 0\nScaledBorderAndShadow: yes\n\n"
@@ -62,13 +68,16 @@ def build_ass(
         "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour,"
         " Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline,"
         " Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n"
-        f"Style: Default,{font},{size},&H00FFFFFF,&H000000FF,&H00000000,&H64000000,"
-        f"0,0,0,0,100,100,0,0,1,3,1,2,{round(width * 0.05)},{round(width * 0.05)},{margin_v},1\n\n"
+        f"Style: Default,{font},{size},{hex_to_ass(st.color)},&H000000FF,{hex_to_ass(st.outline_color)},&H64000000,"
+        f"{-1 if st.bold else 0},0,0,0,100,100,0,0,1,{outline:.1f},1,{ALIGNMENT[st.position]},"
+        f"{round(width * 0.05)},{round(width * 0.05)},{margin_v},1\n\n"
         "[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
     )
     cues: list[list[Word]] = []
     for seg in transcript.segments:  # never merge words across ASR segment boundaries
-        cues += group_words([w for w in seg.words if w.text.strip()])
+        cues += group_words(
+            [w for w in seg.words if w.text.strip()], max_words=st.words_per_line, max_chars=st.max_chars
+        )
     lines = []
     for i, cue in enumerate(cues):
         start, end = cue[0].start, cue[-1].end

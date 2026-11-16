@@ -11,6 +11,7 @@ from rich.logging import RichHandler
 from app.config import get_settings
 from app.doctor import run_checks
 from app.media import ffmpeg
+from app.pipeline.caption_style import load_style
 from app.pipeline.runner import ASPECTS, Pipeline, Providers
 from app.providers.audio_cleaner import create_cleaner
 from app.providers.media_ranker import create_ranker
@@ -45,6 +46,13 @@ def make(
     planner: Annotated[Optional[str], typer.Option(help="gemini | heuristic")] = None,
     whisper_model: Annotated[Optional[str], typer.Option(help="tiny/base/small/medium/large-v3")] = None,
     font: Annotated[Optional[str], typer.Option(help="Caption font family, e.g. 'Jameel Noori Nastaleeq'")] = None,
+    style_file: Annotated[Optional[Path], typer.Option("--style", exists=True, dir_okay=False, help="TOML caption style file")] = None,
+    font_size: Annotated[Optional[float], typer.Option(help="Caption size, % of frame height")] = None,
+    color: Annotated[Optional[str], typer.Option(help="Text colour, e.g. #FFFF00")] = None,
+    outline_color: Annotated[Optional[str], typer.Option()] = None,
+    outline_width: Annotated[Optional[float], typer.Option(help="Outline px at 1080p")] = None,
+    position: Annotated[Optional[str], typer.Option(help="bottom | center | top")] = None,
+    words_per_line: Annotated[Optional[int], typer.Option(help="Max words per caption")] = None,
     no_captions: Annotated[bool, typer.Option("--no-captions")] = False,
     force: Annotated[bool, typer.Option(help="Redo all stages, ignore saved results")] = False,
     run_dir: Annotated[Optional[Path], typer.Option()] = None,
@@ -61,8 +69,15 @@ def make(
         s.scene_planner = planner
     if whisper_model:
         s.whisper_model = whisper_model
-    if font:
-        s.caption_font = font
+    try:
+        style = load_style(
+            style_file, font=font or (s.caption_font or None), size_pct=font_size, color=color,
+            outline_color=outline_color, outline_width=outline_width, position=position,
+            words_per_line=words_per_line,
+        )
+    except Exception as e:  # bad TOML / bad colour / out-of-range value
+        console.print(f"[red]Caption style error:[/red] {e}")
+        raise typer.Exit(1) from None
     rd = _run_dir(audio, run_dir, s.work_dir)
     try:
         providers = Providers(
@@ -73,7 +88,7 @@ def make(
             cleaner=create_cleaner(s),
         )
         result = Pipeline(s, providers, rd).run(
-            audio, out or rd / f"{audio.stem}.mp4", lang, aspect, not no_captions, force
+            audio, out or rd / f"{audio.stem}.mp4", lang, aspect, not no_captions, force, style
         )
     except (PlannerError, ffmpeg.FfmpegError, RuntimeError, ValueError) as e:
         console.print(f"[red]Error:[/red] {e}")

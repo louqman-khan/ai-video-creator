@@ -188,10 +188,10 @@ def test_captions_never_merge_across_segments():
     assert len(lines) == 2 and lines[0].endswith("a b") and lines[1].endswith("c d")
 
 
-def test_caption_grouping_avoids_one_word_orphan():
+def test_caption_grouping_avoids_one_word_orphan_without_exceeding_max_words():
     from app.pipeline.captions import group_words
 
     ws = [Word(text=t, start=i * 0.4, end=i * 0.4 + 0.35) for i, t in enumerate(["ab"] * 8 + ["cd."])]
-    assert [len(c) for c in group_words(ws, max_words=8)] == [9]  # 8 + a lone 9th word -> merged
+    assert [len(c) for c in group_words(ws, max_words=8)] == [7, 2]  # 8 + a lone 9th word -> one word moves over
     ws2 = [Word(text=t, start=i * 0.4, end=i * 0.4 + 0.35) for i, t in enumerate(["ab"] * 8 + ["cd", "ef"])]
     assert [len(c) for c in group_words(ws2, max_words=8)] == [8, 2]  # two words is not an orphan: kept

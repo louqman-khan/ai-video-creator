@@ -1,0 +1,13 @@
+# Use with: avc make audio.mp3 --style docs/caption-style.example.toml
+# CLI flags (--color, --position, ...) override values in this file. Unknown keys are an error.
+[captions]
+# font = "Noto Nastaliq Urdu"   # default: Noto Nastaliq Urdu for Urdu, Arial for English
+# size_pct = 6                  # % of frame height (default: 6 English, 11 Urdu)
+color = "#FFFFFF"
+outline_color = "#000000"
+outline_width = 3               # px at 1080p
+position = "bottom"             # bottom | center | top
+margin_pct = 7                  # distance from the edge, % of frame height
+bold = false
+words_per_line = 7
+max_chars = 40

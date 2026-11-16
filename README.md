@@ -37,6 +37,12 @@ Each run keeps its files in `work/runs/<audio name>/`: `transcript.json`, `scene
 `assets.json` (source, license and attribution of every visual), `captions.ass` and `CREDITS.txt`.
 Re-running skips finished stages; `--force` redoes everything.
 
+## Caption style
+
+Flags: `--font`, `--font-size` (% of height), `--color`, `--outline-color`, `--outline-width`,
+`--position bottom|center|top`, `--words-per-line`, or a file: `--style docs/caption-style.example.toml`.
+Flags override the file; unknown keys or bad colours stop the run with a clear message.
+
 ## Layout
 
 `backend/app/providers/*` one folder per swappable provider, chosen by env vars (see `.env.example`);

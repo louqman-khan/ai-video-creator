@@ -54,8 +54,8 @@ The human only needs to say **"continue"** (or "next task") to move forward.
 
 - [x] 2.1 Urdu transcription (`--lang ur`, auto-detect by default); Urdu text normalization.
 - [x] 2.2 Urdu captions: correct RTL + Nastaleeq shaping through libass; Noto Nastaliq Urdu default, `--font` to choose Jameel Noori Nastaleeq. *Done when:* the Urdu sample has correctly joined, right-to-left captions.
-- [ ] 2.3 Urdu → English search-query translation in the ScenePlanner (keep the original Urdu text for captions).
-- [ ] 2.4 Caption styling options: font, size, color, outline, position, words per line (CLI flags + config file).
+- [x] 2.3 Urdu → English search-query translation in the ScenePlanner (keep the original Urdu text for captions).
+- [x] 2.4 Caption styling options: font, size, color, outline, position, words per line (CLI flags + config file).
 - [ ] 2.5 AudioCleaner: DeepFilterNet (or RNNoise fallback) noise removal; `--no-clean` to skip.
 - [ ] 2.6 Silence/gap removal with VAD (`--remove-silence`, configurable min gap); keep caption/scene timings consistent after the cut.
 - [ ] 2.7 Loudness normalization (EBU R128, -14 LUFS) on export.
@@ -101,6 +101,9 @@ The human only needs to say **"continue"** (or "next task") to move forward.
 ## Progress log
 
 <!-- Agent: add one line per completed task, newest first. Format: YYYY-MM-DD — task id — what changed — how verified -->
+
+- 2026-11-16 — 2.4 — `CaptionStyle` (font, size %, colour, outline colour/width, position, margin, bold, words per line, max chars) from TOML (`--style`) + CLI flags, flags win, unknown keys/bad colours rejected; words-per-line is a hard limit, orphan words rebalanced — 38 tests pass; ran `avc make` with yellow/top/3-words style: ASS style line and rendered frame match (`stands above a`, top, yellow, thick outline); typo'd key and `--color yellow` both give clear errors
+- 2026-11-16 — 2.3 — Urdu→English queries already done by the Gemini planner; captions keep the original Urdu — verified on the Urdu clip: `scenes.json` query_en = "snow covered mountains pakistan", frames show Urdu captions
 
 - 2026-11-16 — 2.2 — Urdu captions in Noto Nastaliq Urdu (OFL, `assets/fonts/` + license) by default, `--font`/`CAPTION_FONT` override, Urdu size 11% of height, captions never merge across ASR segments, no one-word orphan cues — rendered the Urdu clip with libass: frames show joined right-to-left Nastaleeq; 31 tests pass
 
