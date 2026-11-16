@@ -52,7 +52,7 @@ class GeminiPlanner:
     def __init__(
         self,
         api_key: str,
-        model: str = "gemini-2.5-flash",
+        model: str = "gemini-3.5-flash",
         min_s: float = 3.0,
         max_s: float = 8.0,
         client: httpx.Client | None = None,
