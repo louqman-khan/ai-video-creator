@@ -17,3 +17,7 @@ tools/
 # denoise models are downloaded on demand (avc fetch-models), not committed
 assets/models/*
 !assets/models/.gitkeep
+
+# frontend
+frontend/node_modules/
+frontend/dist/

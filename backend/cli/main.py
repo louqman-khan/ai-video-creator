@@ -147,7 +147,7 @@ RNNOISE_URL = "https://raw.githubusercontent.com/GregorR/rnnoise-models/master/c
 @app.command()
 def serve(
     host: Annotated[str, typer.Option(help="Bind address (localhost only by default)")] = "127.0.0.1",
-    port: Annotated[int, typer.Option()] = 8000,
+    port: Annotated[int, typer.Option()] = 8742,
 ) -> None:
     """Start the web API (upload audio, follow progress, download the video)."""
     import uvicorn

@@ -50,11 +50,23 @@ Flags override the file; unknown keys or bad colours stop the run with a clear m
 
 ## Web API (Step 3)
 
-`avc serve` (http://127.0.0.1:8000, interactive docs at `/docs`). Upload audio with
-`curl -F file=@talk.mp3 -F language=ur localhost:8000/api/projects`, poll
+`avc serve` (http://127.0.0.1:8742, interactive docs at `/docs`). Upload audio with
+`curl -F file=@talk.mp3 -F language=ur 127.0.0.1:8742/api/projects`, poll
 `GET /api/projects/<id>` (status, stage, progress), then `GET /api/projects/<id>/video`.
 Projects live in `work/projects/`. The server binds to localhost only and has no login yet:
 do not expose it to a network as is.
+
+### Frontend (development)
+
+```bash
+cd frontend && npm install
+npm run dev     # http://127.0.0.1:5742  (use 127.0.0.1, not "localhost": see below)
+npm test        # unit tests
+npm run build   # type-check + production build
+```
+Run `avc serve` in another terminal. Ports 5742/8742 are deliberately unusual because 5173/8000
+are often taken by other dev servers, and `localhost` can resolve to IPv6 and hit a different app.
+Set `VITE_API_TARGET` to point the dev proxy somewhere else.
 
 ## Layout
 
