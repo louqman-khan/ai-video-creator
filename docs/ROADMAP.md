@@ -48,7 +48,7 @@ The human only needs to say **"continue"** (or "next task") to move forward.
 - [~] 1.8 Assembler (FFmpeg): trim/loop clips to scene duration, slow zoom on still images, scale/crop to 1920x1080, original audio, burned-in ASS captions from word timestamps. *Code written, never run* (FFmpeg not installed yet).
 - [~] 1.9 `--vertical` flag → 1080x1920 (9:16) with smart crop. *Built:* `--aspect 9:16` (centre crop). *Missing:* `--vertical` alias, smart crop.
 - [~] 1.10 `avc make <audio>` runs the full pipeline with progress logs; writes `output.mp4` + `credits.txt` (attributions). *Done when:* English sample → watchable MP4. *Wired up, never run end to end.*
-- [~] 1.11 Basic tests for timing math and scene splitting; README with setup + usage. *Built:* 18 passing tests. *Missing:* README.
+- [~] 1.11 Basic tests for timing math and scene splitting; README with setup + usage. *Built:* 21 passing tests and `README.md`. *Left:* README commands (`make` etc.) get re-checked once 1.10 runs end to end, then tick this.
 
 ## Step 2 — Urdu + audio quality
 
