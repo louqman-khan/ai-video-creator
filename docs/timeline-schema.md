@@ -49,7 +49,13 @@ current revision in the message and the `X-Current-Rev` header; nothing is overw
 
 ## Relationship to the Step 3 screens
 
-A timeline is built from a project's scenes, assets, captions and transcript the first time it is read.
-While it has never been edited (`rev == 1`) it is disposable: any re-render drops it and it is rebuilt. Once it
-has been edited (`rev > 1`) it is the only truth: swap-visual, caption editing and export from the old screens
-answer 409 until the timeline is reset (`DELETE ...?discard_edits=true`). Task 4.3 re-points those screens.
+A timeline is built from a project's scenes, assets, captions and transcript, and every render rebuilds it
+while it has never been edited (`rev == 1`), so it is always current. Once it has been edited (`rev > 1`) it is
+the only truth and the Step 3 screens become views over it: the scene list reads the V1 clips, **swap visual**
+replaces the clip's media inside the timeline, **caption edits** change the caption clips (and the timeline's
+`caption_style`), and **export** renders the saved timeline. Resetting the caption text is refused for an edited
+timeline (reset the timeline instead: `DELETE ...?discard_edits=true`). `POST /timeline/render` renders the
+fast preview of the timeline as saved. Render rules and limits: `docs/timeline-renderer.md`.
+
+Ken Burns (the slow zoom stills always had) is the effect `{"type": "kenburns", "value": 10}` (percent of total
+zoom over the clip); the converter adds it to every still image.

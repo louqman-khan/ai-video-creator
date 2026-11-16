@@ -56,6 +56,11 @@ def has_filter(name: str) -> bool:
     return any(line.split()[1:2] == [name] for line in p.stdout.splitlines())
 
 
+def has_encoder(name: str) -> bool:
+    p = subprocess.run(["ffmpeg", "-hide_banner", "-encoders"], capture_output=True, text=True)
+    return any(line.split()[1:2] == [name] for line in p.stdout.splitlines())
+
+
 def filter_escape(value: str) -> str:
     """Escape a path/value for use inside a single-quoted ffmpeg filter option."""
     return value.replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'")

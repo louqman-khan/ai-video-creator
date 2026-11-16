@@ -9,8 +9,9 @@ from concurrent.futures import ThreadPoolExecutor
 from app.api.store import ProjectStore
 from app.config import Settings
 from app.pipeline.caption_style import CaptionStyle
-from app.pipeline.runner import Pipeline, Providers
-from app.timeline.convert import discard_unedited
+from app.pipeline.runner import Pipeline, Providers, credits_text
+from app.timeline import convert
+from app.timeline.render import RenderUnsupported, render_timeline
 
 log = logging.getLogger("avc.jobs")
 ProvidersFactory = Callable[[Settings, dict], Providers]
@@ -62,8 +63,22 @@ class JobRunner:
         try:
             opts = info.options
             settings = self.settings.model_copy(update={"audio_cleaner": "ffmpeg" if opts.get("clean", True) else "noop"})
+            progress = lambda stage, frac, msg: store.update(pid, stage=stage, progress=round(frac, 3), message=msg)  # noqa: E731
+            out = d / ("output.mp4" if export else "preview.mp4")
+            if convert.has_edits(d):
+                # an edited timeline is the truth: no transcription/planning/fetching, just render it
+                tl = convert.load(d)
+                if tl is None:
+                    raise ValueError("The timeline is missing")
+                (d / "CREDITS.txt").write_text(credits_text(convert.scenes_from_timeline(tl)[1]), "utf-8")
+                render_timeline(tl, d, settings, quality="final" if export else "preview", aspect=export_aspect or info.aspect, out=out,
+                                captions=opts.get("captions", True), normalize=opts.get("normalize", True),
+                                lufs=opts.get("lufs") if opts.get("lufs") is not None else settings.target_lufs, progress=progress)
+                store.update(pid, status="done", stage="done", progress=1.0, message="Finished", video_ready=True,
+                             export_ready=export, export_aspect=export_aspect)
+                return
             pipe = Pipeline(settings, self.factory(settings, opts), d)
-            pipe.progress = lambda stage, frac, msg: store.update(pid, stage=stage, progress=round(frac, 3), message=msg)
+            pipe.progress = progress
             script_file = d / "script.txt"
             style = CaptionStyle.model_validate(opts["style"]) if opts.get("style") else None
             pipe.run(
@@ -75,14 +90,13 @@ class JobRunner:
                 script=script_file.read_text("utf-8") if script_file.exists() else None,
                 quality="final" if export else "preview",
             )
-            discard_unedited(d)  # scenes/captions may have changed: an unedited timeline is rebuilt on demand
             store.update(pid, status="done", stage="done", progress=1.0, message="Finished", video_ready=True,
                          export_ready=export, export_aspect=export_aspect)
         except Exception as e:  # report to the user, keep the worker alive for the next job
             log.exception("project %s failed", pid)
-            msg = redact(f"{type(e).__name__}: {e}", self.settings)[:500]
-            if export and (d / "preview.mp4").is_file():  # a failed export must not break the project
-                store.update(pid, status="done", stage="done", progress=1.0, message="", video_ready=True,
-                             export_ready=False, error=f"The export failed: {msg}")
+            msg = redact(str(e) if isinstance(e, RenderUnsupported) else f"{type(e).__name__}: {e}", self.settings)[:500]
+            if (export or isinstance(e, RenderUnsupported)) and (d / "preview.mp4").is_file():  # must not break the project
+                store.update(pid, status="done", stage="done", progress=1.0, message="", video_ready=True, export_ready=False,
+                             error=msg if isinstance(e, RenderUnsupported) else f"The export failed: {msg}")
             else:
                 store.update(pid, status="failed", error=msg)

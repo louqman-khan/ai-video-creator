@@ -27,7 +27,6 @@ from app.api import timeline as timeline_api
 from app.api.jobs import JobRunner, ProvidersFactory
 from app.api.store import ProjectInfo, ProjectNotFound, ProjectStore
 from app.config import Settings, get_settings
-from app.timeline.convert import has_edits as has_timeline_edits
 from app.media import ffmpeg
 from app.pipeline.caption_style import CaptionStyle
 from app.pipeline.runner import ASPECTS, Providers
@@ -202,8 +201,6 @@ def create_app(settings: Settings | None = None, providers_factory: ProvidersFac
         d = store.path(pid)
         if not ((d / "scenes.json").is_file() and (d / "assets.json").is_file()):
             raise HTTPException(409, "The project is not ready to export")
-        if has_timeline_edits(d):  # until the timeline renderer exists (4.3) an export would ignore those edits
-            raise HTTPException(409, timeline_api.EDITED_MESSAGE)
         aspect = (body.aspect if body else None) or info.aspect
         queued = store.update(pid, status="queued", stage="export", progress=0.0, message="Preparing the export",
                               error=None, export_ready=False)
@@ -237,7 +234,7 @@ def create_app(settings: Settings | None = None, providers_factory: ProvidersFac
     scenes_api.register(app, store, jobs, settings)
     captions_api.register(app, store, jobs, settings)
     media_worker = media_api.MediaWorker(settings)
-    timeline_api.register(app, store, settings, on_built=media_worker.ensure_timeline)
+    timeline_api.register(app, store, settings, on_built=media_worker.ensure_timeline, jobs=jobs)
     media_api.register(app, store, settings, media_worker)
     app.state.media = media_worker
     return app

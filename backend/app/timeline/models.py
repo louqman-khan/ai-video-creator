@@ -83,8 +83,8 @@ class Transform(_Strict):
 
 
 class Effect(_Strict):
-    type: Literal["brightness", "contrast", "saturation", "blur"]
-    value: float = Field(0.0, ge=-100, le=100)
+    type: Literal["brightness", "contrast", "saturation", "blur", "kenburns"]
+    value: float = Field(0.0, ge=-100, le=100)  # kenburns: total zoom over the clip, in percent (10 = zoom to 110 %)
 
 
 class Transition(_Strict):

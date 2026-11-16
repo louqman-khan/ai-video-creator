@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import json
 import logging
-import shutil
+from types import SimpleNamespace
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -14,7 +14,7 @@ from typing import TypeVar
 from pydantic import BaseModel
 
 from app.config import Settings
-from app.media import ffmpeg, loudness
+from app.media import ffmpeg
 from app.media.cache import MediaCache
 from app.models import Scene, ScenePick, Transcript
 import hashlib
@@ -23,7 +23,6 @@ from app.pipeline import assemble
 from app.pipeline.align import align_script
 from app.pipeline.silence import cut_audio, plan_cuts, remap_transcript
 from app.pipeline.caption_style import CaptionStyle
-from app.pipeline.captions import Cue, build_ass, cues_to_ass
 from app.pipeline.fetch import fetch_media
 from app.text.urdu import normalize_transcript
 from app.providers.audio_cleaner import AudioCleaner
@@ -35,17 +34,9 @@ from app.providers.transcriber import Transcriber
 log = logging.getLogger("avc.pipeline")
 M = TypeVar("M", bound=BaseModel)
 
-ASPECTS = {"16:9": (1920, 1080), "9:16": (1080, 1920)}  # final quality
-PREVIEW_SIZES = {"16:9": (960, 540), "9:16": (540, 960)}  # fast edit-loop renders (a quarter of the pixels)
-
-
-def render_size(aspect: str, quality: str) -> tuple[int, int]:
-    return (PREVIEW_SIZES if quality == "preview" else ASPECTS)[aspect]
-
-
-def base_video_name(quality: str) -> str:
-    """The caption-free video of each quality (the caption preview draws onto it)."""
-    return "concat_preview.mp4" if quality == "preview" else "concat.mp4"
+from app.timeline import convert
+from app.timeline.render import render_timeline
+from app.pipeline.sizes import ASPECTS, PREVIEW_SIZES, base_video_name, render_size  # noqa: F401  (re-exported)
 
 
 @dataclass
@@ -166,7 +157,6 @@ class Pipeline:
     ) -> Path:
         preview = quality == "preview"
         w, h = render_size(aspect, quality)
-        profile = assemble.PREVIEW if preview else assemble.FINAL
         min_gap = min_gap or self.s.silence_min_gap_s
         keep_gap = self.s.silence_keep_gap_s
         lufs = lufs if lufs is not None else self.s.target_lufs
@@ -219,33 +209,12 @@ class Pipeline:
         (self.run_dir / "CREDITS.txt").write_text(credits_text(picks), "utf-8")
 
         _save(self.run_dir / "transcript.final.json", transcript)  # exactly what the captions are built from
-        ass = None
-        if captions:
-            ass = self.run_dir / ("captions_preview.ass" if preview else "captions.ass")
-            edited = self.run_dir / "captions.json"  # user-edited cues win over the derived ones
-            if edited.exists():
-                cues = [Cue.model_validate(c) for c in json.loads(edited.read_text("utf-8"))]
-                ass.write_text(cues_to_ass(cues, transcript.language, w, h, style), "utf-8")
-            else:
-                ass.write_text(build_ass(transcript, w, h, style), "utf-8")
-
-        if normalize:  # last audio step: loudness is measured on exactly what ends up in the video
-            norm_path = self.run_dir / "audio_norm.flac"
-            if force or not norm_path.exists():
-                final_audio = loudness.normalize(final_audio, norm_path, lufs)
-            else:
-                final_audio = norm_path
-
         log.info("rendering...")
         self.progress("render", 0.78, "Rendering the preview" if preview else "Rendering the full-quality video")
-        seg_dir = self.run_dir / ("segments_preview" if preview else "segments")
-        if force:
-            shutil.rmtree(seg_dir, ignore_errors=True)
-        segments = assemble.build_segments(scenes, picks, seg_dir, w, h, self.s.fps, profile)
-        out.parent.mkdir(parents=True, exist_ok=True)
-        assemble.concat_and_finish(
-            segments, final_audio, ass, out, self.run_dir, Path(self.s.fonts_dir), transcript.duration,
-            profile, base_video_name(quality),
-        )
+        facts = SimpleNamespace(audio_file=str(audio), aspect=aspect,
+                                options={"style": style.model_dump(exclude_none=True) if style else None})
+        timeline = convert.ensure_timeline(self.run_dir, facts, self.s)  # one renderer for CLI, web and editor
+        render_timeline(timeline, self.run_dir, self.s, quality=quality, aspect=aspect, out=out, captions=captions,
+                        normalize=normalize, lufs=lufs, progress=self.progress)
         self.progress("done", 1.0, "Finished")
         return out

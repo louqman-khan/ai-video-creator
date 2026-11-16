@@ -52,6 +52,8 @@ def load_or_build(store: ProjectStore, settings: Settings, pid: str, info: Proje
         tl = convert.load(d)
     except ValueError:  # unreadable file: treat it as absent and rebuild (never serve a broken document)
         tl = None
+    if tl is not None and tl.rev == 1 and tl.meta.get("builder") != convert.BUILDER_VERSION:
+        tl = None  # made by an older builder and never edited: rebuild it
     if tl is None:
         if not create:
             raise HTTPException(409, "Open the timeline first")
@@ -71,7 +73,8 @@ def load_or_build(store: ProjectStore, settings: Settings, pid: str, info: Proje
     return tl
 
 
-def build_router(store: ProjectStore, settings: Settings, on_built: Callable[[str, Timeline], None] | None = None) -> APIRouter:
+def build_router(store: ProjectStore, settings: Settings, on_built: Callable[[str, Timeline], None] | None = None,
+                 jobs=None) -> APIRouter:
     router = APIRouter(prefix="/api/projects/{pid}/timeline")
 
     def project(pid: str) -> ProjectInfo:
@@ -123,6 +126,21 @@ def build_router(store: ProjectStore, settings: Settings, on_built: Callable[[st
             convert.save(store.path(pid), new)
             return view_of(new)
 
+    @router.post("/render", status_code=202, response_model=ProjectInfo)
+    def render_preview(pid: str) -> ProjectInfo:
+        """Render the fast preview of the timeline as it is saved now (the editor calls this after its autosave)."""
+        info = project(pid)
+        idle(info)
+        if not info.video_ready:
+            raise HTTPException(409, "The video is not ready yet")
+        if convert.load(store.path(pid)) is None:
+            raise HTTPException(409, "Open the timeline first")
+        if jobs is None:
+            raise HTTPException(501, "Rendering is not available")
+        queued = store.update(pid, status="queued", stage="render", progress=0.0, message="Rendering the preview", error=None)
+        jobs.submit(pid)
+        return queued
+
     @router.delete("", status_code=204)
     def reset_timeline(pid: str, discard_edits: bool = Query(False)) -> None:
         """Rebuild the timeline from the project's scenes and captions on the next request."""
@@ -138,5 +156,5 @@ def build_router(store: ProjectStore, settings: Settings, on_built: Callable[[st
 
 
 def register(app: FastAPI, store: ProjectStore, settings: Settings,
-             on_built: Callable[[str, Timeline], None] | None = None) -> None:
-    app.include_router(build_router(store, settings, on_built))
+             on_built: Callable[[str, Timeline], None] | None = None, jobs=None) -> None:
+    app.include_router(build_router(store, settings, on_built, jobs))

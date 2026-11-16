@@ -16,10 +16,12 @@ from app.media import ffmpeg
 from app.models import MediaAsset, Scene, ScenePick, Transcript
 from app.pipeline.caption_style import CaptionStyle
 from app.pipeline.captions import Cue, build_cues
-from app.timeline.models import Asset, Clip, Timeline, Track, Word
+from app.timeline.models import Asset, Clip, Effect, Timeline, Track, Word
 
 _TRANSCRIPTS = ("transcript.final.json", "transcript.cut.json", "transcript.aligned.json", "transcript.json")
 _EMPTY_KEY = "empty_scenes"  # scenes without media have no clip: kept here so nothing is lost
+BUILDER_VERSION = 2  # bump when build_timeline changes what it produces: unedited timelines are then rebuilt
+KENBURNS_PERCENT = 10.0  # the slow zoom stills always had
 
 
 class ProjectNotReady(RuntimeError):
@@ -52,7 +54,7 @@ def narration_file(d: Path, audio_file: str) -> Path:
     return d / audio_file
 
 
-def _asset_from_media(m: MediaAsset, path: str, fps: int, duration_frames: int | None) -> Asset:
+def asset_from_media(m: MediaAsset, path: str, fps: int, duration_frames: int | None) -> Asset:
     return Asset(
         id=m.id, kind=m.kind, path=path, url=m.url, duration=duration_frames, width=m.width, height=m.height,
         source=m.source, license=m.license, license_url=m.license_url, author=m.author, author_url=m.author_url,
@@ -99,10 +101,11 @@ def build_timeline(d: Path, info, settings: Settings) -> Timeline:
                     length = max(1, frames(ffmpeg.probe_duration(Path(pick.local_path)), fps))
                 except ffmpeg.FfmpegError:
                     length = max(1, frames(m.duration or scene.duration, fps))
-            assets[m.id] = _asset_from_media(m, pick.local_path, fps, length)
+            assets[m.id] = asset_from_media(m, pick.local_path, fps, length)
         a = assets[m.id]
         clips.append(Clip(id=f"scene-{scene.id}", track="V1", kind=m.kind, asset=m.id, start=start, duration=dur,
-                          loop=bool(m.kind == "video" and a.duration and dur > a.duration), meta=meta))
+                          loop=bool(m.kind == "video" and a.duration and dur > a.duration), meta=meta,
+                          effects=[Effect(type="kenburns", value=KENBURNS_PERCENT)] if m.kind == "image" else []))
 
     # narration -> one audio clip on A1 carrying the word timestamps (source frames == timeline frames here)
     nar = narration_file(d, info.audio_file)
@@ -128,7 +131,8 @@ def build_timeline(d: Path, info, settings: Settings) -> Timeline:
         last_end = end
 
     return Timeline(fps=fps, aspect=info.aspect, tracks=tracks, clips=clips, assets=assets,
-                    caption_style=style_raw or None, meta={_EMPTY_KEY: empty} if empty else {})
+                    caption_style=style_raw or None,
+                    meta={"builder": BUILDER_VERSION, "language": transcript.language, **({_EMPTY_KEY: empty} if empty else {})})
 
 
 def scenes_from_timeline(tl: Timeline) -> tuple[list[Scene], list[ScenePick]]:
@@ -166,6 +170,25 @@ def load(d: Path) -> Timeline | None:
     if not f.is_file():
         return None
     return Timeline.model_validate_json(f.read_text("utf-8"))
+
+
+def ensure_timeline(d: Path, facts, settings: Settings) -> Timeline:
+    """The timeline to render. An edited one is kept as it is; a never-edited one is rebuilt from the
+    project's current scenes, media and captions (they may have changed since it was made)."""
+    try:
+        current = load(d)
+    except ValueError:
+        current = None
+    if current is not None and current.rev > 1:
+        return current
+    from app.timeline.validate import check  # local import: validate imports models only, keeps this module light
+
+    tl = build_timeline(d, facts, settings)
+    problems = check(tl)
+    if problems:
+        raise ValueError("The timeline could not be built: " + "; ".join(problems[:6]))
+    save(d, tl)
+    return tl
 
 
 def has_edits(d: Path) -> bool:

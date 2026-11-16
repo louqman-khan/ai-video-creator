@@ -591,6 +591,7 @@ def test_timeline_put_without_opening_it_first_is_refused(env):
     _, _, tone, _ = env
     with client(env) as c:
         pid = finished_project(c, tone)
+        assert c.delete(f"/api/projects/{pid}/timeline").status_code == 204      # e.g. an older project, or after a reset
         r = c.put(f"/api/projects/{pid}/timeline", json={"base_rev": 1, "tracks": [], "clips": []})
         assert r.status_code == 409 and "Open the timeline first" in r.json()["detail"]
 
@@ -655,35 +656,101 @@ def test_timeline_reset_needs_confirmation_when_edited(env):
         assert c.get(f"/api/projects/{pid}/timeline").json()["rev"] == 1
 
 
-def test_an_unedited_timeline_follows_step3_changes_but_an_edited_one_blocks_them(env):
+def frame_rgb(path, t):
+    out = subprocess.run(["ffmpeg", "-v", "error", "-ss", str(t), "-i", str(path), "-frames:v", "1", "-vf", "scale=1:1,format=rgb24", "-f", "rawvideo", "-"],
+                         capture_output=True, check=True).stdout
+    return tuple(out[:3])
+
+
+def test_an_unedited_timeline_follows_step3_changes(env):
     settings, _, tone, _ = env
     with client(env) as c:
         pid = finished_project(c, tone)
         f = Path(settings.projects_dir) / pid / "timeline.json"
         c.get(f"/api/projects/{pid}/timeline")
         assert f.exists()
-        # Step 3 edit (caption style) re-renders: the never-edited timeline is stale and dropped, then rebuilt on demand
+        # a Step 3 edit re-renders from the project's files: the render rebuilds the (never-edited) timeline, so it is current afterwards
         assert c.put(f"/api/projects/{pid}/captions", json={"style": {"bold": True}}).status_code == 202
         wait_done(c, pid)
-        assert not f.exists()
+        assert f.exists()
         tl = c.get(f"/api/projects/{pid}/timeline").json()
         assert tl["caption_style"]["bold"] is True and tl["rev"] == 1
-
-        # once the timeline itself is edited it is the only truth: the old Step 3 endpoints stop
-        sid = c.get(f"/api/projects/{pid}/scenes").json()[0]["id"]
-        cand = c.get(f"/api/projects/{pid}/scenes/{sid}/candidates", params={"query": "sky"}).json()[0]
-        tl["clips"][0]["volume"] = 0.5
+        # and it stays usable: it can be edited right after a render
+        tl["clips"][0]["volume"] = 0.9
         assert put_tl(c, pid, tl).status_code == 200
-        for resp in (c.post(f"/api/projects/{pid}/scenes/{sid}/swap", json={"asset_id": cand["id"]}),
-                     c.put(f"/api/projects/{pid}/captions", json={"style": {"bold": False}}),
-                     c.post(f"/api/projects/{pid}/export")):
-            assert resp.status_code == 409 and "timeline" in resp.json()["detail"].lower()
-        assert c.get(f"/api/projects/{pid}/timeline").json()["rev"] == 2        # untouched by the refused calls
-        # reading still works, and discarding the edits frees the old screens again
-        assert c.get(f"/api/projects/{pid}/video").status_code == 200
-        c.delete(f"/api/projects/{pid}/timeline", params={"discard_edits": "true"})
-        assert c.put(f"/api/projects/{pid}/captions", json={"style": {"bold": False}}).status_code == 202
+
+
+def test_step3_screens_act_on_an_edited_timeline(env):
+    """After the timeline has been edited it is the only truth: swap, captions and export all work ON it."""
+    settings, _, tone, _ = env
+    with client(env) as c:
+        pid = finished_project(c, tone)
+        d = Path(settings.projects_dir) / pid
+        tl = c.get(f"/api/projects/{pid}/timeline").json()
+        tl["clips"][0]["volume"] = 0.5                                          # any edit makes the timeline "edited"
+        assert put_tl(c, pid, tl).status_code == 200
+
+        # --- swap a visual: the picture changes, and it changes inside the timeline
+        scene = c.get(f"/api/projects/{pid}/scenes").json()[0]
+        before = frame_rgb(d / "preview.mp4", 0.3)
+        cands = c.get(f"/api/projects/{pid}/scenes/{scene['id']}/candidates", params={"query": "sky"}).json()
+        other = next(a for a in cands if a["id"] != scene["asset"]["id"])
+        assert c.post(f"/api/projects/{pid}/scenes/{scene['id']}/swap", json={"asset_id": other["id"]}).status_code == 202
+        assert wait_done(c, pid)["status"] == "done"
+        after_tl = c.get(f"/api/projects/{pid}/timeline").json()
+        assert after_tl["rev"] == 3 and other["id"] in after_tl["assets"]
+        assert next(x for x in after_tl["clips"] if x["id"] == f"scene-{scene['id']}")["asset"] == other["id"]
+        assert c.get(f"/api/projects/{pid}/scenes").json()[0]["asset"]["id"] == other["id"]      # the scene list is a view over it
+        assert frame_rgb(d / "preview.mp4", 0.3) != before                                         # blue <-> green: really re-rendered
+
+        # --- edit a caption: it lands on the caption clip, and the reset is refused (the timeline is the truth)
+        cap = c.get(f"/api/projects/{pid}/captions").json()
+        assert cap["edited"] is True
+        edits = [{"id": x["id"], "text": x["text"]} for x in cap["cues"]]
+        edits[0]["text"] = "Edited in the timeline"
+        assert c.put(f"/api/projects/{pid}/captions", json={"cues": edits, "style": {"color": "#FFFF00"}}).status_code == 202
         wait_done(c, pid)
+        tl2 = c.get(f"/api/projects/{pid}/timeline").json()
+        assert tl2["rev"] == 4 and tl2["caption_style"]["color"] == "#FFFF00"
+        assert any(x["text"] == "Edited in the timeline" for x in tl2["clips"] if x["track"] == "C1")
+        assert "Edited in the timeline" in (d / "captions_preview.ass").read_text()
+        assert c.get(f"/api/projects/{pid}/captions").json()["cues"][0]["text"] == "Edited in the timeline"
+        assert c.delete(f"/api/projects/{pid}/captions").status_code == 409
+        assert c.put(f"/api/projects/{pid}/captions", json={"cues": edits}).status_code == 400         # nothing changed
+
+        # --- export renders the edited timeline: hide the picture track and the export is black
+        tl2["tracks"] = [{**t, "muted": True} if t["id"] == "V1" else t for t in tl2["tracks"]]
+        assert put_tl(c, pid, tl2).status_code == 200
+        assert c.post(f"/api/projects/{pid}/export").status_code == 202
+        done = wait_done(c, pid)
+        assert done["export_ready"] is True and done["error"] is None
+        assert sum(frame_rgb(d / "output.mp4", 0.3)) < 60 and (d / "output.mp4").stat().st_size > 0
+        assert (d / "CREDITS.txt").is_file()
+        assert c.get(f"/api/projects/{pid}/video").status_code == 200
+
+
+def test_features_the_renderer_cannot_do_yet_are_reported_and_keep_the_last_preview(env):
+    settings, _, tone, _ = env
+    with client(env) as c:
+        pid = finished_project(c, tone)
+        d = Path(settings.projects_dir) / pid
+        good = (d / "preview.mp4").read_bytes()
+        tl = c.get(f"/api/projects/{pid}/timeline").json()
+        v1 = next(x for x in tl["clips"] if x["track"] == "V1")
+        v1["effects"] = [*v1["effects"], {"type": "blur", "value": 10}]
+        assert put_tl(c, pid, tl).status_code == 200                                # the document may hold it ...
+        assert c.put(f"/api/projects/{pid}/captions", json={"style": {"bold": True}}).status_code == 202
+        done = wait_done(c, pid)                                                    # ... but the renderer says so, in plain words
+        assert done["status"] == "done" and done["video_ready"] is True
+        assert "Not supported yet" in done["error"] and "blur" in done["error"]
+        assert (d / "preview.mp4").read_bytes() == good                             # the last good preview is untouched
+        assert c.get(f"/api/projects/{pid}/video").status_code == 200
+        tl = c.get(f"/api/projects/{pid}/timeline").json()
+        next(x for x in tl["clips"] if x["id"] == v1["id"])["effects"] = [e for e in v1["effects"] if e["type"] != "blur"]
+        assert put_tl(c, pid, tl).status_code == 200
+        assert c.put(f"/api/projects/{pid}/captions", json={"style": {"bold": False}}).status_code == 202
+        assert wait_done(c, pid)["error"] is None
+
 
 
 # ---------------------------------------------------------------- editor media pipeline (task 4.2)
@@ -882,3 +949,24 @@ def test_worker_is_idempotent_and_remembers_state_across_restarts(tmp_path, monk
     src.write_bytes(src.read_bytes() + b"\x00")                                # the file changed: derived files are stale
     assert again.status(src)[0] == "pending"
     again.shutdown()
+
+
+def test_render_the_saved_timeline_on_request(env):
+    settings, _, tone, _ = env
+    with client(env) as c:
+        pid = finished_project(c, tone)
+        d = Path(settings.projects_dir) / pid
+        assert c.delete(f"/api/projects/{pid}/timeline").status_code == 204
+        assert c.post(f"/api/projects/{pid}/timeline/render").status_code == 409          # open the timeline first
+        tl = c.get(f"/api/projects/{pid}/timeline").json()
+        assert sum(frame_rgb(d / "preview.mp4", 0.3)) > 60                                 # a picture today
+        tl["tracks"] = [{**t, "muted": True} if t["id"] == "V1" else t for t in tl["tracks"]]
+        assert put_tl(c, pid, tl).status_code == 200
+        assert sum(frame_rgb(d / "preview.mp4", 0.3)) > 60                                 # saving alone renders nothing
+        r = c.post(f"/api/projects/{pid}/timeline/render")
+        assert r.status_code == 202 and r.json()["status"] in ("queued", "running")
+        assert c.post(f"/api/projects/{pid}/timeline/render").status_code == 409           # already rendering
+        done = wait_done(c, pid)
+        assert done["status"] == "done" and done["error"] is None
+        assert sum(frame_rgb(d / "preview.mp4", 0.3)) < 60                                 # the saved edit is now in the preview
+        assert c.post(f"/api/projects/{'0' * 32}/timeline/render").status_code == 404

@@ -23,7 +23,9 @@ from app.media import ffmpeg
 from app.media.cache import MediaCache
 from app.models import MediaAsset, MediaKind, Scene, ScenePick
 from app.pipeline.runner import Providers
-from app.timeline.convert import has_edits as has_timeline_edits
+from app.timeline import convert
+from app.timeline.models import Clip, Effect, Timeline
+from app.timeline.validate import check
 
 log = logging.getLogger("avc.scenes")
 MAX_CANDIDATES = 16
@@ -83,6 +85,10 @@ def _read_json(path: Path):
 
 
 def load_scenes(d: Path) -> tuple[list[Scene], list[ScenePick]]:
+    if convert.has_edits(d):  # an edited timeline is the truth: the scene list is a view over it
+        tl = convert.load(d)
+        if tl is not None:
+            return convert.scenes_from_timeline(tl)
     scenes, picks = _read_json(d / "scenes.json"), _read_json(d / "assets.json")
     if scenes is None or picks is None:
         raise HTTPException(409, "The scenes are not ready yet")
@@ -201,8 +207,6 @@ def build_router(store: ProjectStore, jobs: JobRunner, settings: Settings) -> AP
         if info.status in ("queued", "running"):
             raise HTTPException(409, "This project is still processing")
         d = store.path(pid)
-        if has_timeline_edits(d):
-            raise HTTPException(409, "This project has timeline edits. Change it in the timeline editor instead.")
         sc, _ = load_scenes(d)
         scene_or_404(sc, sid)
         offered = (_read_json(d / "candidates.json") or {}).get(str(sid), [])
@@ -211,7 +215,47 @@ def build_router(store: ProjectStore, jobs: JobRunner, settings: Settings) -> AP
             raise HTTPException(400, "That visual was not offered for this scene. Search again and pick one from the results.")
         asset = MediaAsset.model_validate(raw)
 
+        def prepare_timeline() -> None:
+            """The timeline has been edited: swap the visual inside the timeline itself."""
+            local = MediaCache(Path(settings.work_dir) / "cache" / "media").get(asset)
+            with store.lock:
+                tl = convert.load(d)
+                if tl is None:
+                    raise ValueError("The timeline is missing")
+                frames = None
+                if asset.kind == "video":
+                    frames = max(1, round(ffmpeg.probe_duration(local) * tl.fps))
+                new = convert.asset_from_media(asset, str(local), tl.fps, frames)
+                clips, found = [], False
+                for c in tl.clips:
+                    if c.track == "V1" and c.meta.get("scene_id") == sid:
+                        found = True
+                        kb = [Effect(type="kenburns", value=convert.KENBURNS_PERCENT)] if new.kind == "image" else []
+                        c = c.model_copy(update={"asset": new.id, "kind": new.kind, "in_point": 0, "effects": kb,
+                                                 "loop": bool(new.kind == "video" and new.duration and c.duration > new.duration)})
+                    clips.append(c)
+                meta = dict(tl.meta)
+                if not found:  # a scene that had no picture yet gets its clip now
+                    empty = [e for e in meta.get("empty_scenes", [])]
+                    e = next((x for x in empty if x.get("scene_id") == sid), None)
+                    if e is None:
+                        raise ValueError("That scene is no longer on the timeline")
+                    meta["empty_scenes"] = [x for x in empty if x is not e]
+                    kb = [Effect(type="kenburns", value=convert.KENBURNS_PERCENT)] if new.kind == "image" else []
+                    clips.append(Clip(id=f"scene-{sid}", track="V1", kind=new.kind, asset=new.id, start=e["start"], duration=e["duration"],
+                                      loop=bool(new.kind == "video" and new.duration and e["duration"] > new.duration), effects=kb,
+                                      meta={k: v for k, v in e.items() if k not in ("start", "duration")}))
+                updated = Timeline.model_validate({**tl.model_dump(), "rev": tl.rev + 1, "meta": meta,
+                                                   "assets": {**{k: v.model_dump() for k, v in tl.assets.items()}, new.id: new.model_dump()},
+                                                   "clips": [c.model_dump() for c in clips]})
+                problems = check(updated)
+                if problems:
+                    raise ValueError("; ".join(problems[:3]))
+                convert.save(d, updated)
+
         def prepare() -> None:
+            if convert.has_edits(d):
+                return prepare_timeline()
             local = MediaCache(Path(settings.work_dir) / "cache" / "media").get(asset)  # may take a while
             _, current = load_scenes(d)
             new = [ScenePick(scene_id=sid, asset=asset, local_path=str(local)) if p.scene_id == sid else p

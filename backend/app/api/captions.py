@@ -27,7 +27,9 @@ from app.models import Transcript
 from app.pipeline.caption_style import CaptionStyle
 from app.pipeline.captions import Cue, build_cues, cues_to_ass
 from app.pipeline.runner import ASPECTS, PREVIEW_SIZES
-from app.timeline.convert import has_edits as has_timeline_edits
+from app.timeline import convert
+from app.timeline.models import Timeline
+from app.timeline.validate import check
 
 log = logging.getLogger("avc.captions")
 MAX_TEXT = 300
@@ -77,18 +79,31 @@ def load_transcript(d: Path) -> Transcript:
     raise HTTPException(409, "The captions are not ready yet")
 
 
-def style_of(info: ProjectInfo) -> CaptionStyle:
-    raw = info.options.get("style")
+def edited_timeline(d: Path) -> Timeline | None:
+    return convert.load(d) if convert.has_edits(d) else None
+
+
+def timeline_caption_clips(tl: Timeline):
+    return sorted((c for c in tl.clips if c.kind == "caption"), key=lambda c: (c.start, c.id))
+
+
+def style_of(info: ProjectInfo, d: Path | None = None) -> CaptionStyle:
+    tl = edited_timeline(d) if d is not None else None
+    raw = tl.caption_style if tl is not None else info.options.get("style")
     return CaptionStyle.model_validate(raw) if raw else CaptionStyle()
 
 
 def current_cues(d: Path, info: ProjectInfo) -> tuple[list[Cue], bool, str]:
     """(cues, edited?, language). Edited cues are persisted; otherwise derived from the transcript."""
+    tl = edited_timeline(d)
+    if tl is not None:  # the timeline's caption clips are the truth
+        return ([Cue(start=c.start / tl.fps, end=(c.start + c.duration) / tl.fps, text=c.text or "") for c in timeline_caption_clips(tl)],
+                True, str(tl.meta.get("language", "en")))
     transcript = load_transcript(d)
     edited = d / "captions.json"
     if edited.is_file():
         return [Cue.model_validate(c) for c in json.loads(edited.read_text("utf-8"))], True, transcript.language
-    return build_cues(transcript, style_of(info)), False, transcript.language
+    return build_cues(transcript, style_of(info, d)), False, transcript.language
 
 
 def build_router(store: ProjectStore, jobs: JobRunner, settings: Settings) -> APIRouter:
@@ -106,8 +121,7 @@ def build_router(store: ProjectStore, jobs: JobRunner, settings: Settings) -> AP
             raise HTTPException(409, "This project is still processing")
         if not info.video_ready:
             raise HTTPException(409, "The video is not ready yet")
-        if has_timeline_edits(store.path(info.id)):
-            raise HTTPException(409, "This project has timeline edits. Change it in the timeline editor instead.")
+
 
     def rerender(pid: str, info: ProjectInfo) -> ProjectInfo:
         queued = store.update(pid, status="queued", stage="captions", progress=0.0, message="Applying caption changes", error=None)
@@ -119,7 +133,42 @@ def build_router(store: ProjectStore, jobs: JobRunner, settings: Settings) -> AP
         info = project(pid)
         cues, edited, language = current_cues(store.path(pid), info)
         return CaptionsView(cues=[CueView(id=i, **c.model_dump()) for i, c in enumerate(cues)], edited=edited,
-                            language=language, style=info.options.get("style") or {})
+                            language=language, style=(style_of(info, store.path(pid)).model_dump(exclude_none=True)
+                                                      if edited_timeline(store.path(pid)) else info.options.get("style") or {}))
+
+    def update_timeline_captions(pid: str, info: ProjectInfo, d: Path, body: CaptionsUpdate) -> ProjectInfo:
+        """Same editing rules, applied to the caption clips of an edited timeline."""
+        with store.lock:
+            tl = convert.load(d)
+            if tl is None:
+                raise HTTPException(409, "The timeline is missing")
+            caps = timeline_caption_clips(tl)
+            texts: dict[str, str] = {}
+            if body.cues is not None:
+                if sorted(c.id for c in body.cues) != list(range(len(caps))):
+                    raise HTTPException(409, "The captions changed since you opened the editor. Reload the page.")
+                for e in body.cues:
+                    text = clean_text(e.text)
+                    if text != (caps[e.id].text or ""):
+                        texts[caps[e.id].id] = text
+            style = tl.caption_style
+            style_changed = False
+            if body.style is not None:
+                new_style = body.style.model_dump(exclude_none=True)
+                if new_style != (tl.caption_style or {}):
+                    style, style_changed = new_style, True
+            if not texts and not style_changed:
+                raise HTTPException(400, "Nothing to change")
+            clips = [c.model_dump() | ({"text": texts[c.id]} if c.id in texts else {}) for c in tl.clips]
+            try:
+                updated = Timeline.model_validate({**tl.model_dump(), "rev": tl.rev + 1, "clips": clips, "caption_style": style})
+            except ValueError as e:
+                raise HTTPException(422, str(e).splitlines()[0]) from None
+            problems = check(updated)
+            if problems:
+                raise HTTPException(422, "Invalid captions: " + "; ".join(problems[:3]))
+            convert.save(d, updated)
+        return rerender(pid, info)
 
     @router.put("", status_code=202, response_model=ProjectInfo)
     def update_captions(pid: str, body: CaptionsUpdate) -> ProjectInfo:
@@ -128,6 +177,8 @@ def build_router(store: ProjectStore, jobs: JobRunner, settings: Settings) -> AP
         if body.cues is None and body.style is None:
             raise HTTPException(400, "Nothing to change")
         d = store.path(pid)
+        if edited_timeline(d) is not None:
+            return update_timeline_captions(pid, info, d, body)
         changed = False
         if body.cues is not None:
             cues, _, _ = current_cues(d, info)  # the list the editor was showing
@@ -156,6 +207,8 @@ def build_router(store: ProjectStore, jobs: JobRunner, settings: Settings) -> AP
         """Throw away text edits and go back to the recognised (or script) text."""
         info = project(pid)
         require_idle(info)
+        if edited_timeline(store.path(pid)) is not None:
+            raise HTTPException(409, "This project's captions live in its edited timeline. Reset the timeline to restore the original captions.")
         f = store.path(pid) / "captions.json"
         if not f.is_file():
             raise HTTPException(400, "The captions have not been edited")
@@ -180,7 +233,7 @@ def build_router(store: ProjectStore, jobs: JobRunner, settings: Settings) -> AP
         text = clean_text(body.text) if body.text is not None else cue.text
         if not text:
             raise HTTPException(422, "Type some text to preview")
-        style = body.style or style_of(info)
+        style = body.style or style_of(info, d)
         width, height = sizes[info.aspect]
         at = max(0.0, (cue.start + cue.end) / 2)
         ass = cues_to_ass([Cue(start=0, end=30, text=text)], language, width, height, style)
