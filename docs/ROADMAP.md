@@ -72,7 +72,7 @@ The human only needs to say **"continue"** (or "next task") to move forward.
 - [x] 3.4 Scene list view: each scene's text, time range and chosen visual; "swap visual" shows other candidates and runs a new search.
 - [x] 3.5 Caption editor: fix transcript text per word/line; style panel (font, size, color, position) with live preview.
 - [x] 3.6 Preview player (proxy/low-res render) + Export (1080p, 16:9 / 9:16).
-- [ ] 3.7 Credits/attribution panel per project.
+- [x] 3.7 Credits/attribution panel per project.
 
 ## Step 4 — Timeline editor
 
@@ -103,6 +103,8 @@ The human only needs to say **"continue"** (or "next task") to move forward.
 ## Progress log
 
 <!-- Agent: add one line per completed task, newest first. Format: YYYY-MM-DD — task id — what changed — how verified -->
+
+- 2026-11-16 — 3.7 — credits panel (**Step 3 complete**). Backend `GET /attributions`: unique visuals with license, author, source and the scenes that use them (credit-required ones first; no download URLs). Frontend `CreditsPanel`: one entry per visual (scenes, creator, source link, license link, "Credit required" badge), a notice saying how many visuals legally need a credit (CC BY etc.) or that none do, copy-to-clipboard of the exact `CREDITS.txt` text (selectable text box if the browser blocks the clipboard), download link, http(s)-only links, reloads after every re-render — 89 backend tests (2 new) and 76 vitest tests (9 new) pass, tsc + build clean; real Chrome on the Urdu project: 3 Pixabay entries with working source/license links, notice shown, clipboard text identical to CREDITS.txt, console clean
 
 - 2026-11-16 — 3.6 — preview + export. Pipeline: `RenderProfile` (`preview`: 960x540 / 540x960, ultrafast, CRF 28-30, 96k audio; `final`: 1080p, as before), `Pipeline.run(quality=...)`, separate clip dirs and caption files per quality; the CLI still renders final. API: new/edited projects render only the preview (`preview.mp4`); `POST /export {aspect}` renders the full-quality 1080p video in 16:9 or 9:16 (`output.mp4`), `GET /export` downloads it; any edit deletes a stale export (`export_ready` false); a failed export leaves the project usable with an error banner; `/video` serves the preview (old projects: their `output.mp4`); caption preview now draws onto the 960 px preview base. Fixed a real bug found in the browser: the same `/video` URL served a different file after each render and Chrome showed an old copy from its HTTP cache → `Cache-Control: no-cache` on video responses + versioned player URL (`?v=`) + the player is no longer remounted on every progress update. Frontend: `ExportPanel` (format 16:9 / 9:16 with a centre-crop warning, export, download, credits link), player labelled as preview — measured on the Urdu project: preview render 2.8 s from scratch / 0.8 s cached vs 22.1 s full quality (3.4 MB vs 14.5 MB, ~8x faster); in Chrome a caption edit re-rendered in 4.6 s (second edit 1.6 s, was 15-47 s); vertical export 22.9 s → downloaded 1080x1920, 11.97 s, Unicode file name ok; editing made the export stale (download link gone, notice shown); legacy project still plays; console clean. 87 backend tests (6 new) and 67 vitest tests (11 new) pass, tsc + build clean
 

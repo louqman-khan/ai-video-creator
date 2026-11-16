@@ -1,4 +1,4 @@
-import type { Asset, CaptionsView, CaptionStyle, Project, Scene } from "./types";
+import type { Asset, Attribution, CaptionsView, CaptionStyle, Project, Scene } from "./types";
 
 export class ApiError extends Error {
   constructor(
@@ -80,6 +80,18 @@ export const api = {
   listProjects: () => request<Project[]>("/api/projects"),
   getProject: (id: string) => request<Project>(`/api/projects/${encodeURIComponent(id)}`),
   deleteProject: (id: string) => request<void>(`/api/projects/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  getAttributions: (id: string) => request<Attribution[]>(`/api/projects/${encodeURIComponent(id)}/attributions`),
+  /** The ready-to-paste credits text (same file the export ships with). */
+  getCreditsText: async (id: string): Promise<string> => {
+    let res: Response;
+    try {
+      res = await fetch(`/api/projects/${encodeURIComponent(id)}/credits`);
+    } catch {
+      throw new ApiError("Cannot reach the server. Is `avc serve` running?", 0);
+    }
+    if (!res.ok) throw new ApiError(await errorMessage(res), res.status);
+    return res.text();
+  },
   getScenes: (id: string) => request<Scene[]>(`/api/projects/${encodeURIComponent(id)}/scenes`),
   getCandidates: (id: string, sceneId: number, query: string) =>
     request<Asset[]>(

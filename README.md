@@ -76,6 +76,8 @@ colour, outline and position, with a live preview rendered by the same engine as
 Changes are applied together with one re-render of the quick low-resolution preview (a few
 seconds). When you are happy, **Export** renders the full-quality 1080p video in 16:9 or 9:16 and
 lets you download it; editing afterwards makes that export stale until you export again.
+The **Credits** panel lists every stock visual with its creator and license, says which ones need a
+credit (Creative Commons), and copies ready-to-paste text for your video description.
 
 ## Layout
 

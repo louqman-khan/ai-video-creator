@@ -79,3 +79,9 @@ export interface CaptionsView {
   language: string;
   style: Partial<CaptionStyle>;
 }
+
+/** One visual used by the project (once), with the scenes it appears in. */
+export interface Attribution {
+  asset: Asset;
+  scenes: number[];
+}

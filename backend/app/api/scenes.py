@@ -63,6 +63,13 @@ class SceneView(BaseModel):
     has_thumb: bool = False
 
 
+class AttributionView(BaseModel):
+    """One visual used in the project, once, with every scene it appears in."""
+
+    asset: AssetView
+    scenes: list[int]
+
+
 class SwapRequest(BaseModel):
     asset_id: str = Field(min_length=1, max_length=200)
 
@@ -124,6 +131,22 @@ def build_router(store: ProjectStore, jobs: JobRunner, settings: Settings) -> AP
             out.append(SceneView(**s.model_dump(), asset=AssetView.of(p.asset) if p and p.asset else None,
                                  has_thumb=bool(p and p.asset and p.local_path)))
         return out
+
+    @router.get("/attributions", response_model=list[AttributionView])
+    def attributions(pid: str) -> list[AttributionView]:
+        """Unique visuals of the project with license and attribution (source of the credits panel)."""
+        project(pid)
+        _, picks = load_scenes(store.path(pid))
+        seen: dict[str, AttributionView] = {}
+        for p in picks:
+            if not p.asset:
+                continue
+            if p.asset.id in seen:
+                seen[p.asset.id].scenes.append(p.scene_id)
+            else:
+                seen[p.asset.id] = AttributionView(asset=AssetView.of(p.asset), scenes=[p.scene_id])
+        # visuals that legally need a credit first, then the rest
+        return sorted(seen.values(), key=lambda a: (not a.asset.attribution_required, a.scenes[0]))
 
     @router.get("/scenes/{sid}/thumb")
     async def thumb(pid: str, sid: int) -> FileResponse:

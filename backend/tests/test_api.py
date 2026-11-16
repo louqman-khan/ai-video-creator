@@ -491,3 +491,35 @@ def test_videos_are_never_served_from_a_stale_browser_cache(env):
         c.post(f"/api/projects/{pid}/export")
         wait_done(c, pid)
         assert c.get(f"/api/projects/{pid}/export").headers["cache-control"] == "no-cache"
+
+
+# ---------------------------------------------------------------- credits (task 3.7)
+
+def test_attributions_are_deduplicated_with_their_scenes_and_hide_urls(env):
+    _, _, tone, _ = env
+    with client(env) as c:
+        pid = finished_project(c, tone)
+        scenes = c.get(f"/api/projects/{pid}/scenes").json()
+        r = c.get(f"/api/projects/{pid}/attributions")
+        assert r.status_code == 200
+        items = r.json()
+        ids = [i["asset"]["id"] for i in items]
+        assert len(ids) == len(set(ids))                                    # each visual listed once
+        used = {s["asset"]["id"] for s in scenes if s["asset"]}
+        assert set(ids) == used
+        # every scene that uses a visual is listed against it
+        for i in items:
+            assert i["scenes"] == [s["id"] for s in scenes if s["asset"] and s["asset"]["id"] == i["asset"]["id"]]
+            assert i["asset"]["license"] and "url" not in i["asset"] and "local_path" not in i["asset"]
+        assert c.get(f"/api/projects/{'0' * 32}/attributions").status_code == 404
+        assert c.get(f"/api/projects/{pid}/attributions").json() == items   # stable
+
+
+def test_attributions_not_ready_while_processing(env):
+    _, _, tone, gate = env
+    gate.clear()
+    with client(env) as c:
+        p = upload(c, tone).json()
+        assert c.get(f"/api/projects/{p['id']}/attributions").status_code == 409
+        gate.set()
+        wait_done(c, p["id"])
