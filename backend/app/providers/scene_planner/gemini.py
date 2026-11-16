@@ -7,6 +7,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import time
 from typing import Literal
 
 import httpx
@@ -52,16 +53,17 @@ class GeminiPlanner:
     def __init__(
         self,
         api_key: str,
-        model: str = "gemini-3.5-flash",
+        model: str = "gemini-flash-lite-latest,gemini-3-flash-preview,gemini-3.5-flash",
         min_s: float = 3.0,
         max_s: float = 8.0,
         client: httpx.Client | None = None,
     ) -> None:
         if not api_key:
             raise PlannerError("GEMINI_API_KEY is not set (or use SCENE_PLANNER=heuristic for English).")
-        self.api_key, self.model = api_key, model
+        self.api_key = api_key
+        self.models = [m.strip() for m in model.split(",") if m.strip()]  # tried in order
         self.min_s, self.max_s = min_s, max_s
-        self.client = client or make_client(read_timeout=120.0)  # LLM calls can be slow
+        self.client = client or make_client(read_timeout=45.0)  # a healthy call takes 1-4 s
 
     def _ask(self, lang: str, scenes: list[Scene]) -> list[Annotation]:
         listing = "\n".join(f"{s.id}. {s.text}" for s in scenes)
@@ -69,19 +71,28 @@ class GeminiPlanner:
             "contents": [{"parts": [{"text": PROMPT.format(lang=lang, scenes=listing)}]}],
             "generationConfig": {"responseMimeType": "application/json", "temperature": 0.3},
         }
-        try:
-            data = post_json(
-                self.client,
-                ENDPOINT.format(model=self.model),
-                json=body,
-                headers={"x-goog-api-key": self.api_key},  # header, so the key never lands in a URL
-            )
-        except (httpx.HTTPError, HttpError) as e:
-            raise PlannerError(f"Gemini request failed: {type(e).__name__}: {e}") from None
-        try:
-            return parse_annotations(data["candidates"][0]["content"]["parts"][0]["text"])
-        except (KeyError, IndexError, json.JSONDecodeError, ValidationError) as e:
-            raise PlannerError(f"Gemini returned an unusable answer: {type(e).__name__}") from e
+        errors: list[str] = []
+        for model in self.models:  # fail over: an overloaded or slow model must not block the run
+            t0 = time.monotonic()
+            log.info("asking Gemini (%s) for %d scene queries...", model, len(scenes))
+            try:
+                data = post_json(
+                    self.client,
+                    ENDPOINT.format(model=model),
+                    json=body,
+                    headers={"x-goog-api-key": self.api_key},  # header, so the key never lands in a URL
+                    retries=False,
+                )
+                result = parse_annotations(data["candidates"][0]["content"]["parts"][0]["text"])
+            except (httpx.HTTPError, HttpError) as e:
+                errors.append(f"{model}: {type(e).__name__}: {e}")
+            except (KeyError, IndexError, json.JSONDecodeError, ValidationError) as e:
+                errors.append(f"{model}: unusable answer ({type(e).__name__})")
+            else:
+                log.info("Gemini %s answered in %.1f s", model, time.monotonic() - t0)
+                return result
+            log.warning("Gemini %s failed after %.1f s: %s", model, time.monotonic() - t0, errors[-1])
+        raise PlannerError("Gemini request failed for every model: " + "; ".join(errors))
 
     def plan(self, transcript: Transcript) -> list[Scene]:
         scenes = chunk_scenes(transcript, self.min_s, self.max_s)

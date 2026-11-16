@@ -37,13 +37,7 @@ def make_client(read_timeout: float = 30.0) -> httpx.Client:
     )
 
 
-@retry(
-    reraise=True,
-    stop=stop_after_attempt(3),
-    wait=wait_exponential(multiplier=1, min=1, max=8),
-    retry=retry_if_exception_type((RetryableHttpError, httpx.TransportError)),
-)
-def _request(client: httpx.Client, method: str, url: str, **kw) -> httpx.Response:
+def _request_once(client: httpx.Client, method: str, url: str, **kw) -> httpx.Response:
     resp = client.request(method, url, **kw)
     if resp.status_code in _RETRY_STATUS:
         raise RetryableHttpError(f"HTTP {resp.status_code} from {safe_url(url)}")
@@ -52,9 +46,18 @@ def _request(client: httpx.Client, method: str, url: str, **kw) -> httpx.Respons
     return resp
 
 
+_request = retry(
+    reraise=True,
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=1, max=8),
+    retry=retry_if_exception_type((RetryableHttpError, httpx.TransportError)),
+)(_request_once)
+
+
 def get_json(client: httpx.Client, url: str, **kw):
     return _request(client, "GET", url, **kw).json()
 
 
-def post_json(client: httpx.Client, url: str, **kw):
-    return _request(client, "POST", url, **kw).json()
+def post_json(client: httpx.Client, url: str, *, retries: bool = True, **kw):
+    """retries=False: one attempt only (the caller has its own fail-over, e.g. other models)."""
+    return (_request if retries else _request_once)(client, "POST", url, **kw).json()

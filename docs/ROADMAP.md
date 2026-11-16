@@ -28,8 +28,8 @@ The human only needs to say **"continue"** (or "next task") to move forward.
 
 ## Waiting on human
 
-- [ ] Urdu sample audio at `samples/urdu.mp3` (30–60 s)
-- [ ] English sample audio at `samples/english.mp3` (30–60 s)
+- [ ] Urdu sample audio at `samples/urdu.mp3` (30–60 s) **and its exact text** at `samples/urdu.txt` (needed for task 2.8: WER needs a reference)
+- [ ] English sample audio at `samples/english.mp3` (30–60 s) **and its exact text** at `samples/english.txt` (task 2.8)
 - [ ] Optional: `Jameel Noori Nastaleeq.ttf` in `assets/fonts/` (license unclear; use with `--font "Jameel Noori Nastaleeq"`). Noto Nastaliq Urdu is already installed and committed (OFL).
 - [ ] Rotate the Pixabay key again: a test script printed it into a session log on 2026-11-16 (httpx INFO logging; now silenced in `app/http.py`). Gemini key was never printed.
 - [ ] Pexels key — new key issuance is paused by Pexels; the pipeline must work without it
@@ -50,7 +50,7 @@ The human only needs to say **"continue"** (or "next task") to move forward.
 - [x] 1.10 `avc make <audio>` runs the full pipeline with progress logs; writes `output.mp4` + `credits.txt` (attributions). *Done when:* English sample → watchable MP4. (Verified on synthetic TTS audio; re-check with a real human sample. Visual relevance is weak: heuristic ranker only, CLIP is 5.3.)
 - [x] 1.11 Basic tests for timing math and scene splitting; README with setup + usage. *Built:* 24 passing tests and `README.md`; README commands checked against a real run.
 
-- [ ] 1.12 (found 2026-11-16) Gemini planning latency: one `avc make` spent 3 min 43 s in the planning step (others took seconds). Log per-request timing and retries, find the cause (thinking model? 120 s timeout + retries? 503s), and consider a faster model or a lower thinking budget. Also add a visible "still waiting for Gemini" log line.
+- [x] 1.12 (found 2026-11-16) Gemini planning latency: one `avc make` spent 3 min 43 s in the planning step (others took seconds). Log per-request timing and retries, find the cause (thinking model? 120 s timeout + retries? 503s), and consider a faster model or a lower thinking budget. Also add a visible "still waiting for Gemini" log line.
 
 ## Step 2 — Urdu + audio quality
 
@@ -61,7 +61,7 @@ The human only needs to say **"continue"** (or "next task") to move forward.
 - [x] 2.5 AudioCleaner: DeepFilterNet (or RNNoise fallback) noise removal; `--no-clean` to skip. (RNNoise via FFmpeg `arnndn`; DeepFilterNet not used: needs PyTorch, risky on Intel macOS 12. Can be added later behind the same `AudioCleaner` interface.)
 - [x] 2.6 Silence/gap removal with VAD (`--remove-silence`, configurable min gap); keep caption/scene timings consistent after the cut.
 - [x] 2.7 Loudness normalization (EBU R128, -14 LUFS) on export. (Lands within ~0.6 LU of the target on peaky speech because of the -1.5 dBTP ceiling; true peak stays below it.)
-- [ ] 2.8 Benchmark: Urdu and English WER on the samples with `small` vs `medium`; record the results in `docs/benchmarks.md`.
+- [!] 2.8 Benchmark: Urdu and English WER on the samples with `small` vs `medium`; record the results in `docs/benchmarks.md`.
 - [x] 2.9 Script input: `avc make narration.mp3 --script script.txt` aligns a known script to the audio (forced alignment). (Audio stays the positional argument. Also `avc transcribe --script` to preview. Alignment is sequence matching against Whisper word times, no PyTorch/WhisperX.)
 
 ## Step 3 — Web app (React + TypeScript + Vite frontend, FastAPI backend)
@@ -103,6 +103,8 @@ The human only needs to say **"continue"** (or "next task") to move forward.
 ## Progress log
 
 <!-- Agent: add one line per completed task, newest first. Format: YYYY-MM-DD — task id — what changed — how verified -->
+
+- 2026-11-16 — 1.12 — cause: `gemini-3.5-flash` itself is slow/variable (43–145 s for ~220 output tokens, also with thinking off), not our code. Fix: `GEMINI_MODEL` is now a comma-separated fail-over list (default `gemini-flash-lite-latest,gemini-3-flash-preview,gemini-3.5-flash`), 45 s timeout, one attempt per model, log line per request with model + seconds — compared 6 models (Urdu queries equally good on the fast ones); live: planning 1.5 s and 2.4 s (was up to 225 s), whole run 40–51 s; 5 new fail-over tests with mocked HTTP (503, timeout, garbage answer, all failing; no key in the error), 63 pass
 
 - 2026-11-16 — 2.9 — `app/pipeline/align.py` + `--script`: script words replace the recognised ones (script spelling/punctuation, sentences become caption segments) with timing from the ASR words; misheard spans spread over their time slot, unheard words interpolated, extra spoken words dropped; warns when <50% match; script hash is a timeline option (changing it re-plans scenes) — 8 new tests (58 pass); Urdu clip: ASR had سیاہ / ان وادیوں merged / دھکے, aligned output has the correct ڈھکے, سیاح ان وادیوں, کے لیے with the same timings (27/33 exact matches), wrong English script on Urdu audio: 0/15 → warning; full `avc make --script` rendered frame shows the corrected caption
 

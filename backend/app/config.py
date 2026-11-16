@@ -22,7 +22,8 @@ class Settings(BaseSettings):
 
     # LLM
     gemini_api_key: str = ""
-    gemini_model: str = "gemini-3.5-flash"
+    # comma-separated, tried in order (fast model first, others are fail-over)
+    gemini_model: str = "gemini-flash-lite-latest,gemini-3-flash-preview,gemini-3.5-flash"
     scene_planner: str = "gemini"
 
     # providers
