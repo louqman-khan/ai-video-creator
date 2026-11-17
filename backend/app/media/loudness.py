@@ -34,7 +34,7 @@ def measure(path: Path, target: float = -14.0, tp: float = -1.5, lra: float = 11
     p = subprocess.run(
         ["ffmpeg", "-hide_banner", "-nostats", "-i", str(path), "-vn",
          "-af", _loudnorm(target, tp, lra) + ":print_format=json", "-f", "null", "-"],
-        capture_output=True, text=True,
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
     )
     if p.returncode != 0:
         raise ffmpeg.FfmpegError(f"loudness measurement failed: {p.stderr.strip()[-200:]}")

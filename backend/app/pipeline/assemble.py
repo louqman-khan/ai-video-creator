@@ -33,8 +33,10 @@ def export_profile(encoder: str, width: int, height: int) -> RenderProfile:
     """The profile of an export: "software" (x264, best quality per size, slower) or "hardware" (VideoToolbox, several times
     faster, bigger files; the bitrate grows with the picture size)."""
     if encoder == "hardware":
+        from app.media import ffmpeg
+
         mbps = max(4, round(12 * (width * height / (1920 * 1080)) ** 0.8))  # 720p ~ 7M, 1080p 12M, 4K ~ 36M
-        return RenderProfile("final-fast", "veryfast", 20, "medium", 20, "192k", encoder="h264_videotoolbox", bitrate=f"{mbps}M")
+        return RenderProfile("final-fast", "veryfast", 20, "medium", 20, "192k", encoder=ffmpeg.hardware_encoder() or "h264_videotoolbox", bitrate=f"{mbps}M")
     return FINAL
 
 

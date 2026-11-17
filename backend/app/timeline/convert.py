@@ -7,6 +7,8 @@ nothing and, later, to keep the Step 3 screens working as views over the timelin
 
 from __future__ import annotations
 
+from app import fsutil
+
 import json
 import os
 from pathlib import Path
@@ -234,4 +236,4 @@ def save(d: Path, tl: Timeline) -> None:
     f = timeline_path(d)
     tmp = f.with_suffix(".tmp")
     tmp.write_text(tl.model_dump_json(indent=1), "utf-8")
-    os.replace(tmp, f)  # atomic: a reader never sees half a file
+    fsutil.replace(tmp, f)  # atomic: a reader never sees half a file

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from app import fsutil
+
 import re
 import shutil
 from pathlib import Path
@@ -45,7 +47,7 @@ class MediaCache:
                 with part.open("wb") as f:
                     for chunk in r.iter_bytes():
                         f.write(chunk)
-            part.replace(dst)
+            fsutil.replace(part, dst)
         finally:
             part.unlink(missing_ok=True)
         return self._accept(dst)

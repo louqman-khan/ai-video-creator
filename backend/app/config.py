@@ -75,6 +75,7 @@ class Settings(BaseSettings):
     fonts_dir: str = str(ROOT / "assets" / "fonts")
     work_dir: str = str(ROOT / "work")
     models_dir: str = str(ROOT / "assets" / "models")
+    frontend_dist: str = str(ROOT / "frontend" / "dist")  # the built web app; when it exists the server shows it at / (one process = the whole app)
     clip_dir: str = str(ROOT / "assets" / "models" / "clip")
     tts_dir: str = str(ROOT / "assets" / "models" / "tts")
     rnnoise_model: str = "cb.rnnn"  # file name inside models_dir

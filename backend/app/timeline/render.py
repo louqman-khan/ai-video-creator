@@ -10,6 +10,8 @@ Features the renderer cannot do yet are refused loudly (`RenderUnsupported`), ne
 
 from __future__ import annotations
 
+from app import fsutil
+
 import hashlib
 import math
 import json
@@ -298,7 +300,7 @@ def _overlay(seg: Segment, c: Clip, w: int, h: int) -> str:
 def _is_hdr(path: str, size: int, mtime_ns: int) -> bool:  # size/mtime only key the cache
     """HDR (PQ or HLG) pictures must be tone-mapped to SDR like the proxies are, or they look flat and grey."""
     p = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=color_transfer", "-of", "csv=p=0", path],
-                       capture_output=True, text=True)
+                       capture_output=True, text=True, encoding="utf-8", errors="replace")
     return p.stdout.strip() in _HDR_TRANSFERS
 
 
@@ -433,7 +435,7 @@ def render_segment(tl: Timeline, seg: Segment, w: int, h: int, profile: assemble
             raise
         log.warning("segment %d-%d could not be rendered (%s): black placeholder", seg.start, seg.end, e)
         ffmpeg.run(_segment_args(tl, Segment(seg.start, seg.end, ()), w, h, profile, part), timeout=timeout)
-    os.replace(part, dst)
+    fsutil.replace(part, dst)
     return dst
 
 
@@ -513,7 +515,7 @@ def mix_audio(tl: Timeline, work: Path) -> Path:
         else:
             group(list(range(len(clips))), "out")
         ffmpeg.run([*args, "-filter_complex", ";".join(chains), "-map", "[out]", "-c:a", "flac", str(part)], timeout=120 + 4 * total_s)
-    os.replace(part, dst)
+    fsutil.replace(part, dst)
     for old in out_dir.glob("mix*.flac"):  # keep only the current mix
         if old != dst and not old.name.startswith(f"mixn_{dst.stem[4:]}"):
             old.unlink(missing_ok=True)

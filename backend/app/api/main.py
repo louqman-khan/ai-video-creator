@@ -112,7 +112,7 @@ def create_app(settings: Settings | None = None, providers_factory: ProvidersFac
             "ffmpeg": ffmpeg.has_tools(),
             "speech": jobs.tts.languages(),  # languages a typed script can be spoken in
             "speech_paid": bool(getattr(jobs.tts, "paid", False)),  # the voice is a paid outside service
-            "hardware_encoder": ffmpeg.has_tools() and ffmpeg.has_encoder("h264_videotoolbox"),
+            "hardware_encoder": ffmpeg.hardware_encoder() is not None,
             # the UI validates against the same limits the server enforces
             "limits": {
                 "max_upload_mb": settings.max_upload_mb,
@@ -227,7 +227,7 @@ def create_app(settings: Settings | None = None, providers_factory: ProvidersFac
         aspect = (body.aspect if body else None) or info.aspect
         preset = body.preset if body else "1080p"
         encoder = body.encoder if body else "software"
-        if encoder == "hardware" and not ffmpeg.has_encoder("h264_videotoolbox"):
+        if encoder == "hardware" and ffmpeg.hardware_encoder() is None:
             raise HTTPException(422, "This computer has no hardware video encoder. Use the software encoder.")
         queued = store.update(pid, status="queued", stage="export", progress=0.0, message="Preparing the export",
                               error=None, export_ready=False)
@@ -295,4 +295,19 @@ def create_app(settings: Settings | None = None, providers_factory: ProvidersFac
     media_api.register(app, store, settings, media_worker)
     avatars_api.register(app, store, settings, jobs, media_worker)
     app.state.media = media_worker
+
+    dist = Path(settings.frontend_dist)
+    if (dist / "index.html").is_file():  # the built web app is served by the same process: `avc app`, the desktop app and the one-folder installs need nothing else
+        root = dist.resolve()
+
+        @app.get("/{path:path}", include_in_schema=False)
+        def web_app(path: str) -> FileResponse:
+            if path == "api" or path.startswith("api/"):
+                raise HTTPException(404, "Not found")
+            target = (root / path).resolve()
+            if path and target.is_file() and target.is_relative_to(root):  # files of the app itself only, never anything outside its folder
+                hashed = "/assets/" in f"/{path}"
+                return FileResponse(target, headers={"Cache-Control": "public, max-age=31536000, immutable" if hashed else "no-cache"})
+            return FileResponse(root / "index.html", headers={"Cache-Control": "no-cache"})  # deep links (/projects/abc) belong to the app's own router
+
     return app

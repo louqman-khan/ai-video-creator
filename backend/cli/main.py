@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from pathlib import Path
 from typing import Annotated, Optional
 
@@ -196,6 +197,59 @@ def speak(
         console.print(f"[red]{e}[/red] (voices installed now: {', '.join(tts.languages()) or 'none'})")
         raise typer.Exit(1) from None
     console.print(f"[green]Saved[/green] {out}")
+
+
+@app.command("app")
+def app_command(
+    port: Annotated[int, typer.Option(help="Port of the local server")] = 8742,
+    no_browser: Annotated[bool, typer.Option("--no-browser", help="Do not open the browser")] = False,
+) -> None:
+    """Run the whole app in one process (server + built web editor) and open it in the browser."""
+    import threading
+    import webbrowser
+
+    import uvicorn
+
+    from app.api.main import create_app
+
+    s = get_settings()
+    if not (Path(s.frontend_dist) / "index.html").is_file():
+        console.print(f"[red]The web app is not built yet.[/red] Run `npm install && npm run build` in the frontend folder (expected {s.frontend_dist}).")
+        raise typer.Exit(1)
+    url = f"http://127.0.0.1:{port}/"
+    if not no_browser:
+        threading.Timer(1.5, lambda: webbrowser.open(url)).start()
+    console.print(f"AI Video Creator: [bold]{url}[/bold]  (Ctrl+C to stop)")
+    server = uvicorn.Server(uvicorn.Config(create_app(s), host="127.0.0.1", port=port, log_level=os.environ.get("AVC_LOG_LEVEL", "warning")))
+    parent = int(os.environ.get("AVC_PARENT_PID", "0") or 0)
+    if parent:  # started by the desktop app: stop when it is gone, even if it was killed instead of closed
+        from app.procutil import pid_alive
+
+        def watch() -> None:
+            import time
+
+            while not server.should_exit:
+                time.sleep(2)
+                if not pid_alive(parent):
+                    server.should_exit = True
+
+        threading.Thread(target=watch, daemon=True).start()
+    server.run()
+
+
+@app.command("fetch-ffmpeg")
+def fetch_ffmpeg() -> None:
+    """Download a static ffmpeg + ffprobe into tools/bin (Windows and Linux; on macOS use `brew install ffmpeg`)."""
+    from app.media.fetch_ffmpeg import FetchError, fetch
+
+    try:
+        files = fetch(progress=lambda m: console.print(f"[dim]{m}[/dim]"))
+    except FetchError as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1) from None
+    for f in files:
+        console.print(f"[green]Saved[/green] {f}")
+    console.print("[dim]Builds by BtbN (github.com/BtbN/FFmpeg-Builds), GPL licence: fine for personal use; read the licence before distributing a product that ships it.[/dim]")
 
 
 @app.command("fetch-models")

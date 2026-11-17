@@ -8,6 +8,7 @@ import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 
+from app import fsutil
 from app.api.store import ProjectStore
 from app.config import Settings
 from app.media import ffmpeg
@@ -106,7 +107,8 @@ class JobRunner:
             opts = info.options
             settings = self.settings.model_copy(update={"audio_cleaner": "ffmpeg" if opts.get("clean", True) else "noop"})
             progress = lambda stage, frac, msg: store.update(pid, stage=stage, progress=round(frac, 3), message=msg)  # noqa: E731
-            out = d / ("output.mp4" if export else "preview.mp4")
+            final_out = d / ("output.mp4" if export else "preview.mp4")
+            out = final_out.with_name(final_out.stem + ".part.mp4")  # written aside and swapped in at the end: on Windows a file a browser is still playing cannot be overwritten
             if opts.get("speak") and not (d / info.audio_file).is_file():  # a typed script: speak it first
                 progress("speak", 0.02, "Speaking the script")
                 self.tts.synthesize((d / "script.txt").read_text("utf-8"), opts.get("language") or "en", d / info.audio_file)
@@ -126,6 +128,7 @@ class JobRunner:
                                 captions=opts.get("captions", True), normalize=opts.get("normalize", True),
                                 lufs=opts.get("lufs") if opts.get("lufs") is not None else settings.target_lufs, progress=progress,
                                 preset=preset, profile=profile)
+                fsutil.replace(out, final_out, tries=60, delay=0.25)
                 self._finish_export(pid, export, export_aspect, preset, encoder, tl.duration / tl.fps, started)
                 if not export:
                     store.update(pid, preview_rev=tl.rev)
@@ -136,7 +139,7 @@ class JobRunner:
             script_file = d / "script.txt"
             style = CaptionStyle.model_validate(opts["style"]) if opts.get("style") else None
             pipe.run(
-                d / info.audio_file, d / ("output.mp4" if export else "preview.mp4"), opts.get("language") or None,
+                d / info.audio_file, out, opts.get("language") or None,
                 export_aspect or info.aspect,
                 captions=opts.get("captions", True), style=style,
                 remove_silence=opts.get("remove_silence", False), min_gap=opts.get("min_gap"),
@@ -144,12 +147,15 @@ class JobRunner:
                 script=script_file.read_text("utf-8") if script_file.exists() else None,
                 quality="final" if export else "preview", preset=preset, profile=profile,
             )
+            fsutil.replace(out, final_out, tries=60, delay=0.25)
             rendered = convert.load(d)  # the pipeline built (or kept) it just now
             self._finish_export(pid, export, export_aspect, preset, encoder, rendered.duration / rendered.fps if rendered else 0.0, started)
             if not export and rendered is not None:
                 store.update(pid, preview_rev=rendered.rev)
         except Exception as e:  # report to the user, keep the worker alive for the next job
             log.exception("project %s failed", pid)
+            for part in (d / "preview.part.mp4", d / "output.part.mp4"):
+                part.unlink(missing_ok=True)
             msg = redact(str(e) if isinstance(e, RenderUnsupported) else f"{type(e).__name__}: {e}", self.settings)[:500]
             if (export or isinstance(e, RenderUnsupported)) and (d / "preview.mp4").is_file():  # must not break the project
                 store.update(pid, status="done", stage="done", progress=1.0, message="", video_ready=True, export_ready=False,

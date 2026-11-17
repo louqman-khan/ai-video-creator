@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "The shell itself needs no special permissions: the editor is an ordinary web page served by the local server",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}

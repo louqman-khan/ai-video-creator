@@ -1,0 +1,15 @@
+[package]
+name = "ai-video-creator-desktop"
+version = "0.1.0"
+description = "Desktop shell for AI Video Creator: starts the local server and shows the editor in a native window"
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+
+[profile.release]
+strip = true
+opt-level = "s"

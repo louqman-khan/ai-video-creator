@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from app import fsutil
+
 import io
 import random
 import subprocess
@@ -169,5 +171,5 @@ class SimpleAvatars:
             proc.kill()
             part.unlink(missing_ok=True)
             raise
-        part.replace(out)
+        fsutil.replace(part, out)
         return out

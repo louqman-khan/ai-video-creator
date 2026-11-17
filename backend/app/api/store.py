@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from app import fsutil
+
 import json
 import os
 import re
@@ -76,7 +78,7 @@ class ProjectStore:
         target = self.path(info.id) / "project.json"
         tmp = target.with_suffix(".tmp")
         tmp.write_text(info.model_dump_json(indent=2), "utf-8")
-        os.replace(tmp, target)  # atomic: a reader never sees half a file
+        fsutil.replace(tmp, target)  # atomic: a reader never sees half a file
 
     def get(self, project_id: str) -> ProjectInfo:
         f = self.path(project_id) / "project.json"

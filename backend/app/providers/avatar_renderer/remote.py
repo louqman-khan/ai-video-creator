@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from app import fsutil
+
 from collections.abc import Callable
 from pathlib import Path
 
@@ -53,5 +55,5 @@ class RemoteAvatars:
         out.parent.mkdir(parents=True, exist_ok=True)
         part = out.with_suffix(".part.mp4")
         part.write_bytes(r.content)
-        part.replace(out)
+        fsutil.replace(part, out)
         return out

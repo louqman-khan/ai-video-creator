@@ -101,7 +101,7 @@ def probe(path: Path, family: Kind | None = None, timeout: float = 30.0) -> Medi
     try:
         p = subprocess.run(
             ["ffprobe", "-v", "error", "-print_format", "json", "-show_streams", "-show_format", str(path)],
-            capture_output=True, text=True, timeout=timeout,
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout,
         )
     except subprocess.TimeoutExpired:
         raise MediaRejected("Reading this file took too long.") from None

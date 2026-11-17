@@ -1,0 +1,20 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "AI Video Creator",
+  "version": "0.1.0",
+  "identifier": "app.aivideocreator.desktop",
+  "build": { "frontendDist": "../ui" },
+  "app": {
+    "windows": [
+      { "label": "main", "title": "AI Video Creator", "width": 1500, "height": 960, "minWidth": 900, "minHeight": 600, "url": "loading.html" }
+    ],
+    "security": { "csp": null }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["app", "nsis", "msi", "deb"],
+    "category": "Video",
+    "shortDescription": "Turn narration into a finished video",
+    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"]
+  }
+}

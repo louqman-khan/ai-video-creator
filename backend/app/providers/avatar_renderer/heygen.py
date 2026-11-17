@@ -6,6 +6,8 @@ names if HeyGen changed them."""
 
 from __future__ import annotations
 
+from app import fsutil
+
 import subprocess
 import time
 from collections.abc import Callable
@@ -114,5 +116,5 @@ class HeygenAvatars:
         out.parent.mkdir(parents=True, exist_ok=True)
         part = out.with_suffix(".part.mp4")
         part.write_bytes(v.content)
-        part.replace(out)
+        fsutil.replace(part, out)
         return out

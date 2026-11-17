@@ -7,6 +7,8 @@ name is only kept as a (sanitised) title."""
 
 from __future__ import annotations
 
+from app import fsutil
+
 import json
 import logging
 import re
@@ -259,7 +261,7 @@ def build_router(store: ProjectStore, settings: Settings, worker: MediaWorker) -
             except MediaRejected as e:
                 raise HTTPException(400, str(e)) from None
             final = updir / f"{token}.{ext}"  # server-chosen name and an extension from the real content
-            part.replace(final)
+            fsutil.replace(part, final)
             with store.lock:
                 tl = timeline_of(pid, info)
                 fps = tl.fps

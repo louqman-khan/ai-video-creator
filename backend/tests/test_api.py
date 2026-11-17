@@ -56,7 +56,7 @@ def env(tmp_path):
         return Providers(FakeTranscriber(), FakePlanner(), CompositeSearch([LocalFolderSearch(media)]),
                          HeuristicRanker(), NoopCleaner())
 
-    settings = Settings(_env_file=None, projects_dir=str(tmp_path / "projects"), work_dir=str(tmp_path / "work"),
+    settings = Settings(_env_file=None, frontend_dist=str(tmp_path / "no-web-app"), projects_dir=str(tmp_path / "projects"), work_dir=str(tmp_path / "work"),
                         pixabay_api_key=SECRET, fonts_dir=str(tmp_path / "nofonts"))
     return settings, factory, tone, gate
 
@@ -1147,7 +1147,7 @@ def test_export_presets_sizes_encoders_and_estimates(env, monkeypatch):
         assert (e["width"], e["height"]) == (3840, 2160) and e["seconds"] >= e720["seconds"] >= 1 and eh["seconds"] <= e["seconds"] and not e["learned"]
         assert c.get(f"/api/projects/{pid}/export/estimate", params={"preset": "8k"}).status_code == 422
         assert c.post(f"/api/projects/{pid}/export", json={"preset": "8k"}).status_code == 422
-        monkeypatch.setattr(ff, "has_encoder", lambda name: False)                      # no hardware encoder here
+        monkeypatch.setattr(ff, "hardware_encoder", lambda: None)                         # no hardware encoder here
         assert c.post(f"/api/projects/{pid}/export", json={"encoder": "hardware"}).status_code == 422
         monkeypatch.undo()
         r = c.post(f"/api/projects/{pid}/export", json={"preset": "720p"})
@@ -1295,3 +1295,22 @@ def test_a_focus_suggestion_is_offered_for_pictures_and_changes_nothing(env):
         assert next(x for x in c.get(f"/api/projects/{pid}/timeline").json()["clips"] if x["id"] == clip["id"])["focus"] == [0.2, 0.6]
         clip["focus"] = [2, 0.5]
         assert put_tl(c, pid, tl | {"rev": c.get(f"/api/projects/{pid}/timeline").json()["rev"]}).status_code == 422
+
+
+def test_the_built_web_app_is_served_by_the_same_process_without_leaking_files(env, tmp_path):
+    dist = tmp_path / "dist"
+    (dist / "assets").mkdir(parents=True)
+    (dist / "index.html").write_text("<html>APP</html>")
+    (dist / "assets" / "app-abc.js").write_text("console.log(1)")
+    (tmp_path / "secret.txt").write_text("secret")
+    with client(env, frontend_dist=str(dist)) as c:
+        r = c.get("/")
+        assert r.status_code == 200 and "APP" in r.text and r.headers["cache-control"] == "no-cache"
+        assert "APP" in c.get("/projects/0123456789abcdef0123456789abcdef").text                      # deep links open the app
+        js = c.get("/assets/app-abc.js")
+        assert js.status_code == 200 and "immutable" in js.headers["cache-control"]
+        assert "secret" not in c.get("/../secret.txt").text and "secret" not in c.get("/%2e%2e/secret.txt").text and "secret" not in c.get("/assets/../../secret.txt").text
+        assert c.get("/api/health").json()["ok"] is True                                              # the API is untouched
+        assert c.get("/api/nope").status_code == 404 and c.get("/api/nope").headers["content-type"].startswith("application/json")
+    with client(env, frontend_dist=str(tmp_path / "missing")) as c:
+        assert c.get("/").status_code == 404                                                          # no built app: just the API, as before
