@@ -965,8 +965,90 @@ def test_render_the_saved_timeline_on_request(env):
         assert sum(frame_rgb(d / "preview.mp4", 0.3)) > 60                                 # saving alone renders nothing
         r = c.post(f"/api/projects/{pid}/timeline/render")
         assert r.status_code == 202 and r.json()["status"] in ("queued", "running")
-        assert c.post(f"/api/projects/{pid}/timeline/render").status_code == 409           # already rendering
+        assert c.post(f"/api/projects/{pid}/timeline/render").status_code == 202           # already rendering: merged into the next run
         done = wait_done(c, pid)
         assert done["status"] == "done" and done["error"] is None
         assert sum(frame_rgb(d / "preview.mp4", 0.3)) < 60                                 # the saved edit is now in the preview
         assert c.post(f"/api/projects/{'0' * 32}/timeline/render").status_code == 404
+
+
+def test_editing_continues_while_a_render_runs_and_renders_are_merged(env, monkeypatch):
+    import threading as th
+
+    from app.api import jobs as jobs_mod
+
+    settings, _, tone, _ = env
+    with client(env) as c:
+        pid = finished_project(c, tone)
+        tl = c.get(f"/api/projects/{pid}/timeline").json()
+        assert tl["rev"] == 1
+        # an unedited timeline is rebuilt by the render itself: nothing may touch it while one runs
+        tl["clips"][0]["volume"] = 0.9
+        assert put_tl(c, pid, tl).status_code == 200                                     # now it is edited
+        real = jobs_mod.render_timeline
+        started, release, runs = th.Event(), th.Event(), []
+
+        def slow(*a, **k):
+            runs.append(a[0].rev)
+            started.set()
+            release.wait(30)
+            return real(*a, **k)
+
+        monkeypatch.setattr(jobs_mod, "render_timeline", slow)
+        assert c.post(f"/api/projects/{pid}/timeline/render").status_code == 202
+        assert started.wait(20)
+        info = c.get(f"/api/projects/{pid}").json()
+        assert info["status"] == "running" and info["preview_rev"] == 2 - 1                # still the earlier preview (rev 1)
+        # the user keeps editing and saving while the preview renders ...
+        tl = c.get(f"/api/projects/{pid}/timeline").json()
+        assert tl["rev"] == 2
+        tl["clips"][0]["volume"] = 0.8
+        assert put_tl(c, pid, tl).status_code == 200
+        tl["rev"] = 3
+        tl["clips"][0]["volume"] = 0.7
+        assert put_tl(c, pid, tl).status_code == 200
+        # ... and asks for a new preview several times: those requests are merged into ONE waiting render
+        for _ in range(4):
+            assert c.post(f"/api/projects/{pid}/timeline/render").status_code == 202
+        release.set()
+        for _ in range(200):
+            p = c.get(f"/api/projects/{pid}").json()
+            if p["status"] == "done" and p["preview_rev"] == 4 and len(runs) == 2:
+                break
+            time.sleep(0.2)
+        assert runs == [2, 4]                                                              # the first saw rev 2, the merged one rev 4
+        assert p["preview_rev"] == 4 and p["status"] == "done" and p["error"] is None
+
+
+def test_a_never_edited_timeline_is_not_touchable_during_a_render(env, monkeypatch):
+    import threading as th
+
+    from app.api import jobs as jobs_mod
+
+    settings, _, tone, gate = env
+    gate.clear()
+    with client(env) as c:
+        p = upload(c, tone).json()
+        assert c.get(f"/api/projects/{p['id']}/timeline").status_code == 409              # creating: not ready at all
+        gate.set()
+        wait_done(c, p["id"])
+        info = c.get(f"/api/projects/{p['id']}").json()
+        assert info["preview_rev"] == 1                                                    # the first render recorded its revision
+        real = jobs_mod.render_timeline
+        started, release = th.Event(), th.Event()
+        # an unedited project re-renders through the pipeline: block that path instead
+        from app.pipeline import runner as runner_mod
+        real_pipe = runner_mod.render_timeline
+
+        def slow(*a, **k):
+            started.set()
+            release.wait(30)
+            return real_pipe(*a, **k)
+
+        monkeypatch.setattr(runner_mod, "render_timeline", slow)
+        assert c.put(f"/api/projects/{p['id']}/captions", json={"style": {"bold": True}}).status_code == 202
+        assert started.wait(20)
+        assert c.get(f"/api/projects/{p['id']}/timeline").status_code == 409              # being rebuilt by the render: hands off
+        assert c.post(f"/api/projects/{p['id']}/timeline/render").status_code == 409
+        release.set()
+        wait_done(c, p["id"])

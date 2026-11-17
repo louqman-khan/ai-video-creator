@@ -7,7 +7,8 @@ import { useTimelineData } from "./hooks";
 import { Timeline } from "./Timeline";
 
 const clip = (over: Partial<TimelineClip> & Pick<TimelineClip, "id" | "track" | "kind" | "start" | "duration">): TimelineClip => ({
-  asset: null, in_point: 0, loop: false, volume: 1, fade_in: 0, fade_out: 0, text: null, words: [], meta: {}, ...over,
+  asset: null, in_point: 0, loop: false, volume: 1, fade_in: 0, fade_out: 0, transform: { x: 0, y: 0, scale: 1, rotation: 0, opacity: 1, crop: [0, 0, 0, 0] },
+  effects: [], transition_in: null, text: null, words: [], meta: {}, ...over,
 });
 
 const timeline = (over: Partial<TimelineView> = {}): TimelineView => ({

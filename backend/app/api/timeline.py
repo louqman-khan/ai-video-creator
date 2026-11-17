@@ -83,8 +83,12 @@ def build_router(store: ProjectStore, settings: Settings, on_built: Callable[[st
         except ProjectNotFound:
             raise HTTPException(404, "Project not found") from None
 
-    def idle(info: ProjectInfo) -> None:
+    def idle(info: ProjectInfo, working: bool = False) -> None:
+        """`working`: reading/saving is allowed while a preview render runs, but only for an already edited
+        timeline: a render only reads it, whereas a never-edited one is rebuilt (written) by the render itself."""
         if info.status in ("queued", "running"):
+            if working and info.video_ready and convert.has_edits(store.path(info.id)):
+                return
             raise HTTPException(409, "This project is still processing")
 
     def current(pid: str, info: ProjectInfo, create: bool) -> Timeline:
@@ -93,14 +97,14 @@ def build_router(store: ProjectStore, settings: Settings, on_built: Callable[[st
     @router.get("", response_model=TimelineView)
     def get_timeline(pid: str) -> TimelineView:
         info = project(pid)
-        idle(info)
+        idle(info, working=True)
         with store.lock:
             return view_of(current(pid, info, create=True))
 
     @router.put("", response_model=TimelineView)
     def put_timeline(pid: str, body: TimelineUpdate) -> TimelineView:
         info = project(pid)
-        idle(info)
+        idle(info, working=True)
         with store.lock:  # read-modify-write: two tabs cannot interleave
             tl = current(pid, info, create=False)
             if body.base_rev != tl.rev:
@@ -130,13 +134,16 @@ def build_router(store: ProjectStore, settings: Settings, on_built: Callable[[st
     def render_preview(pid: str) -> ProjectInfo:
         """Render the fast preview of the timeline as it is saved now (the editor calls this after its autosave)."""
         info = project(pid)
-        idle(info)
         if not info.video_ready:
             raise HTTPException(409, "The video is not ready yet")
         if convert.load(store.path(pid)) is None:
             raise HTTPException(409, "Open the timeline first")
         if jobs is None:
             raise HTTPException(501, "Rendering is not available")
+        if info.status in ("queued", "running"):
+            idle(info, working=True)  # only an edited timeline may be re-rendered while a render runs
+            jobs.request_render(pid)  # merged with any render already waiting; it reads the newest saved timeline
+            return info
         queued = store.update(pid, status="queued", stage="render", progress=0.0, message="Rendering the preview", error=None)
         jobs.submit(pid)
         return queued

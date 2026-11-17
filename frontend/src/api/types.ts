@@ -95,6 +95,13 @@ export interface TimelineTrack {
   locked: boolean;
 }
 
+export interface TimelineTransform {
+  x: number; y: number; scale: number; rotation: number; opacity: number;
+  crop: [number, number, number, number];
+}
+export interface TimelineEffect { type: string; value: number }
+export interface TimelineTransition { type: string; duration: number }
+
 export interface TimelineClip {
   id: string;
   track: string;
@@ -107,6 +114,10 @@ export interface TimelineClip {
   volume: number;
   fade_in: number;
   fade_out: number;
+  // carried unchanged so that saving the document never loses what this version of the editor cannot change yet
+  transform: TimelineTransform;
+  effects: TimelineEffect[];
+  transition_in: TimelineTransition | null;
   text: string | null;
   words: { text: string; start: number; end: number }[];
   meta: Record<string, unknown>;
