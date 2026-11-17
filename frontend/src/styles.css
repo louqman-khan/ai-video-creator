@@ -85,3 +85,42 @@ input[type="color"] { width: 100%; height: 38px; padding: 2px; border: 1px solid
 .credit p { margin: 0 0 4px; }
 .credit-badge { margin-left: 8px; }
 .notice { background: color-mix(in srgb, var(--warn) 12%, transparent); border: 1px solid color-mix(in srgb, var(--warn) 45%, transparent); padding: 10px 12px; border-radius: 8px; }
+/* ---- timeline (task 4.4) ---- */
+.tl { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px; margin-bottom: 16px; }
+.tl h2 { margin-top: 0; }
+.tl-toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+.tl-spacer { flex: 1; }
+.tl-timecode { font-variant-numeric: tabular-nums; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; min-width: 11ch; }
+.tl-zoom { width: 140px; }
+.tl-chip { font-size: .8rem; padding: 2px 10px; border-radius: 999px; background: color-mix(in srgb, var(--warn) 18%, transparent); color: var(--warn); }
+.tl-body { display: flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--bg); }
+.tl-labels { flex: none; border-right: 1px solid var(--line); background: var(--panel); z-index: 2; }
+.tl-label { display: flex; align-items: center; gap: 6px; padding: 0 8px; border-top: 1px solid var(--line); font-size: .8rem; overflow: hidden; }
+.tl-kind { opacity: .6; width: 1.2em; text-align: center; }
+.tl-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tl-tag { font-size: .65rem; padding: 0 5px; border-radius: 4px; background: var(--line); color: var(--muted); }
+.tl-muted { opacity: .55; }
+.tl-scroll { flex: 1; overflow-x: auto; overflow-y: hidden; position: relative; outline: none; }
+.tl-scroll:focus-visible { box-shadow: inset 0 0 0 2px var(--accent); }
+.tl-canvas { position: relative; }
+.tl-ruler { position: absolute; left: 0; right: 0; top: 0; background: var(--panel); border-bottom: 1px solid var(--line); cursor: ew-resize; touch-action: none; }
+.tl-tick { position: absolute; bottom: 0; width: 1px; height: 6px; background: var(--line); }
+.tl-major { height: 12px; background: var(--muted); }
+.tl-ticklabel { position: absolute; bottom: 14px; left: 3px; font-size: .68rem; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; user-select: none; }
+.tl-track { position: absolute; left: 0; right: 0; border-top: 1px solid var(--line); cursor: ew-resize; touch-action: none; }
+.tl-clip { position: absolute; top: 2px; bottom: 2px; border-radius: 5px; overflow: hidden; cursor: pointer; border: 1px solid rgba(0,0,0,.35); box-sizing: border-box; color: #fff; }
+.tl-clip-video, .tl-clip-image { background: #3b5ea8; }
+.tl-clip-audio { background: #2f7d5b; }
+.tl-clip-caption { background: #8a5a2b; border-radius: 4px; }
+.tl-selected { outline: 2px solid var(--accent); outline-offset: 1px; z-index: 1; }
+.tl-cliplabel { position: absolute; left: 4px; top: 2px; right: 4px; font-size: .72rem; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-shadow: 0 1px 2px rgba(0,0,0,.85); pointer-events: none; }
+.tl-clip-caption .tl-cliplabel { top: 50%; transform: translateY(-50%); }
+.tl-film, .tl-image { position: absolute; inset: 0; }
+.tl-image { background-repeat: repeat-x; background-position: left center; }
+.tl-tile { position: absolute; top: 0; background-repeat: no-repeat; }
+.tl-wave { position: absolute; top: 0; pointer-events: none; }
+.tl-loop { position: absolute; right: 3px; bottom: 2px; background: rgba(0,0,0,.5); color: #fff; }
+.tl-playhead { position: absolute; top: 0; width: 0; border-left: 2px solid #e5484d; pointer-events: none; z-index: 3; }
+.tl-playhead-head { position: absolute; top: 0; left: -7px; width: 12px; height: 12px; background: #e5484d; clip-path: polygon(0 0, 100% 0, 50% 100%); }
+.tl-info { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 6px 16px; margin: 10px 0 0; font-size: .85rem; }
+.tl-info dt { color: var(--muted); font-size: .72rem; } .tl-info dd { margin: 0; overflow-wrap: anywhere; }

@@ -23,6 +23,8 @@ beforeEach(() => {
   vi.restoreAllMocks();
   useProjects.setState({ projects: [], loading: false, error: null });
   vi.spyOn(api, "getScenes").mockResolvedValue([]);
+  vi.spyOn(api, "getTimeline").mockResolvedValue({ rev: 1, fps: 30, aspect: "16:9", duration: 30, tracks: [], clips: [], assets: {}, caption_style: null });
+  vi.spyOn(api, "getMedia").mockResolvedValue([]);
   vi.spyOn(api, "getCaptions").mockResolvedValue({ cues: [], edited: false, language: "en", style: {} });
 });
 

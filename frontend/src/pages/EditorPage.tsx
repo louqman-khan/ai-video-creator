@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../api/client";
 import { isActive } from "../api/types";
@@ -7,6 +8,7 @@ import { CreditsPanel } from "../components/CreditsPanel";
 import { ExportPanel } from "../components/ExportPanel";
 import { SceneList } from "../components/SceneList";
 import { StatusBadge } from "../components/StatusBadge";
+import { Timeline } from "../timeline/Timeline";
 import { useProjects } from "../store/projects";
 import { useProject } from "../hooks";
 
@@ -14,6 +16,7 @@ export function EditorPage() {
   const { id } = useParams();
   const { project, error, refresh } = useProject(id);
   const upsert = useProjects((s) => s.upsert);
+  const [video, setVideo] = useState<HTMLVideoElement | null>(null);
 
   if (!project) {
     return error ? (
@@ -49,10 +52,13 @@ export function EditorPage() {
       {project.video_ready && (
         <div className="panel">
           {/* key: reload the player once a re-render has finished (not on every progress update) */}
-          <video key={playerVersion} className="player" controls preload="metadata"
+          <video key={playerVersion} ref={setVideo} className="player" controls preload="metadata"
             src={api.videoUrl(project.id, playerVersion)} />
           <p className="muted small">Preview (low resolution). Edits re-render it in a few seconds.</p>
         </div>
+      )}
+      {project.status === "done" && project.video_ready && (
+        <Timeline projectId={project.id} version={project.updated_at} video={video} />
       )}
       {project.video_ready && (
         <ExportPanel project={project} onStarted={(p) => { upsert(p); refresh(); }} />

@@ -85,3 +85,81 @@ export interface Attribution {
   asset: Asset;
   scenes: number[];
 }
+
+// ---- timeline document (mirrors backend/app/timeline/models.py; the browser never sees paths or URLs)
+export interface TimelineTrack {
+  id: string;
+  kind: "video" | "audio" | "caption";
+  name: string;
+  muted: boolean;
+  locked: boolean;
+}
+
+export interface TimelineClip {
+  id: string;
+  track: string;
+  kind: "video" | "image" | "audio" | "caption";
+  asset: string | null;
+  start: number; // frames
+  duration: number;
+  in_point: number;
+  loop: boolean;
+  volume: number;
+  fade_in: number;
+  fade_out: number;
+  text: string | null;
+  words: { text: string; start: number; end: number }[];
+  meta: Record<string, unknown>;
+}
+
+export interface TimelineAsset {
+  id: string;
+  kind: "video" | "image" | "audio";
+  duration: number | null; // frames
+  width: number;
+  height: number;
+  source: string;
+  license: string;
+  author: string;
+  title: string;
+  attribution: string;
+  attribution_required: boolean;
+}
+
+export interface TimelineView {
+  rev: number;
+  fps: number;
+  aspect: string;
+  duration: number; // frames
+  tracks: TimelineTrack[];
+  clips: TimelineClip[];
+  assets: Record<string, TimelineAsset>;
+  caption_style: Record<string, unknown> | null;
+}
+
+export interface MediaView {
+  asset_id: string;
+  kind: string;
+  title: string;
+  status: "pending" | "processing" | "ready" | "failed";
+  stage: string;
+  error: string | null;
+  uploaded: boolean;
+  duration: number | null;
+  width: number;
+  height: number;
+  derived: string[]; // proxy, audio, peaks, film
+}
+
+export interface Peaks {
+  version: number;
+  duration: number;
+  rates: Record<string, number[]>; // peaks per second -> values 0..255
+}
+
+export interface FilmMeta {
+  interval: number;
+  count: number;
+  thumb_width: number;
+  thumb_height: number;
+}

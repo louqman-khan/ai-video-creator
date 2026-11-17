@@ -1,4 +1,4 @@
-import type { Asset, Attribution, CaptionsView, CaptionStyle, Project, Scene } from "./types";
+import type { Asset, Attribution, CaptionsView, CaptionStyle, FilmMeta, MediaView, Peaks, Project, Scene, TimelineView } from "./types";
 
 export class ApiError extends Error {
   constructor(
@@ -92,6 +92,14 @@ export const api = {
     if (!res.ok) throw new ApiError(await errorMessage(res), res.status);
     return res.text();
   },
+  getTimeline: (id: string) => request<TimelineView>(`/api/projects/${encodeURIComponent(id)}/timeline`),
+  getMedia: (id: string) => request<MediaView[]>(`/api/projects/${encodeURIComponent(id)}/media`),
+  getPeaks: (id: string, asset: string) =>
+    request<Peaks>(`/api/projects/${encodeURIComponent(id)}/media/peaks?asset=${encodeURIComponent(asset)}`),
+  getFilmMeta: (id: string, asset: string) =>
+    request<FilmMeta>(`/api/projects/${encodeURIComponent(id)}/media/film.json?asset=${encodeURIComponent(asset)}`),
+  filmUrl: (id: string, asset: string) => `/api/projects/${encodeURIComponent(id)}/media/film?asset=${encodeURIComponent(asset)}`,
+  mediaProxyUrl: (id: string, asset: string) => `/api/projects/${encodeURIComponent(id)}/media/proxy?asset=${encodeURIComponent(asset)}`,
   getScenes: (id: string) => request<Scene[]>(`/api/projects/${encodeURIComponent(id)}/scenes`),
   getCandidates: (id: string, sceneId: number, query: string) =>
     request<Asset[]>(
