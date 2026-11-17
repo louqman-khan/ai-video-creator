@@ -4,7 +4,7 @@ import { api, DEFAULT_LIMITS, uploadProject, type Limits } from "../api/client";
 import { ProgressBar } from "../components/ProgressBar";
 import { useProjects } from "../store/projects";
 import {
-  buildForm, DEFAULT_VALUES, formatSize, validateAudioFile, validateScript, type NewProjectValues,
+  buildForm, DEFAULT_VALUES, formatSize, validateAudioFile, validateScript, validateSpeak, type NewProjectValues,
 } from "../newProject";
 
 export function NewProjectPage() {
@@ -13,6 +13,8 @@ export function NewProjectPage() {
   const [limits, setLimits] = useState<Limits>(DEFAULT_LIMITS);
   const [values, setValues] = useState<NewProjectValues>(DEFAULT_VALUES);
   const [file, setFile] = useState<File | null>(null);
+  const [mode, setMode] = useState<"record" | "speak">("record");   // a recording, or a typed script spoken by a synthetic voice
+  const [speech, setSpeech] = useState<string[]>([]);
   const [fileError, setFileError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -21,7 +23,7 @@ export function NewProjectPage() {
 
   useEffect(() => {
     let live = true;
-    api.health().then((h) => live && setLimits(h.limits)).catch(() => undefined); // keep defaults
+    api.health().then((h) => { if (live) { setLimits(h.limits); setSpeech(h.speech ?? []); } }).catch(() => undefined); // keep defaults
     return () => {
       live = false;
       abortRef.current?.(); // leaving the page cancels a running upload
@@ -40,14 +42,16 @@ export function NewProjectPage() {
   };
 
   const scriptError = validateScript(values.script, limits);
+  const speakError = mode === "speak" ? validateSpeak(values, speech) : null;
+  const ready = mode === "speak" ? !speakError : !!file;
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    if (!file || scriptError || uploading) return;
+    if (!ready || scriptError || uploading) return;
     setError(null);
     setUploading(true);
     setProgress(0);
-    const up = uploadProject(buildForm(file, values), setProgress);
+    const up = uploadProject(buildForm(mode === "speak" ? null : file, values), setProgress);
     abortRef.current = up.abort;
     up.promise
       .then((project) => {
@@ -69,7 +73,18 @@ export function NewProjectPage() {
       </div>
 
       <form className="form" onSubmit={submit} noValidate>
-        <div className="panel">
+        <div className="panel" role="radiogroup" aria-label="Where does the narration come from?">
+          <label className="check">
+            <input type="radio" name="source" checked={mode === "record"} disabled={uploading} onChange={() => setMode("record")} />
+            I have a recording
+          </label>
+          <label className="check">
+            <input type="radio" name="source" checked={mode === "speak"} disabled={uploading} onChange={() => setMode("speak")} />
+            Speak my script with a computer voice
+          </label>
+        </div>
+
+        {mode === "record" && <div className="panel">
           <label className="field">
             <span className="label">Narration audio</span>
             <input
@@ -93,7 +108,7 @@ export function NewProjectPage() {
               {fileError}
             </p>
           )}
-        </div>
+        </div>}
 
         <div className="panel">
           <label className="field">
@@ -106,7 +121,8 @@ export function NewProjectPage() {
               <span className="label">Language</span>
               <select value={values.language} disabled={uploading}
                 onChange={(e) => set("language", e.target.value as NewProjectValues["language"])}>
-                <option value="">Detect automatically</option>
+                {mode === "record" && <option value="">Detect automatically</option>}
+                {mode === "speak" && <option value="">Choose…</option>}
                 <option value="en">English</option>
                 <option value="ur">Urdu (اردو)</option>
               </select>
@@ -124,14 +140,21 @@ export function NewProjectPage() {
 
         <div className="panel">
           <label className="field">
-            <span className="label">Script (optional)</span>
+            <span className="label">{mode === "speak" ? "Script to speak" : "Script (optional)"}</span>
             <textarea rows={6} dir="auto" value={values.script} disabled={uploading}
               onChange={(e) => set("script", e.target.value)}
               placeholder="Paste the exact text of your narration. Captions will use your spelling and punctuation; the timing still comes from the audio." />
           </label>
           <p className="muted small">
-            A script is matched to the audio you upload. Creating a voice-over from text alone arrives in a later step.
+            {mode === "speak"
+              ? `The voice reads this text and the video is built from it. Voices installed: ${speech.length ? speech.map((l) => (l === "ur" ? "Urdu" : "English")).join(", ") : "none"}. Choose the language below.`
+              : "A script is matched to the audio you upload, so captions use your exact words."}
           </p>
+          {speakError && (
+            <p className="alert small" role="alert">
+              {speakError}
+            </p>
+          )}
           {scriptError && (
             <p className="alert small" role="alert">
               {scriptError}
@@ -170,7 +193,7 @@ export function NewProjectPage() {
         )}
 
         <div className="card-actions">
-          <button className="btn btn-primary" type="submit" disabled={!file || !!scriptError || uploading}>
+          <button className="btn btn-primary" type="submit" disabled={!ready || !!scriptError || uploading}>
             {uploading ? "Uploading…" : "Create video"}
           </button>
           {uploading ? (

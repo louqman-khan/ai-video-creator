@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     whisper_model: str = "small"
     media_ranker: str = "heuristic"
     audio_cleaner: str = "ffmpeg"  # ffmpeg | noop (--no-clean)
-    tts: str = "none"
+    tts: str = "auto"  # auto | mms | piper | none  (docs/tts.md)
     avatar_renderer: str = "none"
 
     # silence removal (avc make --remove-silence)
@@ -67,6 +67,7 @@ class Settings(BaseSettings):
     fonts_dir: str = str(ROOT / "assets" / "fonts")
     work_dir: str = str(ROOT / "work")
     models_dir: str = str(ROOT / "assets" / "models")
+    tts_dir: str = str(ROOT / "assets" / "models" / "tts")
     rnnoise_model: str = "cb.rnnn"  # file name inside models_dir
 
     @property

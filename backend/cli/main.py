@@ -175,6 +175,29 @@ def clean(
     console.print(f"\n{'Would free' if dry_run else 'Freed'} [bold]{mb(r['freed'])}[/bold] ({r['removed']} items)")
 
 
+@app.command()
+def speak(
+    out: Annotated[Path, typer.Argument(help="Where to write the narration (a .wav file)")],
+    text: Annotated[Optional[str], typer.Option("--text", help="The text to speak")] = None,
+    file: Annotated[Optional[Path], typer.Option("--file", help="Or a text file to speak")] = None,
+    lang: Annotated[str, typer.Option("--lang", help="en or ur")] = "en",
+) -> None:
+    """Speak a script with a synthetic voice (then use the result like any recording: `avc make narration.wav --script script.txt`)."""
+    from app.providers.tts import TTSUnavailable, create_tts
+
+    body = text if text is not None else (file.read_text("utf-8") if file else None)
+    if not body or not body.strip():
+        console.print("[red]Give the text with --text or --file.[/red]")
+        raise typer.Exit(1)
+    tts = create_tts(get_settings())
+    try:
+        tts.synthesize(body, lang, out)
+    except TTSUnavailable as e:
+        console.print(f"[red]{e}[/red] (voices installed now: {', '.join(tts.languages()) or 'none'})")
+        raise typer.Exit(1) from None
+    console.print(f"[green]Saved[/green] {out}")
+
+
 @app.command("fetch-models")
 def fetch_models() -> None:
     """Download the RNNoise speech-denoise model (used by the audio cleaner) into assets/models/."""

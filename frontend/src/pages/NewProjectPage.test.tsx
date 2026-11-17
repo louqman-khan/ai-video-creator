@@ -107,4 +107,28 @@ describe("NewProjectPage", () => {
     await userEvent.upload(screen.getByLabelText(/Narration audio/), audio("talk.mp3"), { applyAccept: false });
     expect(await screen.findByRole("alert")).toHaveTextContent("not a supported audio file");
   });
+
+  it("can speak a typed script: needs text, a language and an installed voice, and sends no audio file", async () => {
+    vi.spyOn(client.api, "health").mockResolvedValue({ ok: true, ffmpeg: true, speech: ["en"], limits: DEFAULT_LIMITS });
+    const up = vi.spyOn(client, "uploadProject").mockReturnValue({ promise: Promise.resolve(PROJECT), abort: vi.fn() });
+    renderPage();
+    await userEvent.click(screen.getByLabelText("Speak my script with a computer voice"));
+    expect(screen.queryByLabelText(/Narration audio/)).not.toBeInTheDocument();
+    const button = screen.getByRole("button", { name: "Create video" });
+    expect(button).toBeDisabled();
+    expect(screen.getByRole("alert")).toHaveTextContent("Type the script");
+    await userEvent.type(screen.getByLabelText("Script to speak"), "Hello there.");
+    expect(screen.getByRole("alert")).toHaveTextContent("Choose English or Urdu");
+    await userEvent.selectOptions(screen.getByLabelText("Language"), "ur");
+    expect(screen.getByRole("alert")).toHaveTextContent("No Urdu voice is installed");
+    await userEvent.selectOptions(screen.getByLabelText("Language"), "en");
+    expect(button).toBeEnabled();
+    await userEvent.click(button);
+    await waitFor(() => expect(up).toHaveBeenCalled());
+    const form = up.mock.calls[0]![0] as FormData;
+    expect(form.get("file")).toBeNull();
+    expect(form.get("script")).toBe("Hello there.");
+    expect(form.get("language")).toBe("en");
+    expect(await screen.findByText("EDITOR PAGE")).toBeInTheDocument();
+  });
 });

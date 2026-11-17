@@ -1181,3 +1181,50 @@ def test_storage_report_and_clean_up_over_the_api(env):
         out = c.post("/api/storage/clean", params={"days": 7}).json()
         assert out["freed"] >= 0 and out["dry_run"] is False
         assert c.get(f"/api/projects/{pid}").json()["video_ready"] is True                          # the project is untouched
+
+
+def test_a_typed_script_is_spoken_and_becomes_a_normal_project(env, monkeypatch):
+    import shutil
+
+    from app.providers import tts as tts_mod
+    from app.providers.tts import TTSUnavailable
+
+    settings, _, tone, _ = env
+
+    class FakeVoice:
+        def languages(self):
+            return ["en"]
+
+        def synthesize(self, text, language, out, voice=None):
+            if language != "en":
+                raise TTSUnavailable("No voice for Urdu is installed.")
+            assert "hello" in text.lower()
+            shutil.copyfile(tone, out)
+            return out
+
+    monkeypatch.setattr(tts_mod, "create_tts", lambda s: FakeVoice())
+    with client(env) as c:
+        assert c.get("/api/health").json()["speech"] == ["en"]
+        assert c.post("/api/projects", data={"language": "en"}).status_code == 422                     # neither audio nor script
+        assert c.post("/api/projects", data={"script": "Hello there.", "language": ""}).status_code == 422   # a voice needs a language
+        no_voice = c.post("/api/projects", data={"script": "سلام", "language": "ur"})
+        assert no_voice.status_code == 422 and "Urdu" in no_voice.json()["detail"]
+        r = c.post("/api/projects", data={"script": "Hello there. This is the narration.", "language": "en"})
+        assert r.status_code == 202, r.text
+        info = r.json()
+        assert info["original_filename"] == "" and info["name"].startswith("Hello there")
+        done = wait_done(c, info["id"])
+        assert done["status"] == "done" and done["video_ready"] and done["error"] is None
+        d = Path(settings.projects_dir) / info["id"]
+        assert (d / "narration.wav").is_file() and (d / "script.txt").read_text("utf-8").startswith("Hello there")
+        assert c.get(f"/api/projects/{info['id']}/timeline").status_code == 200                      # editable like any other project
+        # a voice that breaks while speaking: the project fails with the reason, it does not hang or look finished
+        class Broken(FakeVoice):
+            def synthesize(self, *a, **k):
+                raise TTSUnavailable("The voice file is damaged.")
+        monkeypatch.setattr(tts_mod, "create_tts", lambda s: Broken())
+        with client(env) as c2:
+            r2 = c2.post("/api/projects", data={"script": "Hello again.", "language": "en"})
+            assert r2.status_code == 202
+            failed = wait_done(c2, r2.json()["id"])
+            assert failed["status"] == "failed" and "damaged" in failed["error"]

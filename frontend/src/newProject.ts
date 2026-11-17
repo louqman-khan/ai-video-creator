@@ -44,9 +44,18 @@ export function validateScript(script: string, limits: Limits): string | null {
     : null;
 }
 
-export function buildForm(file: File, v: NewProjectValues): FormData {
+/** Speaking a typed script needs a script, a language, and an installed voice for it. */
+export function validateSpeak(v: NewProjectValues, speech: string[]): string | null {
+  if (!v.script.trim()) return "Type the script you want spoken.";
+  if (v.language === "") return "Choose English or Urdu: the voice needs to know which language to speak.";
+  if (!speech.includes(v.language)) return `No ${v.language === "ur" ? "Urdu" : "English"} voice is installed on this computer (see docs/tts.md).`;
+  return null;
+}
+
+/** `file` null: no recording, the script is spoken by a synthetic voice. */
+export function buildForm(file: File | null, v: NewProjectValues): FormData {
   const f = new FormData();
-  f.append("file", file);
+  if (file) f.append("file", file);
   if (v.name.trim()) f.append("name", v.name.trim());
   f.append("language", v.language);
   f.append("aspect", v.aspect);

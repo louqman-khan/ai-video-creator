@@ -64,6 +64,15 @@ def run_checks(s: Settings, network: bool = True) -> list[Check]:
     c.append(Check("PEXELS_API_KEY (optional)", "ok" if s.pexels_api_key else "ok",
                    "set" if s.pexels_api_key else "not set: Pexels is skipped"))
 
+    try:
+        from app.providers.tts import create_tts
+
+        spoken = create_tts(s).languages()
+    except Exception:  # noqa: BLE001
+        spoken = []
+    c.append(Check("speech voices (typed scripts)", "ok" if spoken else "warn",
+                   ", ".join({"ur": "Urdu", "en": "English"}.get(x, x) for x in spoken) if spoken else "none installed: see docs/tts.md"))
+
     model = Path(s.models_dir) / s.rnnoise_model
     c.append(Check("RNNoise denoise model", "ok" if model.is_file() else "warn",
                    "" if model.is_file() else "run `avc fetch-models`; until then noise removal uses afftdn"))

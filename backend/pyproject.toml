@@ -22,6 +22,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "respx>=0.21", "ruff>=0.5"]
+tts = ["piper-tts>=1.3"]  # English voice (the Urdu voice needs no extra package: onnxruntime is enough); see docs/tts.md
 
 [project.scripts]
 avc = "cli.main:app"

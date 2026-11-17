@@ -76,7 +76,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
-  health: () => request<{ ok: boolean; ffmpeg: boolean; hardware_encoder?: boolean; limits: Limits }>("/api/health"),
+  health: () => request<{ ok: boolean; ffmpeg: boolean; hardware_encoder?: boolean; speech?: string[]; limits: Limits }>("/api/health"),
   listProjects: () => request<Project[]>("/api/projects"),
   getProject: (id: string) => request<Project>(`/api/projects/${encodeURIComponent(id)}`),
   deleteProject: (id: string) => request<void>(`/api/projects/${encodeURIComponent(id)}`, { method: "DELETE" }),

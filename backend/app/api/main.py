@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import logging
+import tempfile
 import re
 import threading
 from contextlib import asynccontextmanager
@@ -32,6 +33,7 @@ from app.pipeline.caption_style import CaptionStyle
 from app.pipeline.runner import ASPECTS, Providers
 import app.maintenance as maintenance
 from app.pipeline import export_speed
+from app.providers.tts import TTSUnavailable
 from app.pipeline.sizes import PORTRAIT, render_size
 
 log = logging.getLogger("avc.api")
@@ -107,6 +109,7 @@ def create_app(settings: Settings | None = None, providers_factory: ProvidersFac
         return {
             "ok": True,
             "ffmpeg": ffmpeg.has_tools(),
+            "speech": jobs.tts.languages(),  # languages a typed script can be spoken in
             "hardware_encoder": ffmpeg.has_tools() and ffmpeg.has_encoder("h264_videotoolbox"),
             # the UI validates against the same limits the server enforces
             "limits": {
@@ -119,11 +122,11 @@ def create_app(settings: Settings | None = None, providers_factory: ProvidersFac
 
     @app.post("/api/projects", status_code=202, response_model=ProjectInfo)
     async def create_project(
-        file: UploadFile = File(..., description="Narration audio"),
+        file: UploadFile | None = File(None, description="Narration audio (leave out to have the script spoken)"),
         name: str = Form(""),
         language: str = Form("", description="en, ur, or empty for auto-detect"),
         aspect: str = Form("16:9"),
-        script: str = Form("", description="Optional known script; captions use its exact words"),
+        script: str = Form("", description="Optional known script; captions use its exact words. Without audio it is spoken by a synthetic voice"),
         remove_silence: bool = Form(False),
         min_gap: float | None = Form(None, ge=0.5, le=10),
         clean: bool = Form(True),
@@ -138,8 +141,19 @@ def create_app(settings: Settings | None = None, providers_factory: ProvidersFac
             raise HTTPException(422, "language must be 'en', 'ur' or empty (auto-detect)")
         if len(script) > MAX_SCRIPT_CHARS:
             raise HTTPException(413, "Script is too long")
-        ext = Path(file.filename or "").suffix.lower()
-        if ext not in AUDIO_EXTENSIONS:
+        speak = file is None or not (file.filename or "")
+        ext = ".wav" if speak else Path(file.filename or "").suffix.lower()
+        if speak:
+            if not script.strip():
+                raise HTTPException(422, "Upload an audio file, or type the script to have it spoken.")
+            if language not in ("en", "ur"):
+                raise HTTPException(422, "Choose English or Urdu: the voice needs to know which language to speak.")
+            if language not in jobs.tts.languages():
+                try:
+                    jobs.tts.synthesize("x", language, Path(tempfile.gettempdir()) / "avc_probe.wav")
+                except TTSUnavailable as e:
+                    raise HTTPException(422, str(e)) from None
+        elif ext not in AUDIO_EXTENSIONS:
             raise HTTPException(415, f"Unsupported file type '{ext}'. Use: {', '.join(sorted(AUDIO_EXTENSIONS))}")
         style_dict = None
         if style.strip():
@@ -149,28 +163,29 @@ def create_app(settings: Settings | None = None, providers_factory: ProvidersFac
                 raise HTTPException(422, f"Invalid caption style: {e.errors()[0]['msg']}") from None
 
         info = store.create(
-            name.strip()[:80] or _safe_name(file.filename or ""),
-            original_filename=(file.filename or "")[:200], audio_file=f"upload{ext}",
+            name.strip()[:80] or (" ".join(script.split()[:6])[:80] if speak else _safe_name(file.filename or "")),
+            original_filename="" if speak else (file.filename or "")[:200], audio_file="narration.wav" if speak else f"upload{ext}",
             language=language or None, aspect=aspect,
             options={"language": language or None, "remove_silence": remove_silence, "min_gap": min_gap,
-                     "clean": clean, "normalize": normalize, "lufs": lufs, "captions": captions,
-                     "style": style_dict},
+                     "clean": clean and not speak, "normalize": normalize, "lufs": lufs, "captions": captions,
+                     "style": style_dict, **({"speak": True} if speak else {})},
         )
         d = store.path(info.id)
         try:
-            size, limit = 0, settings.max_upload_mb * 1024 * 1024
-            with (d / info.audio_file).open("wb") as out:
-                while chunk := await file.read(CHUNK):
-                    size += len(chunk)
-                    if size > limit:
-                        raise HTTPException(413, f"File is larger than {settings.max_upload_mb} MB")
-                    out.write(chunk)
-            try:  # a real, readable audio file of acceptable length?
-                seconds = await run_in_threadpool(ffmpeg.probe_duration, d / info.audio_file)
-            except ffmpeg.FfmpegError:
-                raise HTTPException(400, "This file could not be read as audio") from None
-            if seconds > settings.max_audio_minutes * 60:
-                raise HTTPException(413, f"Audio is longer than {settings.max_audio_minutes:g} minutes")
+            if not speak:
+                size, limit = 0, settings.max_upload_mb * 1024 * 1024
+                with (d / info.audio_file).open("wb") as out:
+                    while chunk := await file.read(CHUNK):
+                        size += len(chunk)
+                        if size > limit:
+                            raise HTTPException(413, f"File is larger than {settings.max_upload_mb} MB")
+                        out.write(chunk)
+                try:  # a real, readable audio file of acceptable length?
+                    seconds = await run_in_threadpool(ffmpeg.probe_duration, d / info.audio_file)
+                except ffmpeg.FfmpegError:
+                    raise HTTPException(400, "This file could not be read as audio") from None
+                if seconds > settings.max_audio_minutes * 60:
+                    raise HTTPException(413, f"Audio is longer than {settings.max_audio_minutes:g} minutes")
             if script.strip():
                 (d / "script.txt").write_text(script, "utf-8")
         except Exception:

@@ -10,6 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from app.api.store import ProjectStore
 from app.config import Settings
+from app.media import ffmpeg
 from app.pipeline import assemble, export_speed
 from app.pipeline.caption_style import CaptionStyle
 from app.pipeline.sizes import render_size
@@ -35,6 +36,7 @@ class JobRunner:
         self._pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="avc-job")
         self._pending: set[str] = set()  # projects with a coalesced preview render already waiting
         self._lock = threading.Lock()
+        self._tts = None
 
     def submit(self, project_id: str, prepare: Callable[[], None] | None = None, *, export_aspect: str | None = None,
                export_preset: str | None = None, export_encoder: str | None = None) -> None:
@@ -42,6 +44,15 @@ class JobRunner:
         the full-quality 1080p export. `prepare` runs first inside the worker (e.g. download the
         replacement visual of a swap); if it fails the previous video is kept."""
         self._pool.submit(self._run, project_id, prepare, export_aspect, export_preset, export_encoder)
+
+    @property
+    def tts(self):
+        """The speech engine (made on first use; loading a voice takes a moment)."""
+        if self._tts is None:
+            from app.providers.tts import create_tts
+
+            self._tts = create_tts(self.settings)
+        return self._tts
 
     def _finish_export(self, pid: str, export: bool, aspect: str | None, preset: str, encoder: str, video_seconds: float, started: float) -> None:
         self.store.update(pid, status="done", stage="done", progress=1.0, message="Finished", video_ready=True, export_ready=export,
@@ -96,6 +107,12 @@ class JobRunner:
             settings = self.settings.model_copy(update={"audio_cleaner": "ffmpeg" if opts.get("clean", True) else "noop"})
             progress = lambda stage, frac, msg: store.update(pid, stage=stage, progress=round(frac, 3), message=msg)  # noqa: E731
             out = d / ("output.mp4" if export else "preview.mp4")
+            if opts.get("speak") and not (d / info.audio_file).is_file():  # a typed script: speak it first
+                progress("speak", 0.02, "Speaking the script")
+                self.tts.synthesize((d / "script.txt").read_text("utf-8"), opts.get("language") or "en", d / info.audio_file)
+                if ffmpeg.probe_duration(d / info.audio_file) > settings.max_audio_minutes * 60:
+                    (d / info.audio_file).unlink(missing_ok=True)
+                    raise ValueError(f"The spoken script is longer than {settings.max_audio_minutes:g} minutes")
             profile = None
             if export:
                 profile = assemble.export_profile(encoder, *render_size(export_aspect or info.aspect, "final", preset))
