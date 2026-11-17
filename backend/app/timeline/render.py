@@ -22,7 +22,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from app.config import Settings
-from app.media import ffmpeg, loudness
+from app.media import derive, ffmpeg, loudness
+from app.media.ingest import _HDR_TRANSFERS
 from app.pipeline import assemble
 from app.pipeline.caption_style import CaptionStyle
 from app.pipeline.captions import Cue, cues_to_ass
@@ -30,7 +31,7 @@ from app.pipeline.sizes import base_video_name, render_size
 from app.timeline.models import Clip, Timeline
 
 log = logging.getLogger("avc.render")
-RENDER_VERSION = "r4"
+RENDER_VERSION = "r5"
 BLUR_ZOOM = 1.15  # the blurred copy behind a "fit" picture is enlarged a little so its blurred edges stay out of the frame
 BLUR_SIGMA = 0.03  # blur strength of that copy, in frame widths  # bump when the pictures a segment produces change: invalidates every cached segment
 Progress = Callable[[str, float, str], None]
@@ -293,6 +294,22 @@ def _overlay(seg: Segment, c: Clip, w: int, h: int) -> str:
             f"format=auto:shortest=0")
 
 
+@lru_cache(maxsize=256)
+def _is_hdr(path: str, size: int, mtime_ns: int) -> bool:  # size/mtime only key the cache
+    """HDR (PQ or HLG) pictures must be tone-mapped to SDR like the proxies are, or they look flat and grey."""
+    p = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=color_transfer", "-of", "csv=p=0", path],
+                       capture_output=True, text=True)
+    return p.stdout.strip() in _HDR_TRANSFERS
+
+
+def _tonemap(tl: Timeline, c: Clip) -> str:
+    a = tl.assets.get(c.asset or "")
+    if c.kind != "video" or a is None:
+        return ""
+    st = Path(a.path).stat()
+    return derive.TONEMAP + ",format=yuv420p," if _is_hdr(a.path, st.st_size, st.st_mtime_ns) else ""
+
+
 def _layer_chain(tl: Timeline, seg: Segment, c: Clip, idx: int, w: int, h: int) -> list[str]:
     """Filter-graph pieces for one layer, ending in the label `[l<idx>]`. Order: show the picture in the frame
     (fill / fit / blurred background / Ken Burns), effects, crop, resize, rotate, opacity and fades, transition zoom."""
@@ -301,21 +318,22 @@ def _layer_chain(tl: Timeline, seg: Segment, c: Clip, idx: int, w: int, h: int) 
     into = seg.start - c.start
     hold = ",tpad=stop_mode=clone:stop_duration=600" if c.meta.get("hold") else ""  # a ghost whose video has run out keeps its last frame
     pieces: list[str] = []
+    tm = _tonemap(tl, c)
     if c.kind == "image" and spec["kb"] is not None:
         pct, into_kb, total = spec["kb"]
         # the zoom is a function of the clip-relative frame: `on` counts from the start of the segment
         chain = (f"[{idx}:v]scale={2 * w}:{2 * h}:force_original_aspect_ratio=increase,crop={2 * w}:{2 * h},"
                  f"zoompan=z='1+{pct / 100:.6f}*(on+{into_kb})/{total}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s={w}x{h}:fps={tl.fps},setsar=1")
     elif c.fit == "fit":
-        chain = (f"[{idx}:v]scale={w}:{h}:force_original_aspect_ratio=decrease,fps={tl.fps}{hold},format=yuva420p,"
+        chain = (f"[{idx}:v]{tm}scale={w}:{h}:force_original_aspect_ratio=decrease,fps={tl.fps}{hold},format=yuva420p,"
                  f"pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:color=black@0,setsar=1")
     elif c.fit == "blur":
-        pieces += [f"[{idx}:v]fps={tl.fps}{hold},split[a{idx}][b{idx}]",
+        pieces += [f"[{idx}:v]{tm}fps={tl.fps}{hold},split[a{idx}][b{idx}]",
                    f"[a{idx}]scale={int(w * BLUR_ZOOM)}:{int(h * BLUR_ZOOM)}:force_original_aspect_ratio=increase,crop={w}:{h},gblur=sigma={w * BLUR_SIGMA:.2f}[bg{idx}]",
                    f"[b{idx}]scale={w}:{h}:force_original_aspect_ratio=decrease[fg{idx}]"]
         chain = f"[bg{idx}][fg{idx}]overlay=x=(main_w-overlay_w)/2:y=(main_h-overlay_h)/2,setsar=1"
     else:
-        chain = f"[{idx}:v]{cover},fps={tl.fps}{hold}"
+        chain = f"[{idx}:v]{tm}{cover},fps={tl.fps}{hold}"
     for f in [*_key_args(c), *_fx_args(c, w)]:
         chain += "," + f
     g = _geometry(c, w, h)
@@ -509,7 +527,7 @@ def captions_ass(tl: Timeline, w: int, h: int) -> str:
 def render_timeline(
     tl: Timeline, work: Path, settings: Settings, *, quality: str, out: Path, aspect: str | None = None,
     captions: bool = True, normalize: bool = True, lufs: float = -14.0, profile: assemble.RenderProfile | None = None,
-    progress: Progress | None = None,
+    progress: Progress | None = None, preset: str | None = None,
 ) -> Path:
     problems = unsupported_features(tl)
     if problems:
@@ -521,7 +539,7 @@ def render_timeline(
     if profile.encoder != "libx264" and not ffmpeg.has_encoder(profile.encoder):
         log.warning("encoder %s is not available here: using the software encoder", profile.encoder)
         profile = assemble.PREVIEW if preview else assemble.FINAL
-    w, h = render_size(aspect or tl.aspect, quality)
+    w, h = render_size(aspect or tl.aspect, quality, preset)
 
     segments = render_video(tl, w, h, profile, work / ("tl_segments_preview" if preview else "tl_segments"), progress)
 

@@ -40,6 +40,8 @@ class ProjectInfo(BaseModel):
     video_ready: bool = False  # a playable preview (or, for old projects, the full video) exists
     export_ready: bool = False  # a full-quality export exists and matches the current edits
     export_aspect: str | None = None
+    export_preset: str | None = None  # 720p / 1080p / 4k
+    export_encoder: str | None = None  # software / hardware
     preview_rev: int | None = None  # the timeline revision the current preview was rendered from
 
 

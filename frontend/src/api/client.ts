@@ -1,4 +1,4 @@
-import type { Asset, Attribution, CaptionsView, CaptionStyle, FilmMeta, MediaView, Peaks, Project, Scene, TimelineAsset, TimelineView } from "./types";
+import type { Aspect, Asset, ExportEncoder, ExportPreset, Attribution, CaptionsView, CaptionStyle, FilmMeta, MediaView, Peaks, Project, Scene, TimelineAsset, TimelineView } from "./types";
 
 export class ApiError extends Error {
   constructor(
@@ -76,7 +76,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
-  health: () => request<{ ok: boolean; ffmpeg: boolean; limits: Limits }>("/api/health"),
+  health: () => request<{ ok: boolean; ffmpeg: boolean; hardware_encoder?: boolean; limits: Limits }>("/api/health"),
   listProjects: () => request<Project[]>("/api/projects"),
   getProject: (id: string) => request<Project>(`/api/projects/${encodeURIComponent(id)}`),
   deleteProject: (id: string) => request<void>(`/api/projects/${encodeURIComponent(id)}`, { method: "DELETE" }),
@@ -170,12 +170,16 @@ export const api = {
     return res.blob();
   },
   /** Full-quality (1080p) export in 16:9 or 9:16. Edits use the fast preview; this is the final step. */
-  exportProject: (id: string, aspect: "16:9" | "9:16") =>
+  exportProject: (id: string, aspect: Aspect, preset: ExportPreset = "1080p", encoder: ExportEncoder = "software") =>
     request<Project>(`/api/projects/${encodeURIComponent(id)}/export`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ aspect }),
+      body: JSON.stringify({ aspect, preset, encoder }),
     }),
+  /** About how many seconds an export takes on this computer (it learns from the exports already done). */
+  exportEstimate: (id: string, aspect: Aspect, preset: ExportPreset, encoder: ExportEncoder) =>
+    request<{ seconds: number; learned: boolean; video_seconds: number; width: number; height: number }>(
+      `/api/projects/${encodeURIComponent(id)}/export/estimate?aspect=${aspect}&preset=${preset}&encoder=${encoder}`),
   exportUrl: (id: string) => `/api/projects/${encodeURIComponent(id)}/export`,
   /** `version` changes when a render finishes, so the browser never plays an outdated copy. */
   videoUrl: (id: string, version?: string) =>

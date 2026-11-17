@@ -578,3 +578,65 @@ def test_key_works_together_with_fades_transitions_and_effects(media, tmp_path):
     r, g, b = px(out, 0.5, 200, 270); assert 90 < r < 170 and b > 60               # half way in: subject and blue mixed, the green still keyed
     assert px(out, 0.5, 500, 100)[1] < 40
     r, g, b = px(out, 1.5, 200, 270); assert r > 200
+
+
+# ------------------------------------------------------------------ other source formats and HDR (task 4.12)
+
+def make_source(tmp_path, name, args, vf="null", src="testsrc2=s=640x360:r=30:d=2"):
+    p = tmp_path / name
+    sh("-f", "lavfi", "-i", src, "-vf", vf, *args, str(p))
+    return p
+
+
+@pytest.mark.parametrize("name,args", [
+    ("hevc.mp4", ["-c:v", "libx265", "-pix_fmt", "yuv420p", "-tag:v", "hvc1", "-crf", "20"]),
+    ("prores.mov", ["-c:v", "prores_ks", "-profile:v", "1", "-pix_fmt", "yuv422p10le"]),
+    ("vp9.webm", ["-c:v", "libvpx-vp9", "-b:v", "1M", "-pix_fmt", "yuv420p"]),
+    ("h264.mkv", ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "18"]),
+])
+def test_common_video_codecs_render_to_the_same_picture_as_h264(media, tmp_path, name, args):
+    ref = make_source(tmp_path, "ref.mp4", ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "12"])
+    other = make_source(tmp_path, name, args)
+    shots = []
+    for src in (ref, other):
+        tl = make_tl(media, [vclip("v", "src", 0, 45)], extra_assets=[Asset(id="src", kind="video", path=str(src), duration=60, license="User-provided")])
+        shots.append(render_to(tl, tmp_path, f"{src.stem}.mp4"))
+    assert probe(shots[1], "stream=width,height") == "960,540"
+    assert ssim(shots[0], shots[1]) > 0.9, name                                  # the codec makes no visible difference
+
+
+@pytest.mark.parametrize("trc", ["smpte2084", "arib-std-b67"])
+def test_hdr_sources_are_tone_mapped_in_the_render_like_in_the_proxy(media, tmp_path, trc):
+    from app.media import derive, ingest
+    hdr_args = ["-c:v", "libx265", "-pix_fmt", "yuv420p10le", "-color_primaries", "bt2020", "-color_trc", trc, "-colorspace", "bt2020nc",
+                "-x265-params", f"colorprim=bt2020:transfer={trc}:colormatrix=bt2020nc:log-level=error", "-crf", "16"]
+    flat = "color=c=0xA8A8A8:s=640x360:r=30:d=2"          # a bright flat grey: a PQ/HLG reading of it is very different from an SDR reading
+    hdr = make_source(tmp_path, "hdr.mp4", hdr_args, vf="format=yuv420p10le", src=flat)
+    sdr = make_source(tmp_path, "sdr.mp4", ["-c:v", "libx265", "-pix_fmt", "yuv420p10le", "-crf", "16", "-x265-params", "log-level=error"], vf="format=yuv420p10le", src=flat)
+    info = ingest.probe(hdr, "video") if False else ingest.probe(hdr, None)
+    assert info.hdr
+    proxy = tmp_path / "hdr_proxy.mp4"
+    derive.make_video_proxy(hdr, info, proxy)
+    shots = {}
+    for label, src in (("hdr", hdr), ("sdr", sdr)):
+        tl = make_tl(media, [vclip("v", "src", 0, 45)], extra_assets=[Asset(id="src", kind="video", path=str(src), duration=60, license="User-provided")])
+        shots[label] = render_to(tl, tmp_path, f"{label}_{trc}.mp4")
+    # the render of the HDR file matches the (tone-mapped) proxy of it, and is not the untouched, washed-out reading of the same pixels
+    scaled = tmp_path / f"proxy_{trc}.mp4"
+    sh("-i", str(proxy), "-vf", "scale=960:540", "-c:v", "libx264", str(scaled))
+    def mean_y(path):
+        raw = subprocess.run(["ffmpeg", "-v", "error", "-ss", "0.5", "-i", str(path), "-frames:v", "1", "-vf", "scale=32:18,format=gray", "-f", "rawvideo", "-"], capture_output=True).stdout
+        return sum(raw) / len(raw)
+    assert ssim(shots["hdr"], scaled) > 0.85
+    assert abs(mean_y(shots["hdr"]) - mean_y(scaled)) < 8                        # as bright as the tone-mapped proxy ...
+    if trc == "smpte2084":                                                       # ... and not the washed-out/dark untouched reading (HLG is nearly SDR-compatible, so only PQ differs)
+        assert abs(mean_y(shots["hdr"]) - mean_y(shots["sdr"])) > 15
+
+
+def test_rotated_phone_video_renders_upright(media, tmp_path):
+    base = make_source(tmp_path, "up.mp4", ["-c:v", "libx264", "-pix_fmt", "yuv420p"])                  # 640x360, "top" of the picture is the testsrc2 header
+    sh("-display_rotation:v", "90", "-i", str(base), "-c", "copy", str(tmp_path / "rot.mp4"))            # plays as 360x640
+    tl = make_tl(media, [vclip("v", "src", 0, 30)], extra_assets=[Asset(id="src", kind="video", path=str(tmp_path / "rot.mp4"), duration=60, license="User-provided")]).model_copy(update={"aspect": "9:16"})
+    out = render_to(tl, tmp_path, "rot_out.mp4")
+    assert probe(out, "stream=width,height") == "540,960"
+    assert sum(px(out, 0.5, 270, 480)) > 60                                                             # a real picture, not black

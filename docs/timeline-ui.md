@@ -102,3 +102,8 @@ showing, the selected picture has handles: drag it, drag a corner to resize, dra
 
 Select a picture clip > **Green screen**: tick it, choose the colour (or **Pick from the preview** and click the background), adjust
 **Match** and **Soft edge**. Put the clip on a higher video track than the picture that should show through. Details: `docs/chroma-key.md`.
+
+## Export panel (task 4.12)
+
+Format (shows the pixel size), Size (720p / 1080p / 4K), Encoder (best quality, or the fast one if this computer has a video chip) and a time
+estimate that gets more accurate with every export. Details: `docs/export-presets.md`.

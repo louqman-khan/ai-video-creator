@@ -29,6 +29,15 @@ FINAL_FAST = RenderProfile("final-fast", "veryfast", 20, "medium", 20, "192k", e
 PROFILES = {p.name: p for p in (FINAL, PREVIEW, FINAL_FAST)}
 
 
+def export_profile(encoder: str, width: int, height: int) -> RenderProfile:
+    """The profile of an export: "software" (x264, best quality per size, slower) or "hardware" (VideoToolbox, several times
+    faster, bigger files; the bitrate grows with the picture size)."""
+    if encoder == "hardware":
+        mbps = max(4, round(12 * (width * height / (1920 * 1080)) ** 0.8))  # 720p ~ 7M, 1080p 12M, 4K ~ 36M
+        return RenderProfile("final-fast", "veryfast", 20, "medium", 20, "192k", encoder="h264_videotoolbox", bitrate=f"{mbps}M")
+    return FINAL
+
+
 def video_codec_args(p: RenderProfile, final: bool) -> list[str]:
     if p.encoder == "libx264":
         return ["-c:v", "libx264", "-preset", p.final_preset if final else p.seg_preset, "-crf", str(p.final_crf if final else p.seg_crf)]

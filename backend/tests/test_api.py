@@ -1125,3 +1125,48 @@ def test_changing_the_frame_shape_re_renders_the_preview_at_that_shape(env):
         size = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "csv=p=0", str(d / "preview.mp4")],
                               capture_output=True, text=True).stdout.strip()
         assert size == "540,540"
+
+
+def test_export_presets_sizes_encoders_and_estimates(env, monkeypatch):
+    import subprocess
+
+    from app.media import ffmpeg as ff
+    from app.pipeline import export_speed
+    from app.pipeline.sizes import render_size
+
+    assert [render_size("16:9", "final", p) for p in ("720p", "1080p", "4k")] == [(1280, 720), (1920, 1080), (3840, 2160)]
+    assert render_size("9:16", "final", "720p") == (720, 1280) and render_size("4:5", "final", "4k") == (2160, 2700) and render_size("1:1", "final", "720p") == (720, 720)
+    settings, _, tone, _ = env
+    with client(env) as c:
+        assert "hardware_encoder" in c.get("/api/health").json()
+        pid = finished_project(c, tone)
+        d = Path(settings.projects_dir) / pid
+        e = c.get(f"/api/projects/{pid}/export/estimate", params={"preset": "4k", "encoder": "software"}).json()
+        e720 = c.get(f"/api/projects/{pid}/export/estimate", params={"preset": "720p", "encoder": "software"}).json()
+        eh = c.get(f"/api/projects/{pid}/export/estimate", params={"preset": "4k", "encoder": "hardware"}).json()
+        assert (e["width"], e["height"]) == (3840, 2160) and e["seconds"] >= e720["seconds"] >= 1 and eh["seconds"] <= e["seconds"] and not e["learned"]
+        assert c.get(f"/api/projects/{pid}/export/estimate", params={"preset": "8k"}).status_code == 422
+        assert c.post(f"/api/projects/{pid}/export", json={"preset": "8k"}).status_code == 422
+        monkeypatch.setattr(ff, "has_encoder", lambda name: False)                      # no hardware encoder here
+        assert c.post(f"/api/projects/{pid}/export", json={"encoder": "hardware"}).status_code == 422
+        monkeypatch.undo()
+        r = c.post(f"/api/projects/{pid}/export", json={"preset": "720p"})
+        assert r.status_code == 202
+        done = wait_done(c, pid)
+        assert done["export_ready"] and done["export_preset"] == "720p" and done["export_encoder"] == "software"
+        size = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "csv=p=0", str(d / "output.mp4")],
+                              capture_output=True, text=True).stdout.strip()
+        assert size == "1280,720"
+        assert c.get(f"/api/projects/{pid}/export").status_code == 200                  # download works
+        # an edit makes the export stale and clears what it was made with
+        tl = c.get(f"/api/projects/{pid}/timeline").json()
+        tl["clips"][0]["volume"] = 0.9
+        assert put_tl(c, pid, tl).status_code == 200
+        assert c.post(f"/api/projects/{pid}/timeline/render").status_code == 202
+        after = wait_done(c, pid)
+        assert not after["export_ready"] and after["export_preset"] is None
+    # estimates learn: the recorded speed replaces the default (clips shorter than 3 s say nothing)
+    export_speed.record(settings.work_dir, "software", "1080p", "16:9", 10.0, 24.0)
+    assert export_speed.estimate(settings.work_dir, "software", "1080p", "16:9", 10.0)["learned"] is True
+    export_speed.record(settings.work_dir, "hardware", "1080p", "16:9", 1.0, 5.0)
+    assert export_speed.estimate(settings.work_dir, "hardware", "1080p", "16:9", 10.0)["learned"] is False

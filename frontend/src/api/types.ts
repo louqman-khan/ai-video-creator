@@ -18,6 +18,8 @@ export interface Project {
   video_ready: boolean; // a playable preview exists
   export_ready: boolean; // a full-quality export exists and matches the current edits
   export_aspect: string | null;
+  export_preset?: string | null; // 720p / 1080p / 4k
+  export_encoder?: string | null; // software / hardware
   preview_rev?: number | null; // the timeline revision the current preview was rendered from
 }
 
@@ -141,6 +143,8 @@ export interface TimelineAsset {
   attribution_required: boolean;
 }
 
+export type ExportPreset = "720p" | "1080p" | "4k";
+export type ExportEncoder = "software" | "hardware";
 export type Aspect = "16:9" | "9:16" | "1:1" | "4:5";
 
 export interface TimelineView {

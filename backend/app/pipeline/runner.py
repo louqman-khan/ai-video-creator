@@ -154,9 +154,11 @@ class Pipeline:
         lufs: float | None = None,
         script: str | None = None,
         quality: str = "final",
+        preset: str | None = None,
+        profile=None,
     ) -> Path:
         preview = quality == "preview"
-        w, h = render_size(aspect, quality)
+        w, h = render_size(aspect, quality, preset)
         min_gap = min_gap or self.s.silence_min_gap_s
         keep_gap = self.s.silence_keep_gap_s
         lufs = lufs if lufs is not None else self.s.target_lufs
@@ -215,6 +217,6 @@ class Pipeline:
                                 options={"style": style.model_dump(exclude_none=True) if style else None})
         timeline = convert.ensure_timeline(self.run_dir, facts, self.s)  # one renderer for CLI, web and editor
         render_timeline(timeline, self.run_dir, self.s, quality=quality, aspect=aspect, out=out, captions=captions,
-                        normalize=normalize, lufs=lufs, progress=self.progress)
+                        normalize=normalize, lufs=lufs, progress=self.progress, preset=preset, profile=profile)
         self.progress("done", 1.0, "Finished")
         return out

@@ -32,8 +32,8 @@ THUMB_W, THUMB_H = 160, 90
 MAX_THUMBS = 120
 PEAK_RATE = 100  # peaks per second (finest level)
 
-# HDR -> SDR for the 8-bit proxy (HLG/PQ to bt709). The full-quality tone-map happens at export (task 4.12).
-_TONEMAP = ("zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=tonemap=hable:desat=0,"
+# HDR -> SDR (HLG/PQ to bt709): used for the 8-bit proxy and, identically, by the renderer for exports.
+TONEMAP = ("zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=tonemap=hable:desat=0,"
             "zscale=t=bt709:m=bt709:r=tv")
 
 
@@ -58,7 +58,7 @@ def make_video_proxy(src: Path, info: MediaInfo, dst: Path) -> None:
     # fit inside the box, never enlarge: the box is capped at the picture's own (rotated) size
     chain = [f"scale=w='min(iw,{box_w})':h='min(ih,{box_h})':force_original_aspect_ratio=decrease:force_divisible_by=2"]
     if info.hdr:
-        chain.append(_TONEMAP)
+        chain.append(TONEMAP)
     chain += [f"fps={FPS}", "format=yuv420p"]  # constant frame rate: variable-rate phone video becomes steady
     ffmpeg.run(
         ["-i", str(src), "-map", "0:v:0", "-an", "-vf", ",".join(chain),

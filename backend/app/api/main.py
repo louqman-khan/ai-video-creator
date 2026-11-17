@@ -30,7 +30,8 @@ from app.config import Settings, get_settings
 from app.media import ffmpeg
 from app.pipeline.caption_style import CaptionStyle
 from app.pipeline.runner import ASPECTS, Providers
-from app.pipeline.sizes import PORTRAIT
+from app.pipeline import export_speed
+from app.pipeline.sizes import PORTRAIT, render_size
 
 log = logging.getLogger("avc.api")
 
@@ -43,6 +44,8 @@ NO_STALE = {"Cache-Control": "no-cache"}
 
 class ExportRequest(BaseModel):
     aspect: Literal["16:9", "9:16", "1:1", "4:5"] | None = None  # default: the project's own format
+    preset: Literal["720p", "1080p", "4k"] = "1080p"  # size: the short side of the picture
+    encoder: Literal["software", "hardware"] = "software"  # software: best quality per file size; hardware: several times faster, bigger files
 CHUNK = 1024 * 1024
 
 
@@ -103,6 +106,7 @@ def create_app(settings: Settings | None = None, providers_factory: ProvidersFac
         return {
             "ok": True,
             "ffmpeg": ffmpeg.has_tools(),
+            "hardware_encoder": ffmpeg.has_tools() and ffmpeg.has_encoder("h264_videotoolbox"),
             # the UI validates against the same limits the server enforces
             "limits": {
                 "max_upload_mb": settings.max_upload_mb,
@@ -203,10 +207,31 @@ def create_app(settings: Settings | None = None, providers_factory: ProvidersFac
         if not ((d / "scenes.json").is_file() and (d / "assets.json").is_file()):
             raise HTTPException(409, "The project is not ready to export")
         aspect = (body.aspect if body else None) or info.aspect
+        preset = body.preset if body else "1080p"
+        encoder = body.encoder if body else "software"
+        if encoder == "hardware" and not ffmpeg.has_encoder("h264_videotoolbox"):
+            raise HTTPException(422, "This computer has no hardware video encoder. Use the software encoder.")
         queued = store.update(pid, status="queued", stage="export", progress=0.0, message="Preparing the export",
                               error=None, export_ready=False)
-        jobs.submit(pid, export_aspect=aspect)
+        jobs.submit(pid, export_aspect=aspect, export_preset=preset, export_encoder=encoder)
         return queued
+
+    @app.get("/api/projects/{pid}/export/estimate")
+    def export_estimate(pid: str, preset: Literal["720p", "1080p", "4k"] = "1080p", encoder: Literal["software", "hardware"] = "software",
+                        aspect: Literal["16:9", "9:16", "1:1", "4:5"] | None = None) -> dict:
+        """About how long an export will take on this computer (learns from the exports it has done)."""
+        info = get_project(pid)
+        d = store.path(pid)
+        tl = timeline_api.convert.load(d)
+        seconds = tl.duration / tl.fps if tl else 0.0
+        if not seconds:
+            try:
+                scenes = json.loads((d / "scenes.json").read_text("utf-8"))
+                seconds = max((float(s.get("end", 0)) for s in scenes), default=0.0)
+            except (OSError, ValueError):
+                seconds = 0.0
+        w, h = render_size(aspect or info.aspect, "final", preset)
+        return {**export_speed.estimate(settings.work_dir, encoder, preset, aspect or info.aspect, seconds), "width": w, "height": h}
 
     @app.get("/api/projects/{pid}/export")
     def download_export(pid: str) -> FileResponse:

@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import logging
 import threading
+import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 
 from app.api.store import ProjectStore
 from app.config import Settings
+from app.pipeline import assemble, export_speed
 from app.pipeline.caption_style import CaptionStyle
+from app.pipeline.sizes import render_size
 from app.pipeline.runner import Pipeline, Providers
 from app.timeline import convert
 from app.timeline.render import RenderUnsupported, render_timeline
@@ -33,11 +36,18 @@ class JobRunner:
         self._pending: set[str] = set()  # projects with a coalesced preview render already waiting
         self._lock = threading.Lock()
 
-    def submit(self, project_id: str, prepare: Callable[[], None] | None = None, *, export_aspect: str | None = None) -> None:
+    def submit(self, project_id: str, prepare: Callable[[], None] | None = None, *, export_aspect: str | None = None,
+               export_preset: str | None = None, export_encoder: str | None = None) -> None:
         """Queue a render. Default: the fast preview (edits re-render this). With `export_aspect`:
         the full-quality 1080p export. `prepare` runs first inside the worker (e.g. download the
         replacement visual of a swap); if it fails the previous video is kept."""
-        self._pool.submit(self._run, project_id, prepare, export_aspect)
+        self._pool.submit(self._run, project_id, prepare, export_aspect, export_preset, export_encoder)
+
+    def _finish_export(self, pid: str, export: bool, aspect: str | None, preset: str, encoder: str, video_seconds: float, started: float) -> None:
+        self.store.update(pid, status="done", stage="done", progress=1.0, message="Finished", video_ready=True, export_ready=export,
+                          export_aspect=aspect, export_preset=preset if export else None, export_encoder=encoder if export else None)
+        if export:  # what this export really cost makes the next estimate better
+            export_speed.record(self.settings.work_dir, encoder, preset, aspect or "16:9", video_seconds, time.monotonic() - started)
 
     def request_render(self, project_id: str) -> bool:
         """Ask for a preview render while one may already be running. Requests that arrive while another is
@@ -57,9 +67,12 @@ class JobRunner:
     def shutdown(self) -> None:
         self._pool.shutdown(wait=False, cancel_futures=True)
 
-    def _run(self, pid: str, prepare: Callable[[], None] | None = None, export_aspect: str | None = None) -> None:
+    def _run(self, pid: str, prepare: Callable[[], None] | None = None, export_aspect: str | None = None,
+             export_preset: str | None = None, export_encoder: str | None = None) -> None:
         store = self.store
         export = export_aspect is not None
+        preset, encoder = export_preset or "1080p", export_encoder or "software"
+        started = time.monotonic()
         try:
             info = store.update(pid, status="running", stage="start", progress=0.0, message="Starting", error=None,
                                 export_ready=False)
@@ -68,7 +81,7 @@ class JobRunner:
         d = store.path(pid)
         if not export:
             (d / "output.mp4").unlink(missing_ok=True)  # an older export no longer matches the edits
-            store.update(pid, export_aspect=None)
+            store.update(pid, export_aspect=None, export_preset=None, export_encoder=None)
         if prepare:
             try:
                 prepare()
@@ -83,6 +96,9 @@ class JobRunner:
             settings = self.settings.model_copy(update={"audio_cleaner": "ffmpeg" if opts.get("clean", True) else "noop"})
             progress = lambda stage, frac, msg: store.update(pid, stage=stage, progress=round(frac, 3), message=msg)  # noqa: E731
             out = d / ("output.mp4" if export else "preview.mp4")
+            profile = None
+            if export:
+                profile = assemble.export_profile(encoder, *render_size(export_aspect or info.aspect, "final", preset))
             if convert.has_edits(d):
                 # an edited timeline is the truth: no transcription/planning/fetching, just render it
                 tl = convert.load(d)
@@ -91,10 +107,12 @@ class JobRunner:
                 (d / "CREDITS.txt").write_text(convert.credits_from_timeline(tl), "utf-8")
                 render_timeline(tl, d, settings, quality="final" if export else "preview", aspect=export_aspect or info.aspect, out=out,
                                 captions=opts.get("captions", True), normalize=opts.get("normalize", True),
-                                lufs=opts.get("lufs") if opts.get("lufs") is not None else settings.target_lufs, progress=progress)
-                store.update(pid, status="done", stage="done", progress=1.0, message="Finished", video_ready=True,
-                             export_ready=export, export_aspect=export_aspect,
-                             **({} if export else {"preview_rev": tl.rev}))
+                                lufs=opts.get("lufs") if opts.get("lufs") is not None else settings.target_lufs, progress=progress,
+                                preset=preset, profile=profile)
+                self._finish_export(pid, export, export_aspect, preset, encoder, tl.duration / tl.fps, started)
+                if not export:
+                    store.update(pid, preview_rev=tl.rev)
+                return
                 return
             pipe = Pipeline(settings, self.factory(settings, opts), d)
             pipe.progress = progress
@@ -107,12 +125,12 @@ class JobRunner:
                 remove_silence=opts.get("remove_silence", False), min_gap=opts.get("min_gap"),
                 normalize=opts.get("normalize", True), lufs=opts.get("lufs"),
                 script=script_file.read_text("utf-8") if script_file.exists() else None,
-                quality="final" if export else "preview",
+                quality="final" if export else "preview", preset=preset, profile=profile,
             )
             rendered = convert.load(d)  # the pipeline built (or kept) it just now
-            store.update(pid, status="done", stage="done", progress=1.0, message="Finished", video_ready=True,
-                         export_ready=export, export_aspect=export_aspect,
-                         **({} if export or rendered is None else {"preview_rev": rendered.rev}))
+            self._finish_export(pid, export, export_aspect, preset, encoder, rendered.duration / rendered.fps if rendered else 0.0, started)
+            if not export and rendered is not None:
+                store.update(pid, preview_rev=rendered.rev)
         except Exception as e:  # report to the user, keep the worker alive for the next job
             log.exception("project %s failed", pid)
             msg = redact(str(e) if isinstance(e, RenderUnsupported) else f"{type(e).__name__}: {e}", self.settings)[:500]
