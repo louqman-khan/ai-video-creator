@@ -115,6 +115,9 @@ export const api = {
     form.append("title", title);
     return request<MediaView>(`/api/projects/${encodeURIComponent(id)}/media`, { method: "POST", body: form });
   },
+  /** A suggestion for where the crop of a picture to the frame should be centred (looks at the picture; changes nothing). */
+  suggestFocus: (id: string, asset: string) =>
+    request<{ x: number; y: number }>(`/api/projects/${encodeURIComponent(id)}/media/focus?asset=${encodeURIComponent(asset)}`),
   getMedia: (id: string) => request<MediaView[]>(`/api/projects/${encodeURIComponent(id)}/media`),
   getPeaks: (id: string, asset: string) =>
     request<Peaks>(`/api/projects/${encodeURIComponent(id)}/media/peaks?asset=${encodeURIComponent(asset)}`),

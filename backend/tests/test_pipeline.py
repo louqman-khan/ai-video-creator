@@ -192,3 +192,27 @@ def test_caption_grouping_avoids_one_word_orphan_without_exceeding_max_words():
     ws2 = [Word(text=t, start=i * 0.4, end=i * 0.4 + 0.35) for i, t in enumerate(["ab"] * 8 + ["cd", "ef"])]
     assert [len(c) for c in group_words(ws2, max_words=8)] == [8, 2]  # two words is not an orphan: kept
 
+
+
+def test_focus_finds_the_conspicuous_thing_and_survives_unreadable_files(tmp_path):
+    import random
+
+    from PIL import Image, ImageDraw
+
+    from app.pipeline.focus import focus_of_file, focus_of_image
+
+    rng = random.Random(1)
+    for cx, cy in ((120, 180), (520, 120), (320, 180)):
+        im = Image.new("RGB", (640, 360), (90, 110, 90))
+        d = ImageDraw.Draw(im)
+        for _ in range(300):
+            d.point((rng.randrange(640), rng.randrange(360)), fill=(90 + rng.randint(-12, 12), 110, 90))
+        d.ellipse([cx - 45, cy - 45, cx + 45, cy + 45], fill=(240, 60, 40))
+        fx, fy = focus_of_image(im)
+        assert abs(fx - cx / 640) < 0.06 and abs(fy - cy / 360) < 0.06
+    flat = Image.new("RGB", (640, 360), (50, 50, 50))
+    fx, fy = focus_of_image(flat)
+    assert abs(fx - 0.5) < 0.05 and abs(fy - 0.5) < 0.05                          # nothing stands out: the middle
+    bad = tmp_path / "bad.png"
+    bad.write_bytes(b"not a picture")
+    assert focus_of_file(bad, "image") is None and focus_of_file(tmp_path / "missing.mp4", "video", 3) is None

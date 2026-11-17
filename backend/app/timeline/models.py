@@ -136,12 +136,20 @@ class Clip(_Strict):
     effects: list[Effect] = Field(default_factory=list, max_length=MAX_EFFECTS)
     transition_in: Transition | None = None
     key: ChromaKey | None = None
+    focus: tuple[float, float] | None = None  # (x, y) 0..1 on the picture: the point the crop to the frame is centred on (fill mode); None = the middle
     fit: Literal["fill", "fit", "blur"] = "fill"  # a picture that does not match the frame: crop to fill / show whole with bars / show whole over a blurred copy
     text: str | None = None  # caption clips
     words: list[Word] = Field(default_factory=list, max_length=MAX_WORDS_PER_CLIP)  # narration clips
     meta: dict = Field(default_factory=dict)  # small free-form data (e.g. scene text); bounded
 
     _id = field_validator("id", "track")(_check_id)
+
+    @field_validator("focus")
+    @classmethod
+    def _focus(cls, v: tuple[float, float] | None) -> tuple[float, float] | None:
+        if v is not None and not all(0.0 <= c <= 1.0 for c in v):
+            raise ValueError("the focus point must lie on the picture (0..1)")
+        return v
 
     @field_validator("asset")
     @classmethod

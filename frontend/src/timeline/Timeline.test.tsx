@@ -326,6 +326,22 @@ describe("Timeline keyboard", () => {
   });
 });
 
+describe("Focus", () => {
+  it("asks the server for a suggestion and applies it to the selected picture as one edit", async () => {
+    const suggest = vi.spyOn(api, "suggestFocus").mockResolvedValue({ x: 0.25, y: 0.5 });
+    vi.spyOn(api, "saveTimeline").mockResolvedValue(timeline({ rev: 2 }));
+    vi.spyOn(api, "renderTimeline").mockResolvedValue({ id: "p1" } as never);
+    const { container } = await open();
+    fireEvent.pointerDown(container.querySelector('[data-clip="scene-2"]')!, { button: 0, clientX: 0 });
+    expect(await screen.findByText(/the middle \(when the picture/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Suggest" }));
+    await waitFor(() => expect(suggest).toHaveBeenCalledWith("p1", "pix:2"));
+    expect(await screen.findByText(/25% across, 50% down/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Centre" }));
+    expect(await screen.findByText(/the middle \(when the picture/)).toBeInTheDocument();
+  });
+});
+
 describe("Media bin", () => {
   const song = { id: "openverse:s1", source: "openverse", kind: "audio" as const, thumb_url: "", page_url: "", title: "Calm piano", width: 0, height: 0, duration: 4, license: "CC BY 4.0", license_url: "", author: "Zed", attribution: "", attribution_required: true };
   const asAsset = { ...song, license_url: "" };

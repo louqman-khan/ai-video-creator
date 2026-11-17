@@ -28,10 +28,12 @@ const PRESETS: { name: string; x: number; y: number; scale: number }[] = [
   { name: "Bottom right", x: 0.3, y: 0.3, scale: 0.35 },
 ];
 
-export function Inspector({ clip: c, doc, onApply, cropMode = false, onCropMode, picking = false, onPick }: {
+export function Inspector({ clip: c, doc, onApply, cropMode = false, onCropMode, picking = false, onPick, pickingFocus = false, onPickFocus, onSuggestFocus }: {
   clip: TimelineClip; doc: ops.Doc; onApply: (r: ops.Result) => void; cropMode?: boolean; onCropMode?: (on: boolean) => void;
   /** the eyedropper: waiting for a click on the preview / start waiting (only offered while the live preview is showing) */
   picking?: boolean; onPick?: (on: boolean) => void;
+  /** the focus: waiting for a click on the preview / start waiting / ask the server for a suggestion (the picker only with the live preview) */
+  pickingFocus?: boolean; onPickFocus?: (on: boolean) => void; onSuggestFocus?: () => void;
 }) {
   const fps = doc.fps;
   const pct = (v: number) => `${Math.round(v * 100)}%`;
@@ -116,6 +118,13 @@ export function Inspector({ clip: c, doc, onApply, cropMode = false, onCropMode,
           </select>
           {onCropMode && <button type="button" className="btn" aria-pressed={cropMode} onClick={() => onCropMode(!cropMode)}>Crop on the preview</button>}
           <button type="button" className="btn" onClick={() => onApply(ops.setPicture(doc, c.id, { x: 0, y: 0, scale: 1, rotation: 0, crop: [0, 0, 0, 0] }))}>Reset position and size</button>
+        </div>
+        <div className="insp-row" role="group" aria-label="Focus">
+          <span>Focus</span>
+          <span className="muted small">{c.focus ? `kept in view: ${Math.round(c.focus[0] * 100)}% across, ${Math.round(c.focus[1] * 100)}% down` : "the middle (when the picture is cropped to fit the frame)"}</span>
+          {onPickFocus && <button type="button" className="btn" aria-pressed={pickingFocus} onClick={() => onPickFocus(!pickingFocus)}>{pickingFocus ? "Click the preview…" : "Pick on the preview"}</button>}
+          {onSuggestFocus && <button type="button" className="btn" onClick={onSuggestFocus} title="Looks for the most conspicuous part of the picture. A suggestion only: check it, it does not know faces.">Suggest</button>}
+          {c.focus && <button type="button" className="btn" onClick={() => onApply(ops.setFocus(doc, c.id, null))}>Centre</button>}
         </div>
         <p className="muted small">Put a clip on a higher video track and make it smaller to get a picture-in-picture.</p>
       </fieldset>

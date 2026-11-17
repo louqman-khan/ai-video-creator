@@ -268,6 +268,18 @@ describe("transitions and effects", () => {
   });
 });
 
+describe("focus", () => {
+  const s = (d: Doc, id: string) => d.clips.find((c) => c.id === id)!;
+  it("sets, rounds, clamps and clears the focus point, only for pictures", () => {
+    let d = ops.setFocus(sample(), "s1", { x: 0.123456, y: 2 }).doc;
+    expect(s(d, "s1").focus).toEqual([0.123, 1]);
+    expect(s(ops.setFocus(d, "s1", null).doc, "s1").focus).toBeNull();
+    expect(ops.setFocus(sample(), "voice", { x: 0.5, y: 0.5 }).error).toBeDefined();
+    d = ops.splitClip(ops.setFocus(sample(), "s1", { x: 0.2, y: 0.4 }).doc, "s1", 50).doc;
+    expect(d.clips.filter((c) => c.focus?.[0] === 0.2)).toHaveLength(2);                // both pieces keep it
+  });
+});
+
 describe("green screen", () => {
   const s = (d: Doc, id: string) => d.clips.find((c) => c.id === id)!;
   it("turns on with defaults, changes one thing at a time, clamps, and turns off", () => {

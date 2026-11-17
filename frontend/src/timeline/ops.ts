@@ -398,6 +398,16 @@ export function setKey(doc: Doc, id: string, patch: KeyPatch | null): Result {
   return ok(replaceClip(doc, { ...c, key: { color, similarity: clamp(patch.similarity ?? was.similarity, 0.5), blend: clamp(patch.blend ?? was.blend, 0.5), despill: patch.despill ?? was.despill } }), [id]);
 }
 
+/** Centre the crop of a picture to the frame on this point of the picture (null: the middle). Only matters when the picture is wider/taller than the frame and fills it. */
+export function setFocus(doc: Doc, id: string, at: { x: number; y: number } | null): Result {
+  const c = findClip(doc, id);
+  if (!c || (c.kind !== "video" && c.kind !== "image")) return refuse(doc, "Only pictures have a focus.");
+  if (isLocked(doc, c.track)) return refuse(doc, "That track is locked.");
+  if (at === null) return ok(replaceClip(doc, { ...c, focus: null }), [id]);
+  const f = (v: number) => Math.min(1, Math.max(0, Math.round(v * 1000) / 1000));
+  return ok(replaceClip(doc, { ...c, focus: [f(at.x), f(at.y)] }), [id]);
+}
+
 export type TransitionType = "crossfade" | "dip" | "slide" | "zoom";
 export type EffectType = "brightness" | "contrast" | "saturation" | "blur";
 

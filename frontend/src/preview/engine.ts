@@ -281,8 +281,39 @@ export class LiveEngine extends EventTarget {
       place(a, cover * BLUR_ZOOM);
       a.filter = "none";
       place(a, contain);
+    } else if (l.focus && l.zoom === 1) {
+      const [ox, oy] = this.focusOffset(l.focus, w, h, W, H);
+      a.drawImage(src, -ox, -oy, w * cover, h * cover); // fill, with the window centred on the focus point
     } else place(a, cover * l.zoom); // fill (and Ken Burns, which is always "fill")
     return true;
+  }
+
+  /** How far a cover-scaled picture is shifted left/up so that the focus point is centred in the frame (kept inside the picture). */
+  private focusOffset(focus: [number, number], w: number, h: number, W: number, H: number): [number, number] {
+    const s = Math.max(W / w, H / h);
+    const sw = w * s, sh = h * s;
+    return [Math.min(Math.max(focus[0] * sw - W / 2, 0), Math.max(0, sw - W)), Math.min(Math.max(focus[1] * sh - H / 2, 0), Math.max(0, sh - H))];
+  }
+
+  /** The point of the clip's own picture (as fractions 0..1 of the picture) under a point of the canvas: what a click on the preview means as a focus. */
+  pickFocus(clipId: string, x: number, y: number): { x: number; y: number } | null {
+    const l = layersAt(this.doc, this.frame).find((v) => v.clip.id === clipId);
+    const { width: W, height: H } = this.canvas;
+    if (!l || !l.clip.asset || l.fit !== "fill" || l.zoom !== 1) return null;
+    const v = l.clip.kind === "video" ? this.videos.get(l.clip.id) : undefined;
+    const im = l.clip.kind === "image" ? this.images.get(l.clip.asset) : undefined;
+    const w = v?.videoWidth || im?.naturalWidth || 0;
+    const h = v?.videoHeight || im?.naturalHeight || 0;
+    if (!w || !h) return null;
+    const { sx, sy, sw, sh, cx, cy, k } = this.placement(l, W, H);
+    const t = (-l.rotation * Math.PI) / 180;
+    const dx = x - cx, dy = y - cy;
+    const bx = sx + sw / 2 + (dx * Math.cos(t) - dy * Math.sin(t)) / k;   // the point in the frame-sized image
+    const by = sy + sh / 2 + (dx * Math.sin(t) + dy * Math.cos(t)) / k;
+    if (bx < 0 || by < 0 || bx >= W || by >= H) return null;
+    const s = Math.max(W / w, H / h);
+    const [ox, oy] = l.focus ? this.focusOffset(l.focus, w, h, W, H) : [Math.max(0, (w * s - W) / 2), Math.max(0, (h * s - H) / 2)];
+    return { x: Math.min(1, Math.max(0, (ox + bx) / (w * s))), y: Math.min(1, Math.max(0, (oy + by) / (h * s))) };
   }
 
   /** The green screen: make the key colour transparent (on the graphics card when there is one). */

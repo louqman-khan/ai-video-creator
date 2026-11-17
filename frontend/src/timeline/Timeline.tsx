@@ -31,6 +31,8 @@ interface Props {
   overlayHost?: HTMLElement | null;
   /** the eyedropper: the colour of a clip's own picture at a point of the canvas (canvas pixels), "#rrggbb" or null */
   sampler?: ((clipId: string, x: number, y: number) => string | null) | null;
+  /** the focus picker: the point of a clip's own picture (0..1) under a point of the canvas */
+  focusSampler?: ((clipId: string, x: number, y: number) => { x: number; y: number } | null) | null;
   /** the preparation state of every asset, whenever it changes */
   onMedia?: (media: Record<string, MediaView>) => void;
   /** called with the project whenever an edit makes the server start (or queue) a new preview render */
@@ -44,13 +46,13 @@ const labelOf = (c: TimelineClip, a: TimelineAsset | undefined): string => {
   return a?.title || c.id;
 };
 
-export function Timeline({ projectId, version, video, onProject, onDoc, onMedia, overlayHost, sampler }: Props) {
+export function Timeline({ projectId, version, video, onProject, onDoc, onMedia, overlayHost, sampler, focusSampler }: Props) {
   const { timeline, media, error, preparing, refreshMedia } = useTimelineData(projectId, version, true);
   const { peaks, film } = useDerived(projectId, media);
   useEffect(() => { onMedia?.(media); }, [media, onMedia]);
   if (error && !timeline) return <p className="alert" role="alert">{error}</p>;   // once it is loaded, a failed refresh must not replace the editor
   if (!timeline) return <p className="muted">Loading the timeline…</p>;
-  return <TimelineBody projectId={projectId} timeline={timeline} media={media} preparing={preparing} peaks={peaks} film={film} video={video} onProject={onProject} onDoc={onDoc} overlayHost={overlayHost} sampler={sampler} refreshMedia={refreshMedia} />;
+  return <TimelineBody projectId={projectId} timeline={timeline} media={media} preparing={preparing} peaks={peaks} film={film} video={video} onProject={onProject} onDoc={onDoc} overlayHost={overlayHost} sampler={sampler} focusSampler={focusSampler} refreshMedia={refreshMedia} />;
 }
 
 interface BodyProps {
@@ -65,16 +67,18 @@ interface BodyProps {
   onProject?: (p: Project) => void;
   overlayHost?: HTMLElement | null;
   sampler?: ((clipId: string, x: number, y: number) => string | null) | null;
+  focusSampler?: ((clipId: string, x: number, y: number) => { x: number; y: number } | null) | null;
   refreshMedia: () => void;
 }
 
-function TimelineBody({ projectId, timeline, media, preparing, peaks, film, video, onProject, onDoc, overlayHost, sampler, refreshMedia }: BodyProps) {
+function TimelineBody({ projectId, timeline, media, preparing, peaks, film, video, onProject, onDoc, overlayHost, sampler, focusSampler, refreshMedia }: BodyProps) {
   const { session, snap } = useSession(timeline, (body) => api.saveTimeline(projectId, body));
   const doc = snap.doc;
   const fps = doc.fps;
   const [draft, setDraft] = useState<{ id: string; patch: ops.Picture } | null>(null);   // a handle is being dragged
   const [cropMode, setCropMode] = useState(false);
   const [picking, setPicking] = useState(false);   // the eyedropper waits for a click on the preview
+  const [pickingFocus, setPickingFocus] = useState(false);   // the focus picker waits for a click on the preview
   const shownDoc = useMemo(() => (draft ? ops.setPicture(doc, draft.id, draft.patch).doc : doc), [doc, draft]);
   useEffect(() => { onDoc?.(shownDoc); }, [shownDoc, onDoc]);
   const duration = Math.max(1, ops.timelineLength(doc));
@@ -417,7 +421,21 @@ function TimelineBody({ projectId, timeline, media, preparing, peaks, film, vide
       <MediaBin projectId={projectId} doc={doc} media={media} onInsert={(a, title) => run(ops.insertAsset(doc, a, head.get(), title))}
         onAdded={refreshMedia} onNotice={setNotice} />
       {chosen && <Inspector clip={chosen} doc={doc} onApply={run} cropMode={cropMode} onCropMode={overlayHost ? setCropMode : undefined}
-        picking={picking} onPick={overlayHost && sampler ? setPicking : undefined} />}
+        picking={picking} onPick={overlayHost && sampler ? (on) => { setPicking(on); if (on) setPickingFocus(false); } : undefined}
+        pickingFocus={pickingFocus} onPickFocus={overlayHost && focusSampler ? (on) => { setPickingFocus(on); if (on) setPicking(false); } : undefined}
+        onSuggestFocus={chosen && chosen.asset && (chosen.kind === "video" || chosen.kind === "image") ? () => void api.suggestFocus(projectId, chosen.asset!).then((f) => run(ops.setFocus(doc, chosen.id, f)), (er) => setNotice(er instanceof Error ? er.message : "No suggestion")) : undefined} />}
+      {overlayHost && focusSampler && pickingFocus && chosen && createPortal(
+        <div className="pick-layer" role="button" aria-label="Click the part of the picture that must stay in view" tabIndex={0}
+          onClick={(e) => {
+            const r = e.currentTarget.getBoundingClientRect();
+            const [W, H] = CANVAS_SIZES[doc.aspect ?? "16:9"] ?? CANVAS_SIZES["16:9"]!;
+            const f = focusSampler(chosen.id, ((e.clientX - r.left) / r.width) * W, ((e.clientY - r.top) / r.height) * H);
+            setPickingFocus(false);
+            if (f) run(ops.setFocus(doc, chosen.id, f));
+            else setNotice("The focus only applies to a picture that fills the frame (Fit: fill) and is not zoomed by Ken Burns.");
+          }} onKeyDown={(e) => e.key === "Escape" && setPickingFocus(false)} />,
+        overlayHost,
+      )}
       {overlayHost && sampler && picking && chosen && createPortal(
         <div className="pick-layer" role="button" aria-label="Click the colour to remove" tabIndex={0}
           onClick={(e) => {
@@ -430,7 +448,7 @@ function TimelineBody({ projectId, timeline, media, preparing, peaks, film, vide
           }} onKeyDown={(e) => e.key === "Escape" && setPicking(false)} />,
         overlayHost,
       )}
-      {overlayHost && !picking && chosen && (chosen.kind === "video" || chosen.kind === "image") && createPortal(
+      {overlayHost && !picking && !pickingFocus && chosen && (chosen.kind === "video" || chosen.kind === "image") && createPortal(
         <CanvasHandles clip={chosen} width={(CANVAS_SIZES[doc.aspect ?? "16:9"] ?? CANVAS_SIZES["16:9"]!)[0]} height={(CANVAS_SIZES[doc.aspect ?? "16:9"] ?? CANVAS_SIZES["16:9"]!)[1]}
           cropMode={cropMode} onDraft={(patch) => setDraft(patch ? { id: chosen.id, patch } : null)} onCommit={(patch) => run(ops.setPicture(doc, chosen.id, patch))} />,
         overlayHost,

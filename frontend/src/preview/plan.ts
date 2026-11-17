@@ -16,6 +16,7 @@ export interface Layer {
   crop: [number, number, number, number];
   fit: "fill" | "fit" | "blur";
   key: Key | null;
+  focus: [number, number] | null;
   /** seconds into the source file */
   time: number;
   opacity: number;
@@ -111,7 +112,7 @@ export function layersAt(doc: Doc, frame: number): Layer[] {
       return {
         clip, ghost: !!clip.meta["ghost"], time: sourceSeconds(doc, clip, frame), opacity: clip.transform.opacity * look.alpha, zoom: kenBurnsZoom(clip, frame),
         scale: clip.transform.scale, x: clip.transform.x, y: clip.transform.y, dx: look.dx, zoomMul: look.zoomMul,
-        rotation: clip.transform.rotation, crop: clip.transform.crop, fit: clip.fit ?? "fill", key: clip.key ?? null,
+        rotation: clip.transform.rotation, crop: clip.transform.crop, fit: clip.fit ?? "fill", key: clip.key ?? null, focus: clip.focus ?? null,
         fx: { brightness: effectValue(clip, "brightness"), contrast: effectValue(clip, "contrast"), saturation: effectValue(clip, "saturation"), blur: effectValue(clip, "blur") },
       };
     });

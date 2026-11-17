@@ -1275,3 +1275,23 @@ def test_an_avatar_speaks_the_narration_and_lands_on_the_timeline_keyed_in_a_cor
         tl2 = c.get(f"/api/projects/{pid}/timeline").json()
         assert [x["id"] for x in tl2["clips"] if x["id"].startswith("avatar-")] == ["avatar-1", "avatar-2"]
         assert len({x["track"] for x in tl2["clips"] if x["id"].startswith("avatar-")}) == 2
+
+
+def test_a_focus_suggestion_is_offered_for_pictures_and_changes_nothing(env):
+    settings, _, tone, _ = env
+    with client(env) as c:
+        pid = finished_project(c, tone)
+        tl = c.get(f"/api/projects/{pid}/timeline").json()
+        pic = next(a for a in tl["assets"].values() if a["kind"] in ("image", "video"))
+        r = c.get(f"/api/projects/{pid}/media/focus", params={"asset": pic["id"]})
+        assert r.status_code == 200 and 0 <= r.json()["x"] <= 1 and 0 <= r.json()["y"] <= 1
+        assert c.get(f"/api/projects/{pid}/media/focus", params={"asset": "narration"}).status_code == 400
+        assert c.get(f"/api/projects/{pid}/media/focus", params={"asset": "nope"}).status_code == 404
+        assert c.get(f"/api/projects/{pid}/timeline").json()["rev"] == tl["rev"]                         # it only suggests
+        # a clip's focus survives a save and shows in the next read
+        clip = next(x for x in tl["clips"] if x["asset"] == pic["id"])
+        clip["focus"] = [0.2, 0.6]
+        assert put_tl(c, pid, tl).status_code == 200
+        assert next(x for x in c.get(f"/api/projects/{pid}/timeline").json()["clips"] if x["id"] == clip["id"])["focus"] == [0.2, 0.6]
+        clip["focus"] = [2, 0.5]
+        assert put_tl(c, pid, tl | {"rev": c.get(f"/api/projects/{pid}/timeline").json()["rev"]}).status_code == 422

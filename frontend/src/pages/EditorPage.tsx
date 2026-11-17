@@ -86,7 +86,8 @@ export function EditorPage() {
         </div>
       )}
       {project.video_ready && (project.status === "done" || opened.current === project.id) && (
-        <Timeline projectId={project.id} version={playerVersion} video={live ? engine : video} onDoc={setLiveDoc} onMedia={setMediaState} overlayHost={live ? overlayHost : null} sampler={live && engine ? (id, x, y) => engine.pickColor(id, x, y) : null} onProject={(p) => { upsert(p); refresh(); }} />
+        <Timeline projectId={project.id} version={playerVersion} video={live ? engine : video} onDoc={setLiveDoc} onMedia={setMediaState} overlayHost={live ? overlayHost : null} sampler={live && engine ? (id, x, y) => engine.pickColor(id, x, y) : null}
+          focusSampler={live && engine ? (id, x, y) => engine.pickFocus(id, x, y) : null} onProject={(p) => { upsert(p); refresh(); }} />
       )}
       {project.video_ready && project.status === "done" && (
         <AvatarPanel project={project} onStarted={(p) => { upsert(p); refresh(); }} />

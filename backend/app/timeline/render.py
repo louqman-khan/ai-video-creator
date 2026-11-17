@@ -31,7 +31,7 @@ from app.pipeline.sizes import base_video_name, render_size
 from app.timeline.models import Clip, Timeline
 
 log = logging.getLogger("avc.render")
-RENDER_VERSION = "r6"
+RENDER_VERSION = "r7"
 BLUR_ZOOM = 1.15  # the blurred copy behind a "fit" picture is enlarged a little so its blurred edges stay out of the frame
 BLUR_SIGMA = 0.03  # blur strength of that copy, in frame widths  # bump when the pictures a segment produces change: invalidates every cached segment
 Progress = Callable[[str, float, str], None]
@@ -217,7 +217,7 @@ def _layer_spec(tl: Timeline, seg: Segment, c: Clip) -> dict:
         "key": c.key.model_dump() if c.key else None,
         "asset": _identity(tl, c), "kind": c.kind, "offset": offset if c.kind == "video" else 0, "loop": c.loop,
         "opacity": c.transform.opacity, "place": [c.transform.x, c.transform.y, c.transform.scale],
-        "shape": [c.transform.rotation, list(c.transform.crop), c.fit],
+        "shape": [c.transform.rotation, list(c.transform.crop), c.fit, list(c.focus) if c.focus else None],
         "kb": None if kb is None else [kb, into, c.duration],  # the zoom runs over the whole clip, not the segment
     }
     timing = _timing(c)
@@ -310,11 +310,19 @@ def _tonemap(tl: Timeline, c: Clip) -> str:
     return derive.TONEMAP + ",format=yuv420p," if _is_hdr(a.path, st.st_size, st.st_mtime_ns) else ""
 
 
+def _focus_window(c: Clip, w: int, h: int) -> str:
+    """Where the frame-sized window is cut from a picture that was scaled to cover the frame: centred on the clip's focus point (kept inside the picture)."""
+    if not c.focus:
+        return ""
+    fx, fy = c.focus
+    return f":x='min(max(iw*{fx:.4f}-{w}/2,0),iw-{w})':y='min(max(ih*{fy:.4f}-{h}/2,0),ih-{h})'"
+
+
 def _layer_chain(tl: Timeline, seg: Segment, c: Clip, idx: int, w: int, h: int) -> list[str]:
     """Filter-graph pieces for one layer, ending in the label `[l<idx>]`. Order: show the picture in the frame
     (fill / fit / blurred background / Ken Burns), effects, crop, resize, rotate, opacity and fades, transition zoom."""
-    cover = f"scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h},setsar=1"
     spec = _layer_spec(tl, seg, c)
+    cover = f"scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h}{_focus_window(c, w, h)},setsar=1"
     into = seg.start - c.start
     hold = ",tpad=stop_mode=clone:stop_duration=600" if c.meta.get("hold") else ""  # a ghost whose video has run out keeps its last frame
     pieces: list[str] = []

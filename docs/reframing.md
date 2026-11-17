@@ -25,3 +25,8 @@ While dragging, the live preview shows the draft; releasing is one undo step.
 
 ## Checking parity
 `frontend/e2e/reframe.mjs` (real Chrome, a COPY of a project with prepared media): live canvas vs rendered preview at 160 px, against a baseline.
+
+## Focus (smart crop, task 1.9)
+`Clip.focus` (x, y as 0..1 on the picture) centres the crop of a picture that fills the frame on that point instead of the middle (window kept inside the picture). It is ignored by
+the Fit modes and by Ken Burns zoom. Set it in the inspector: **Pick on the preview** (click what must stay in view), **Suggest** (spectral-residual saliency, `pipeline/focus.py`;
+a suggestion only: it finds the most conspicuous thing, not faces, and was a weak helper on real stock footage) or **Centre**. Never applied automatically.

@@ -27,6 +27,7 @@ from app.api.timeline import load_or_build
 from app.config import Settings
 from app.media import derive, ffmpeg, ingest
 from app.media.ingest import Limits, MediaInfo, MediaRejected
+from app.pipeline.focus import focus_of_file
 from app.timeline import convert
 from app.api.scenes import AssetView
 from app.media.cache import MediaCache
@@ -381,6 +382,20 @@ def build_router(store: ProjectStore, settings: Settings, worker: MediaWorker) -
         f = worker.key_dir(path) / name
         media_type = _PROXY_TYPES.get(f.suffix) if role == "proxy" else _ROLES[role]
         return FileResponse(f, media_type=media_type, headers={"Cache-Control": "private, max-age=3600"})  # content-addressed
+
+    @router.get("/media/focus")
+    async def media_focus(pid: str, asset: str = Query(..., max_length=200)) -> dict:
+        """A suggestion for the focus point of a picture (see pipeline/focus.py): where the crop to the frame should be centred. Changes nothing."""
+        info = project(pid)
+        with store.lock:
+            tl = timeline_of(pid, info)
+            a = asset_of(tl, asset)
+        if a.kind == "audio":
+            raise HTTPException(400, "Only pictures have a focus.")
+        found = await run_in_threadpool(focus_of_file, Path(a.path), a.kind, (a.duration or 0) / tl.fps)
+        if found is None:
+            raise HTTPException(404, "This picture could not be looked at.")
+        return {"x": found[0], "y": found[1]}
 
     @router.get("/media/proxy")
     def media_proxy(pid: str, asset: str = Query(..., max_length=200)) -> FileResponse:

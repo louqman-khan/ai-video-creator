@@ -653,3 +653,31 @@ def test_bars_around_a_fitted_green_screen_picture_are_transparent_too(media, tm
     assert b > 200 and r < 60 and g < 60
     r, g, b = px(out, 0.5, 270, 270)                                             # the picture's own green area is keyed too
     assert b > 200 and g < 60
+
+
+# ------------------------------------------------------------------ focus (smart reframing)
+
+def test_the_crop_to_the_frame_is_centred_on_the_focus_point(media, tmp_path):
+    # a 2:1 picture, left half red, right half blue, shown in a square frame: the middle shows both, a focus on the left shows only red, on the right only blue
+    p = tmp_path / "wide.png"
+    sh("-f", "lavfi", "-i", "color=c=red:s=200x200", "-f", "lavfi", "-i", "color=c=blue:s=200x200", "-filter_complex", "[0][1]hstack", "-frames:v", "1", str(p))
+    extra = asset(tmp_path, "wide", "image")
+
+    def shot(focus):
+        tl = make_tl(media, [vclip("p", "wide", 0, 30, kind="image", focus=focus)], extra_assets=[extra]).model_copy(update={"aspect": "1:1"})
+        return render_to(tl, tmp_path, f"f_{focus}.mp4".replace(" ", "").replace("(", "").replace(")", "").replace(",", "_"))
+    mid, left, right = shot(None), shot((0.1, 0.5)), shot((0.9, 0.5))
+    assert px(mid, 0.5, 100, 270)[0] > 200 and px(mid, 0.5, 440, 270)[2] > 200                 # centred: red on the left, blue on the right
+    assert px(left, 0.5, 100, 270)[0] > 200 and px(left, 0.5, 440, 270)[0] > 200               # focus left: red everywhere
+    assert px(right, 0.5, 100, 270)[2] > 200 and px(right, 0.5, 440, 270)[2] > 200            # focus right: blue everywhere
+    with pytest.raises(ValueError):
+        vclip("p", "wide", 0, 30, kind="image", focus=(1.5, 0.5))
+
+
+def test_a_final_quality_vertical_render_of_pictures_and_videos_is_1080x1920(media, tmp_path):
+    tl = make_tl(media, [vclip("v", "red", 0, 30), vclip("p", "pic", 30, 30, kind="image", effects=[Effect(type="kenburns", value=10)])]).model_copy(update={"aspect": "9:16"})
+    out = tmp_path / "vertical_final.mp4"
+    render_timeline(tl, tmp_path, SETTINGS, quality="final", out=out, captions=False, normalize=False)
+    assert probe(out, "stream=width,height") == "1080,1920"
+    assert px(out, 0.5, 540, 960)[0] > 200                                       # the video segment
+    assert sum(px(out, 1.5, 540, 960)) > 60                                      # the picture segment (testsrc), not black

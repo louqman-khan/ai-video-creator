@@ -92,6 +92,10 @@ describe("live preview plan", () => {
     expect(layersAt(doc([c({ id: "k", key })]), 1)[0]!.key).toEqual(key);
     expect(layersAt(doc([c({ id: "n" })]), 1)[0]!.key).toBeNull();
   });
+  it("carries the focus point", () => {
+    expect(layersAt(doc([c({ id: "f", focus: [0.2, 0.7] })]), 1)[0]!.focus).toEqual([0.2, 0.7]);
+    expect(layersAt(doc([c({ id: "n" })]), 1)[0]!.focus).toBeNull();
+  });
   it("carries effects", () => {
     const d = doc([c({ id: "e", effects: [{ type: "blur", value: 40 }, { type: "brightness", value: -20 }] })]);
     expect(layersAt(d, 1)[0]!.fx).toEqual({ brightness: -20, contrast: 0, saturation: 0, blur: 40 });
