@@ -14,7 +14,7 @@ afterEach(() => vi.restoreAllMocks());
 
 describe("SetupPage", () => {
   it("saves keys without ever showing them and starts the download", async () => {
-    const f = vi.spyOn(globalThis, "fetch").mockImplementation(async (url, init) => {
+    const f = vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
       if (String(url).endsWith("/keys")) return json(status({ keys: { gemini_api_key: true, pixabay_api_key: false } }));
       if (String(url).endsWith("/models")) return json(status({ download: { running: false, message: "", error: "Download failed: HTTP 503" } }));
       return json(status());
