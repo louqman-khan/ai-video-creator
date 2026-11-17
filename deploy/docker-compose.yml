@@ -1,0 +1,37 @@
+# One small server: the app (API + web editor + workers) behind Caddy, which gets and renews the HTTPS certificate by itself.
+#   cp deploy/.env.production.example .env.production   (fill it in)       docker compose -f deploy/docker-compose.yml --env-file .env.production up -d --build
+services:
+  app:
+    build: { context: .., dockerfile: Dockerfile }
+    restart: unless-stopped
+    env_file: ../.env.production
+    environment:
+      MODE: hosted
+      TRUSTED_PROXY: "true"
+    volumes:
+      - data:/data                # projects, uploads, exports, the account database
+    tmpfs:
+      - /tmp:size=1g
+    # the app decodes files strangers upload: give it as little as it needs and cap what it can use
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 512
+    mem_limit: ${APP_MEMORY:-6g}
+    cpus: ${APP_CPUS:-4}
+    expose: ["8742"]
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports: ["80:80", "443:443"]
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN in .env.production}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on: [app]
+volumes:
+  data:
+  caddy_data:
+  caddy_config:

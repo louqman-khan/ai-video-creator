@@ -1,6 +1,6 @@
 # Step 6 plan: one product, two ways to run it (hosted website + desktop app)
 
-Status: **proposal, waiting for approval** (nothing below is built).
+Status: **approved by delegation** ("you are the senior dev, build the best option for public"). Built so far: accounts, ownership guard, limits, hosted frontend, deployment files — see `docs/hosting.md`, `docs/security.md` and the progress log in `ROADMAP.md`. **Change from this plan:** version one uses ONE machine (shared local disk, in-process workers, SQLite) instead of object storage + a queue (6.1/6.3), because ffmpeg needs local files and that is the simplest design that is safe for a first public launch; the interfaces for the later split are kept.
 
 ## The idea
 One codebase. The editor, the timeline, the renderer, the providers stay exactly as they are. What changes is *where things live* and *who is asking*, behind interfaces (the project's

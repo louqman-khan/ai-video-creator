@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -62,6 +63,29 @@ class Settings(BaseSettings):
     max_media_fps: int = 240
     max_uploads_per_project: int = 100
     proxy_dir: str = ""  # empty: <work_dir>/cache/proxies
+
+    # --- hosting (docs/hosting.md). MODE=local: one person, no login (desktop app, avc app). MODE=hosted: accounts, per-user limits, security headers.
+    mode: Literal["local", "hosted"] = "local"
+    database_url: str = ""  # empty: sqlite:///<work_dir>/app.db (single VM); a PostgreSQL URL works too
+    public_url: str = "http://127.0.0.1:8742"  # how users reach the site: used in e-mail links; https:// turns on Secure cookies
+    signups: Literal["open", "invite", "closed"] = "open"
+    invite_codes: str = ""  # comma-separated codes accepted when SIGNUPS=invite
+    admin_emails: str = ""  # comma-separated: these accounts may use the storage clean-up
+    session_days: int = 14
+    require_email_verification: bool = True
+    smtp_host: str = ""  # empty: e-mails are written to <work_dir>/outbox/ and the log (development)
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    mail_from: str = "AI Video Creator <no-reply@localhost>"
+    allow_noncommercial_voices: bool | None = None  # None: yes in local mode, NO in hosted mode (the Urdu voice is CC-BY-NC and the English voice's licence is unclear)
+    job_workers: int = 1  # renders that may run at once (each uses all CPU cores; raise on a bigger machine)
+    # per-user limits in hosted mode
+    max_projects_per_user: int = 20
+    max_storage_mb_per_user: int = 5000
+    max_active_jobs_per_user: int = 1
+    max_exports_per_day: int = 10
+    trusted_proxy: bool = False  # behind a reverse proxy that sets X-Forwarded-For (Caddy, nginx): use it for rate limits
 
     # scene chunking
     scene_min_s: float = 3.0

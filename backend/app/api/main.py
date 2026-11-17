@@ -13,7 +13,7 @@ import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
@@ -33,6 +33,12 @@ from app.pipeline.caption_style import CaptionStyle
 from app.pipeline.runner import ASPECTS, Providers
 import app.maintenance as maintenance
 from app.api import avatars as avatars_api
+from app.accounts import routes as auth_routes
+from app.accounts.db import Accounts
+from app.accounts.guard import Guard
+from app.accounts.mailer import create_mailer
+from app.accounts.quotas import Quotas
+from app.accounts.ratelimit import RateLimiter
 from app.pipeline import export_speed
 from app.providers.tts import TTSUnavailable
 from app.pipeline.sizes import PORTRAIT, render_size
@@ -94,10 +100,34 @@ def create_app(settings: Settings | None = None, providers_factory: ProvidersFac
         jobs.shutdown()
         app.state.media.shutdown()
 
-    app = FastAPI(title="AI Video Creator", version="0.1.0", lifespan=lifespan)
-    origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
+    hosted = settings.mode == "hosted"
+    accounts = Accounts(settings) if hosted else None
+    quotas = Quotas(settings, store) if hosted else None
+    limiter = RateLimiter()
+    guard = Guard(settings, store, accounts, quotas, limiter)
+    app = FastAPI(title="AI Video Creator", version="0.1.0", lifespan=lifespan, dependencies=[Depends(guard)])
+    origins = [] if hosted else [o.strip() for o in settings.cors_origins.split(",") if o.strip()]  # the hosted site is one origin: no other site may talk to it
     app.add_middleware(CORSMiddleware, allow_origins=origins, allow_methods=["*"], allow_headers=["*"])
     app.state.store, app.state.jobs = store, jobs
+    app.include_router(auth_routes.build_router(settings, store, accounts, quotas, create_mailer(settings) if hosted else None, limiter))
+
+    if hosted:
+        secure = settings.public_url.startswith("https://")
+        csp = ("default-src 'self'; img-src 'self' data: blob: https:; media-src 'self' blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; "
+               "connect-src 'self'; font-src 'self' data:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'")
+
+        @app.middleware("http")
+        async def security_headers(request, call_next):
+            response = await call_next(request)
+            response.headers.update({"X-Content-Type-Options": "nosniff", "X-Frame-Options": "DENY", "Referrer-Policy": "same-origin",
+                                     "Permissions-Policy": "camera=(), microphone=(), geolocation=()", "Content-Security-Policy": csp})
+            if secure:
+                response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+            return response
+
+    def owner_of(request: Request) -> str | None:
+        """The account that owns what is being made (hosted mode); None for the single local user."""
+        return request.state.user.id if hosted else None
 
     def get_project(pid: str) -> ProjectInfo:
         try:
@@ -110,6 +140,7 @@ def create_app(settings: Settings | None = None, providers_factory: ProvidersFac
         return {
             "ok": True,
             "ffmpeg": ffmpeg.has_tools(),
+            "mode": settings.mode,
             "speech": jobs.tts.languages(),  # languages a typed script can be spoken in
             "speech_paid": bool(getattr(jobs.tts, "paid", False)),  # the voice is a paid outside service
             "hardware_encoder": ffmpeg.hardware_encoder() is not None,
@@ -124,6 +155,7 @@ def create_app(settings: Settings | None = None, providers_factory: ProvidersFac
 
     @app.post("/api/projects", status_code=202, response_model=ProjectInfo)
     async def create_project(
+        request: Request,
         file: UploadFile | None = File(None, description="Narration audio (leave out to have the script spoken)"),
         name: str = Form(""),
         language: str = Form("", description="en, ur, or empty for auto-detect"),
@@ -167,7 +199,7 @@ def create_app(settings: Settings | None = None, providers_factory: ProvidersFac
         info = store.create(
             name.strip()[:80] or (" ".join(script.split()[:6])[:80] if speak else _safe_name(file.filename or "")),
             original_filename="" if speak else (file.filename or "")[:200], audio_file="narration.wav" if speak else f"upload{ext}",
-            language=language or None, aspect=aspect,
+            language=language or None, aspect=aspect, owner=owner_of(request),
             options={"language": language or None, "remove_silence": remove_silence, "min_gap": min_gap,
                      "clean": clean and not speak, "normalize": normalize, "lufs": lufs, "captions": captions,
                      "style": style_dict, **({"speak": True} if speak else {})},
@@ -197,8 +229,8 @@ def create_app(settings: Settings | None = None, providers_factory: ProvidersFac
         return store.get(info.id)
 
     @app.get("/api/projects", response_model=list[ProjectInfo])
-    def list_projects() -> list[ProjectInfo]:
-        return store.list()
+    def list_projects(request: Request) -> list[ProjectInfo]:
+        return store.list(owner=owner_of(request))
 
     @app.get("/api/projects/{pid}", response_model=ProjectInfo)
     def project(pid: str) -> ProjectInfo:

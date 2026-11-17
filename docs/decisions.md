@@ -74,3 +74,10 @@ network (DNS).
 Measured, 10 s of 1080p30: `libx264 medium` 9.8 s (4.0 MB), `libx264 veryfast` 3.9 s, `h264_videotoolbox`
 1.7 s (7.1 MB at 8 Mb/s) — about 6x faster than the current final setting, at larger file size. Capability
 is probed at startup. 4K time estimates are extrapolations (about 4x the pixels) until measured in 4.12.
+
+
+### D8. Hosted version one = one machine, accounts in SQLite, files on the shared disk — **decided 2026-11-17**
+Public hosting needs isolation, limits and security, not scale. One Docker host runs Caddy (HTTPS) and the app (API + editor + render workers); accounts/sessions live in SQLite (WAL; PostgreSQL by URL
+later), every project is a folder owned by an account; a single global guard enforces login, ownership (404 for foreign projects), CSRF header/Origin, administrator-only routes and per-user limits. Object storage and
+a worker queue are postponed until one machine is not enough: ffmpeg needs real files, so the split costs a large refactor with no benefit for the first users. Free computer voices (CC-BY-NC / unclear licence) are
+disabled in hosted mode; downloads from search results are limited to public addresses. Details: `docs/hosting.md`, `docs/security.md`.

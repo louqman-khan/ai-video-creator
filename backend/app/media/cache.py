@@ -23,10 +23,10 @@ def _ext(asset: MediaAsset) -> str:
 
 
 class MediaCache:
-    def __init__(self, folder: Path, client: httpx.Client | None = None) -> None:
+    def __init__(self, folder: Path, client: httpx.Client | None = None, public_only: bool = False) -> None:
         self.folder = folder
         self.folder.mkdir(parents=True, exist_ok=True)
-        self.client = client or make_client()
+        self.client = client or make_client(public_only=public_only)
 
     def path_for(self, asset: MediaAsset) -> Path:
         safe = re.sub(r"[^A-Za-z0-9_.-]", "_", asset.id)

@@ -20,6 +20,7 @@ dependencies = [
   "python-multipart>=0.0.9",
   "pillow>=10",  # decoding the preview pictures for the CLIP ranker
   "tokenizers>=0.15",
+  "sqlalchemy>=2",  # accounts and sessions (hosted mode)
 ]
 
 [project.optional-dependencies]

@@ -221,7 +221,7 @@ def build_router(store: ProjectStore, jobs: JobRunner, settings: Settings) -> AP
 
         def prepare_timeline() -> None:
             """The timeline has been edited: swap the visual inside the timeline itself."""
-            local = MediaCache(Path(settings.work_dir) / "cache" / "media").get(asset)
+            local = MediaCache(Path(settings.work_dir) / "cache" / "media", public_only=settings.mode == "hosted").get(asset)
             with store.lock:
                 tl = convert.load(d)
                 if tl is None:
@@ -260,7 +260,7 @@ def build_router(store: ProjectStore, jobs: JobRunner, settings: Settings) -> AP
         def prepare() -> None:
             if convert.has_edits(d):
                 return prepare_timeline()
-            local = MediaCache(Path(settings.work_dir) / "cache" / "media").get(asset)  # may take a while
+            local = MediaCache(Path(settings.work_dir) / "cache" / "media", public_only=settings.mode == "hosted").get(asset)  # may take a while
             _, current = load_scenes(d)
             new = [ScenePick(scene_id=sid, asset=asset, local_path=str(local)) if p.scene_id == sid else p
                    for p in current]

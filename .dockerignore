@@ -1,0 +1,13 @@
+.git
+.venv
+work
+node_modules
+frontend/node_modules
+frontend/dist
+desktop
+tools/bin
+assets/models
+samples
+**/__pycache__
+**/.pytest_cache
+.env

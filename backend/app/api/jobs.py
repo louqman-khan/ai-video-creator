@@ -34,7 +34,7 @@ def redact(text: str, settings: Settings) -> str:
 class JobRunner:
     def __init__(self, store: ProjectStore, settings: Settings, providers_factory: ProvidersFactory) -> None:
         self.store, self.settings, self.factory = store, settings, providers_factory
-        self._pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="avc-job")
+        self._pool = ThreadPoolExecutor(max_workers=max(1, settings.job_workers), thread_name_prefix="avc-job")
         self._pending: set[str] = set()  # projects with a coalesced preview render already waiting
         self._lock = threading.Lock()
         self._tts = None

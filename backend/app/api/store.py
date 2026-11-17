@@ -45,6 +45,7 @@ class ProjectInfo(BaseModel):
     export_preset: str | None = None  # 720p / 1080p / 4k
     export_encoder: str | None = None  # software / hardware
     preview_rev: int | None = None  # the timeline revision the current preview was rendered from
+    owner: str | None = None  # hosted mode: the account that owns the project (None in local mode)
 
 
 class ProjectNotFound(KeyError):
@@ -93,11 +94,14 @@ class ProjectStore:
             self._write(info)
             return info
 
-    def list(self) -> list[ProjectInfo]:
+    def list(self, owner: str | None = None) -> list[ProjectInfo]:
+        """All projects, or only those of one account."""
         out = []
         for d in self.root.iterdir():
             try:
-                out.append(self.get(d.name))
+                info = self.get(d.name)
+                if owner is None or info.owner == owner:
+                    out.append(info)
             except (ProjectNotFound, json.JSONDecodeError, ValueError):
                 continue  # a broken folder must not break the list
         return sorted(out, key=lambda p: p.created_at, reverse=True)

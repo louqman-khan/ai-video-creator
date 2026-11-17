@@ -4,9 +4,11 @@ import { isActive } from "../api/types";
 import { ProgressBar } from "../components/ProgressBar";
 import { StatusBadge } from "../components/StatusBadge";
 import { StoragePanel } from "../components/StoragePanel";
+import { useAuth } from "../store/auth";
 import { useProjects } from "../store/projects";
 
 export function ProjectsPage() {
+  const admin = useAuth((s) => !!s.account?.user?.admin);  // the disk of the whole server is for its administrator (always true in the single-user desktop app)
   const { projects, loading, error, load, remove } = useProjects();
 
   useEffect(() => {
@@ -40,7 +42,7 @@ export function ProjectsPage() {
         <p className="muted">No projects yet. Create one from an audio file.</p>
       )}
 
-      <StoragePanel />
+      {admin && <StoragePanel />}
       <ul className="cards">
         {projects.map((p) => (
           <li key={p.id} className="card">

@@ -3,6 +3,10 @@
 
 from __future__ import annotations
 
+import ipaddress
+import socket
+from urllib.parse import urlparse
+
 import httpx
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
@@ -29,11 +33,29 @@ def safe_url(url: str) -> str:
     return str(httpx.URL(url).copy_with(query=None))
 
 
-def make_client(read_timeout: float = 30.0) -> httpx.Client:
+def assert_public_url(url: str) -> None:
+    """Refuse addresses on the server's own network (localhost, 10.x, 192.168.x, the cloud metadata address 169.254.169.254, ...): a download address that
+    came from an outside search result must never make the hosted server fetch something from inside its own network."""
+    p = urlparse(url)
+    if p.scheme not in ("http", "https") or not p.hostname:
+        raise HttpError("blocked: not a web address")
+    try:
+        infos = socket.getaddrinfo(p.hostname, p.port or (443 if p.scheme == "https" else 80), type=socket.SOCK_STREAM)
+    except socket.gaierror:
+        raise HttpError("blocked: the address cannot be resolved") from None
+    for info in infos:
+        ip = ipaddress.ip_address(info[4][0].split("%")[0])
+        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast or ip.is_unspecified:
+            raise HttpError("blocked: that address is on a private network")
+
+
+def make_client(read_timeout: float = 30.0, public_only: bool = False) -> httpx.Client:
+    """`public_only`: every request, including each redirect, must go to a public address (hosted mode)."""
     return httpx.Client(
         timeout=httpx.Timeout(read_timeout, connect=10.0),
         headers={"User-Agent": USER_AGENT},
         follow_redirects=True,
+        event_hooks={"request": [lambda r: assert_public_url(str(r.url))]} if public_only else {},
     )
 
 

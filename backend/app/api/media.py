@@ -333,7 +333,7 @@ def build_router(store: ProjectStore, settings: Settings, worker: MediaWorker) -
             return AssetOut.of(existing)
 
         def fetch() -> tuple[Path, float | None]:
-            local = MediaCache(Path(settings.work_dir) / "cache" / "media").get(media)
+            local = MediaCache(Path(settings.work_dir) / "cache" / "media", public_only=settings.mode == "hosted").get(media)
             return local, (ffmpeg.probe_duration(local) if media.kind != "image" else None)
 
         try:

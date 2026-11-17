@@ -202,6 +202,7 @@ def speak(
 @app.command("app")
 def app_command(
     port: Annotated[int, typer.Option(help="Port of the local server")] = 8742,
+    host: Annotated[str, typer.Option(help="Address to listen on (127.0.0.1 = this computer only; 0.0.0.0 inside a container behind a reverse proxy)")] = "127.0.0.1",
     no_browser: Annotated[bool, typer.Option("--no-browser", help="Do not open the browser")] = False,
 ) -> None:
     """Run the whole app in one process (server + built web editor) and open it in the browser."""
@@ -220,7 +221,7 @@ def app_command(
     if not no_browser:
         threading.Timer(1.5, lambda: webbrowser.open(url)).start()
     console.print(f"AI Video Creator: [bold]{url}[/bold]  (Ctrl+C to stop)")
-    server = uvicorn.Server(uvicorn.Config(create_app(s), host="127.0.0.1", port=port, log_level=os.environ.get("AVC_LOG_LEVEL", "warning")))
+    server = uvicorn.Server(uvicorn.Config(create_app(s), host=host, port=port, proxy_headers=s.trusted_proxy, forwarded_allow_ips="*" if s.trusted_proxy else None, log_level=os.environ.get("AVC_LOG_LEVEL", "warning")))
     parent = int(os.environ.get("AVC_PARENT_PID", "0") or 0)
     if parent:  # started by the desktop app: stop when it is gone, even if it was killed instead of closed
         from app.procutil import pid_alive

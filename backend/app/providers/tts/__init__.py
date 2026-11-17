@@ -38,6 +38,12 @@ class UnavailableTTS:
         raise TTSUnavailable("Speech is switched off (TTS=none).")
 
 
+def voices_allowed(settings: Settings) -> bool:
+    """The free voices are for personal use. The hosted (public) site only uses them when the operator says the licences allow it."""
+    allowed = settings.allow_noncommercial_voices
+    return allowed if allowed is not None else settings.mode != "hosted"
+
+
 registry: Registry[TTS] = Registry("tts")
 
 
@@ -50,14 +56,14 @@ def _none(settings: Settings) -> TTS:
 def _mms(settings: Settings) -> TTS:
     from app.providers.tts.mms_onnx import MmsOnnxTTS
 
-    return MmsOnnxTTS(Path(settings.tts_dir))
+    return MmsOnnxTTS(Path(settings.tts_dir)) if voices_allowed(settings) else UnavailableTTS()
 
 
 @registry.register("piper")
 def _piper(settings: Settings) -> TTS:
     from app.providers.tts.piper import PiperTTS
 
-    return PiperTTS(Path(settings.tts_dir))
+    return PiperTTS(Path(settings.tts_dir)) if voices_allowed(settings) else UnavailableTTS()
 
 
 @registry.register("elevenlabs")

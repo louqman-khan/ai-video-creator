@@ -201,7 +201,7 @@ class Pipeline:
         picks = self._cached("assets.json", ScenePick, force)
         if picks is None:
             log.info("fetching media...")
-            cache = MediaCache(Path(self.s.work_dir) / "cache" / "media")
+            cache = MediaCache(Path(self.s.work_dir) / "cache" / "media", public_only=self.s.mode == "hosted")
             orientation = "portrait" if h > w else "landscape"
             picks = fetch_media(
                 scenes, self.p.search, self.p.ranker, cache, orientation,

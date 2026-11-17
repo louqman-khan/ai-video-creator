@@ -1,5 +1,16 @@
 import type { Aspect, Asset, AvatarCorner, ExportEncoder, ExportPreset, Attribution, CaptionsView, CaptionStyle, FilmMeta, MediaView, Peaks, Project, Scene, TimelineAsset, TimelineView } from "./types";
 
+/** Our own pages send this header on every request; the hosted server refuses state-changing requests without it (protection against other sites). */
+export const CSRF_HEADERS = { "X-Requested-With": "avc" } as const;
+
+export interface Account {
+  mode: "local" | "hosted";
+  signups: "open" | "invite" | "closed";
+  require_verification: boolean;
+  user: { id: string; email: string | null; admin: boolean; verified?: boolean } | null;
+  usage?: { projects: number; max_projects: number; storage_bytes: number; max_storage_bytes: number; max_exports_per_day: number };
+}
+
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -47,6 +58,7 @@ export function uploadProject(
   const xhr = new XMLHttpRequest();
   const promise = new Promise<Project>((resolve, reject) => {
     xhr.open("POST", "/api/projects");
+    xhr.setRequestHeader("X-Requested-With", CSRF_HEADERS["X-Requested-With"]);
     xhr.upload.onprogress = (e) => e.lengthComputable && onProgress(e.loaded / e.total);
     xhr.onload = () => {
       if (xhr.status >= 200 && xhr.status < 300) {
@@ -67,15 +79,31 @@ export function uploadProject(
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response;
   try {
-    res = await fetch(path, init);
+    res = await fetch(path, { ...init, headers: { ...CSRF_HEADERS, ...(init?.headers as Record<string, string> | undefined) } });
   } catch {
     throw new ApiError("Cannot reach the server. Is `avc serve` running?", 0);
   }
+  if (res.status === 401 && !path.startsWith("/api/auth/")) window.dispatchEvent(new Event("avc:unauthorized")); // the session ended: the app sends the person to the log-in page
   if (!res.ok) throw new ApiError(await errorMessage(res), res.status);
   return res.status === 204 ? (undefined as T) : ((await res.json()) as T);
 }
 
 export const api = {
+  account: () => request<Account>("/api/auth/me"),
+  signup: (body: { email: string; password: string; invite?: string; terms: boolean }) =>
+    request<{ message: string }>("/api/auth/signup", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }),
+  login: (body: { email: string; password: string }) =>
+    request<unknown>("/api/auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }),
+  logout: () => request<unknown>("/api/auth/logout", { method: "POST" }),
+  verifyEmail: (token: string) =>
+    request<{ message: string }>("/api/auth/verify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token }) }),
+  forgotPassword: (email: string) =>
+    request<{ message: string }>("/api/auth/forgot", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email }) }),
+  resetPassword: (token: string, password: string) =>
+    request<{ message: string }>("/api/auth/reset", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token, password }) }),
+  deleteAccount: (password: string) =>
+    request<{ message: string }>("/api/auth/account", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password }) }),
+  accountExportUrl: "/api/auth/export",
   health: () => request<{ ok: boolean; ffmpeg: boolean; hardware_encoder?: boolean; speech?: string[]; speech_paid?: boolean; limits: Limits }>("/api/health"),
   listProjects: () => request<Project[]>("/api/projects"),
   getProject: (id: string) => request<Project>(`/api/projects/${encodeURIComponent(id)}`),
@@ -161,7 +189,7 @@ export const api = {
     try {
       res = await fetch(`/api/projects/${encodeURIComponent(id)}/captions/preview`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...CSRF_HEADERS },
         body: JSON.stringify(body),
         signal,
       });

@@ -10,7 +10,22 @@ describe("api client", () => {
   it("returns parsed JSON and encodes ids in URLs", async () => {
     const f = vi.spyOn(globalThis, "fetch").mockResolvedValue(json({ id: "a" }));
     await api.getProject("a/b ?");
-    expect(f).toHaveBeenCalledWith("/api/projects/a%2Fb%20%3F", undefined);
+    expect(f).toHaveBeenCalledWith("/api/projects/a%2Fb%20%3F", expect.objectContaining({ headers: { "X-Requested-With": "avc" } }));
+  });
+
+  it("sends the anti-forgery header with every request and tells the app when the session has ended", async () => {
+    const f = vi.spyOn(globalThis, "fetch").mockImplementation(async () => json({ detail: "Please log in." }, 401));
+    const seen = vi.fn();
+    window.addEventListener("avc:unauthorized", seen);
+    await expect(api.listProjects()).rejects.toMatchObject({ status: 401 });
+    expect(seen).toHaveBeenCalledTimes(1);
+    await expect(api.login({ email: "a@b.co", password: "wrong wrong wrong" })).rejects.toMatchObject({ status: 401 });
+    expect(seen).toHaveBeenCalledTimes(1);                                              // a wrong password is not an expired session
+    const init = f.mock.calls[1]![1] as RequestInit;
+    expect(init.method).toBe("POST");
+    expect((init.headers as Record<string, string>)["X-Requested-With"]).toBe("avc");
+    expect((init.headers as Record<string, string>)["Content-Type"]).toBe("application/json");
+    window.removeEventListener("avc:unauthorized", seen);
   });
 
   it("turns FastAPI string and validation errors into readable messages", async () => {

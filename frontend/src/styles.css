@@ -169,3 +169,9 @@ input[type="color"] { width: 100%; height: 38px; padding: 2px; border: 1px solid
 .avatar-choice:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
 .avatar-chosen { border-color: var(--accent); }
 .avatar-choice img { border-radius: 8px; background: #e8ecf3; }
+
+.topbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.topbar-user { display: flex; align-items: center; gap: 12px; font-size: .9rem; }
+.auth-card { max-width: 28rem; margin: 3rem auto; }
+.btn-danger { background: var(--danger); border-color: var(--danger); color: #fff; }
+.field small { display: block; margin-top: 2px; }
