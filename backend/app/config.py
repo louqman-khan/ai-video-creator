@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     # providers
     transcriber: str = "faster_whisper"
     whisper_model: str = "small"
-    media_ranker: str = "heuristic"
+    media_ranker: str = "auto"  # auto | clip | heuristic: auto = CLIP when its model files are in clip_dir (docs/clip-ranker.md)
     audio_cleaner: str = "ffmpeg"  # ffmpeg | noop (--no-clean)
     tts: str = "auto"  # auto | mms | piper | none  (docs/tts.md)
     avatar_renderer: str = "none"
@@ -67,6 +67,7 @@ class Settings(BaseSettings):
     fonts_dir: str = str(ROOT / "assets" / "fonts")
     work_dir: str = str(ROOT / "work")
     models_dir: str = str(ROOT / "assets" / "models")
+    clip_dir: str = str(ROOT / "assets" / "models" / "clip")
     tts_dir: str = str(ROOT / "assets" / "models" / "tts")
     rnnoise_model: str = "cb.rnnn"  # file name inside models_dir
 

@@ -199,8 +199,10 @@ def speak(
 
 
 @app.command("fetch-models")
-def fetch_models() -> None:
-    """Download the RNNoise speech-denoise model (used by the audio cleaner) into assets/models/."""
+def fetch_models(
+    clip: Annotated[bool, typer.Option("--clip", help="Also download the CLIP picture-ranking model (about 155 MB)")] = False,
+) -> None:
+    """Download the RNNoise speech-denoise model (used by the audio cleaner) into assets/models/; with --clip also the CLIP ranker."""
     from app.http import make_client
 
     s = get_settings()
@@ -217,6 +219,26 @@ def fetch_models() -> None:
         "[dim]Source: github.com/GregorR/rnnoise-models (author states the models are not subject to "
         "copyright). Check this is acceptable for your product before shipping it.[/dim]"
     )
+    if clip:
+        base = "https://huggingface.co/Xenova/clip-vit-base-patch32/resolve/main/"
+        folder = Path(s.clip_dir)
+        folder.mkdir(parents=True, exist_ok=True)
+        for remote, name in (("onnx/vision_model_quantized.onnx", "vision_model_quantized.onnx"), ("onnx/text_model_quantized.onnx", "text_model_quantized.onnx"),
+                             ("tokenizer.json", "tokenizer.json"), ("preprocessor_config.json", "preprocessor_config.json")):
+            target = folder / name
+            if target.is_file() and target.stat().st_size > 0:
+                continue
+            part = target.with_suffix(target.suffix + ".part")
+            with make_client(read_timeout=120.0) as c, c.stream("GET", base + remote) as r:
+                if r.is_error:
+                    console.print(f"[red]Download of {name} failed:[/red] HTTP {r.status_code}")
+                    raise typer.Exit(1)
+                with part.open("wb") as f:
+                    for chunk in r.iter_bytes():
+                        f.write(chunk)
+            part.replace(target)
+            console.print(f"[green]Saved[/green] {target} ({target.stat().st_size // 1024 // 1024} MB)")
+        console.print("[dim]CLIP ViT-B/32 (OpenAI, MIT licence), ONNX int8 files by Xenova (Hugging Face).[/dim]")
 
 
 @app.command()

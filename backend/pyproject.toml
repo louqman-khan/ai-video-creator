@@ -18,6 +18,8 @@ dependencies = [
   "fastapi>=0.110",
   "uvicorn>=0.29",
   "python-multipart>=0.0.9",
+  "pillow>=10",  # decoding the preview pictures for the CLIP ranker
+  "tokenizers>=0.15",
 ]
 
 [project.optional-dependencies]

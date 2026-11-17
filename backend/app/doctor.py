@@ -73,6 +73,12 @@ def run_checks(s: Settings, network: bool = True) -> list[Check]:
     c.append(Check("speech voices (typed scripts)", "ok" if spoken else "warn",
                    ", ".join({"ur": "Urdu", "en": "English"}.get(x, x) for x in spoken) if spoken else "none installed: see docs/tts.md"))
 
+    from app.providers.media_ranker.clip import models_present
+
+    clip_ok = models_present(Path(s.clip_dir))
+    c.append(Check("CLIP picture ranker", "ok" if clip_ok else "warn",
+                   "active" if clip_ok and s.media_ranker in ("auto", "clip") else ("model files found but MEDIA_RANKER=heuristic" if clip_ok else "not installed: the simple ranker is used (docs/clip-ranker.md)")))
+
     model = Path(s.models_dir) / s.rnnoise_model
     c.append(Check("RNNoise denoise model", "ok" if model.is_file() else "warn",
                    "" if model.is_file() else "run `avc fetch-models`; until then noise removal uses afftdn"))
