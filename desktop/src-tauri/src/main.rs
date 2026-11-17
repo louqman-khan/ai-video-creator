@@ -26,7 +26,9 @@ fn main() {
             let window = app.get_webview_window("main").expect("the main window exists");
             let handle = app.handle().clone();
             std::thread::spawn(move || {
-                let result = backend::start(handle.state::<Backend>().inner());
+                let resources = handle.path().resource_dir().ok().map(|d| d.join("resources")).filter(|d| d.is_dir()).or_else(|| handle.path().resource_dir().ok());
+                let data = handle.path().app_data_dir().ok();
+                let result = backend::start(handle.state::<Backend>().inner(), resources, data);
                 show(&window, result);
             });
             Ok(())

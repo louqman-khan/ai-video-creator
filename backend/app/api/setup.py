@@ -7,7 +7,6 @@ from __future__ import annotations
 import logging
 import os
 import re
-import shutil
 import threading
 from pathlib import Path
 
@@ -65,10 +64,8 @@ def build_router(settings: Settings) -> APIRouter:
     lock = threading.Lock()
 
     def status() -> dict:
-        try:
-            ff = bool(shutil.which("ffmpeg")) and bool(shutil.which("ffprobe"))
-        except Exception:  # noqa: BLE001
-            ff = False
+        from app.media import ffmpeg
+        ff = ffmpeg.has_tools()
         return {
             "ffmpeg": ff,
             "keys": {k: bool(getattr(settings, k)) for k in KEYS},

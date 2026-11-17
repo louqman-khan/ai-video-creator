@@ -41,6 +41,18 @@ pub fn avc_program(root: &Path) -> PathBuf {
     candidates.into_iter().find(|p| p.is_file()).unwrap_or_else(|| PathBuf::from("avc"))
 }
 
+/// Where an installed app keeps what it carries: `<resource dir>/runtime` (Python), `frontend`, `fonts`, `bin` (ffmpeg). None when running from a project folder.
+pub fn bundled(resources: &Path) -> Option<PathBuf> {
+    let r = resources.join("runtime");
+    let py = if cfg!(windows) { r.join("python.exe") } else { r.join("bin").join("python3") };
+    py.is_file().then_some(py)
+}
+
+/// Windows paths from Tauri may start with `\\?\`, which some programs cannot use.
+fn plain(p: PathBuf) -> PathBuf {
+    PathBuf::from(p.to_string_lossy().trim_start_matches(r"\\?\").to_string())
+}
+
 /// A free local port.
 pub fn free_port() -> std::io::Result<u16> {
     Ok(TcpListener::bind("127.0.0.1:0")?.local_addr()?.port())
@@ -64,19 +76,39 @@ fn tail(path: &Path, lines: usize) -> String {
 }
 
 /// Starts the server and waits until it answers. Returns the URL to show, or a message that explains what went wrong.
-pub fn start(backend: &Backend) -> Result<String, String> {
+pub fn start(backend: &Backend, resources: Option<PathBuf>, data: Option<PathBuf>) -> Result<String, String> {
+    let resources = resources.map(plain);
+    let installed = resources.as_deref().and_then(bundled).zip(resources.clone()).zip(data.map(plain));
     let root = project_root();
-    let program = avc_program(&root);
+    let program = match &installed {
+        Some(((py, _), _)) => py.clone(),
+        None => avc_program(&root),
+    };
     let port = free_port().map_err(|e| format!("No free port on this computer: {e}"))?;
-    let work = root.join("work");
+    let work = match &installed {
+        Some((_, data)) => data.clone(),
+        None => root.join("work"),
+    };
     let _ = fs::create_dir_all(&work);
     let log_path = work.join("desktop.log");
     let log = File::create(&log_path).map_err(|e| format!("Cannot write {}: {e}", log_path.display()))?;
     let log_err = log.try_clone().map_err(|e| e.to_string())?;
 
     let mut cmd = Command::new(&program);
-    cmd.args(["app", "--no-browser", "--port", &port.to_string()])
-        .current_dir(&root)
+    if let Some(((_, res), data)) = &installed {
+        // Installed app: the bundled Python runs the server; everything the user creates goes to the per-user data folder.
+        let sep = if cfg!(windows) { ";" } else { ":" };
+        let path = format!("{}{}{}", res.join("bin").display(), sep, std::env::var("PATH").unwrap_or_default());
+        cmd.args(["-X", "utf8", "-c", "from cli.main import app; app()", "app", "--no-browser", "--port", &port.to_string()])
+            .current_dir(data)
+            .env("AVC_DATA", data)
+            .env("FONTS_DIR", res.join("fonts"))
+            .env("FRONTEND_DIST", res.join("frontend"))
+            .env("PATH", path);
+    } else {
+        cmd.args(["app", "--no-browser", "--port", &port.to_string()]).current_dir(&root);
+    }
+    cmd
         .env("PYTHONUTF8", "1")
         .env("PYTHONIOENCODING", "utf-8")
         .env("AVC_PARENT_PID", std::process::id().to_string()) // the server stops by itself when this program is gone

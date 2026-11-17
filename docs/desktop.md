@@ -28,3 +28,21 @@ macOS result: `desktop/src-tauri/target/release/bundle/macos/AI Video Creator.ap
   have to bundle Python (for example with PyInstaller or a standalone Python build) and the models, and be code-signed (macOS notarisation, Windows signing).
 - On macOS the `.dmg` step failed in a headless session (it drives Finder); the `.app` itself is fine, so `tauri.conf.json` asks for `app`, `nsis`, `msi`, `deb`.
 - The window itself could not be photographed from this automated session (no screen-recording permission): what was verified is the behaviour behind it, see `docs/ROADMAP.md`.
+
+## Installer for other people (bundled runtime)
+
+The installed app carries its own Python, so nobody needs Python, Node or a terminal.
+
+**Build (on the platform you are building for):**
+1. `(cd frontend && npm run build)`
+2. `avc fetch-ffmpeg` (Windows/Linux) or `brew install ffmpeg` (macOS) so `tools/bin` or PATH has ffmpeg + ffprobe.
+3. `python3 desktop/build_runtime.py` → fills `desktop/src-tauri/resources/` (relocatable Python from python-build-standalone with the backend installed, the web app, fonts, ffmpeg). The download is checked against GitHub's published SHA-256.
+4. `cd desktop && npx tauri build` → `.app`/`.dmg` (macOS), NSIS/MSI (Windows), `.deb` (Linux).
+
+**How it runs:** when `resources/runtime` exists, the app starts the bundled Python with `AVC_DATA` set to the per-user app-data folder. Projects, downloaded models, the log and `.env` (the keys) live there, never inside the app. The first launch shows **Setup** (free Gemini and Pixabay keys; one-time model download, speech size selectable). Keys are stored owner-only and never sent back to the browser.
+
+**Not done / caveats**
+- Signing: unsigned apps trigger Gatekeeper (macOS: needs an Apple Developer ID + notarisation) and SmartScreen (Windows: needs a code-signing certificate). Users can still open them via right-click → Open / "Run anyway".
+- The bundled FFmpeg is a GPL build; shipping it means you must offer its source and licence text. Check this before distributing publicly.
+- Only the macOS build has been run. Windows/Linux installers come from the CI matrix or a Windows PC.
+- Auto-update is not set up.

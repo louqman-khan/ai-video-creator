@@ -14,6 +14,7 @@
     "active": true,
     "targets": ["app", "nsis", "msi", "deb"],
     "category": "Video",
+    "resources": ["resources/**/*"],
     "shortDescription": "Turn narration into a finished video",
     "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"]
   }
