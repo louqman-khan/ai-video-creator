@@ -247,6 +247,9 @@ function TimelineBody({ projectId, timeline, media, preparing, peaks, film, vide
       [mod && k === "z" && !e.shiftKey, () => session.undo()],
       [(mod && k === "z" && e.shiftKey) || (mod && k === "y"), () => session.redo()],
       [mod && k === "d", () => selected && run(ops.duplicateClip(doc, selected))],
+      [e.altKey && !mod && (e.key === "ArrowLeft" || e.key === "ArrowRight"), () => nudge((e.key === "ArrowLeft" ? -1 : 1) * (e.shiftKey ? fps : 1))],
+      [!mod && !e.altKey && (e.key === "[" || e.key === "]"), () => selectNeighbour(e.key === "]" ? 1 : -1)],
+      [e.key === "Escape" && !!selected, () => { setSelected(null); setNotice("Nothing selected."); }],
       [!mod && k === "s", splitAtPlayhead],
       [!mod && (e.key === "Delete" || e.key === "Backspace") && !e.shiftKey, () => removeSelected(false)],
       [!mod && (e.key === "Delete" || e.key === "Backspace") && e.shiftKey, () => removeSelected(true)],
@@ -288,6 +291,24 @@ function TimelineBody({ projectId, timeline, media, preparing, peaks, film, vide
     if (!selected) return setNotice("Select a clip first.");
     run(ripple ? ops.rippleDelete(doc, [selected]) : ops.deleteClips(doc, [selected]));
   };
+  /** keyboard: move the selected clip by `frames` (it stops at its neighbours) */
+  const nudge = (frames: number) => {
+    const c = selected ? doc.clips.find((x) => x.id === selected) : undefined;
+    if (!c) return setNotice("Select a clip first (press ] to select the next one).");
+    run(ops.moveClip(doc, c.id, { start: c.start + frames }));
+  };
+  /** keyboard: select the previous / next clip (top track first, left to right) and put the playhead at its start */
+  const selectNeighbour = (dir: 1 | -1) => {
+    const rank = new Map(displayOrder(doc.tracks).map((t, i) => [t.id, i]));
+    const all = [...doc.clips].sort((a, b) => (rank.get(a.track) ?? 0) - (rank.get(b.track) ?? 0) || a.start - b.start);
+    if (all.length === 0) return;
+    const i = all.findIndex((c) => c.id === selected);
+    const next = all[(i + dir + all.length) % all.length]!;
+    setSelected(next.id);
+    seek(next.start);
+    const asset = next.asset ? doc.assets[next.asset] : undefined;
+    setNotice(`Selected ${labelOf(next, asset) || next.kind} (${next.kind}, track ${doc.tracks.find((t) => t.id === next.track)?.name || next.track}), starts at ${formatTimecode(next.start, fps)}.`);
+  };
   const toggleTrack = (id: string, flag: "muted" | "locked" | "duck", value: boolean) => run(ops.setTrackFlag(doc, id, flag, value));
 
   const order = useMemo(() => displayOrder(doc.tracks), [doc.tracks]);
@@ -328,7 +349,9 @@ function TimelineBody({ projectId, timeline, media, preparing, peaks, film, vide
           <button className="btn" type="button" onClick={() => run(ops.addTrack(doc, "video"))}>+ Video track</button>
           <button className="btn" type="button" onClick={() => run(ops.addTrack(doc, "audio"))}>+ Audio track</button>
         </span>
-        <SaveChip status={snap.status} message={snap.message} onReload={() => void api.getTimeline(projectId).then((v) => session.reset(v), (er) => setNotice(er instanceof Error ? er.message : "Reload failed"))} />
+        <SaveChip status={snap.status} message={snap.message}
+          onReload={() => void api.getTimeline(projectId).then((v) => session.reset(v), (er) => setNotice(er instanceof Error ? er.message : "Reload failed"))}
+          onKeepMine={() => void api.getTimeline(projectId).then((v) => session.keepMine(v.rev), (er) => setNotice(er instanceof Error ? er.message : "Could not check the other version"))} />
         <span className="tl-spacer" />
         {preparing > 0 && <span className="tl-chip" role="status">Preparing previews ({preparing} left)…</span>}
         <button className="btn" type="button" onClick={() => zoomTo(pps / 1.25)} aria-label="Zoom out">−</button>
@@ -354,7 +377,7 @@ function TimelineBody({ projectId, timeline, media, preparing, peaks, film, vide
         </div>
 
         <div className="tl-scroll" ref={scrollRef} onScroll={onScroll} tabIndex={0} onKeyDown={onKey}
-          aria-label="Timeline tracks. Arrow keys move the playhead, space plays, plus and minus zoom, 0 fits.">
+          aria-label="Timeline tracks. Arrow keys move the playhead, space plays, plus and minus zoom, 0 fits. Square brackets select the previous or next clip, Alt and arrow keys move it, S splits, Delete removes.">
           <div className="tl-canvas" ref={canvasRef} style={{ width: contentW, height: totalH }}>
             <div className="tl-ruler" style={{ height: RULER_H }} onPointerDown={onSeekDown} onPointerMove={onSeekMove} onPointerUp={onSeekUp} aria-hidden="true">
               {ticks.map((t) => (
@@ -425,12 +448,17 @@ function fitOfAll(doc: ops.Doc): string {
   return fits.size === 1 ? [...fits][0]! : "";
 }
 
-function SaveChip({ status, message, onReload }: { status: ops.SaveLike; message: string | null; onReload: () => void }) {
+function SaveChip({ status, message, onReload, onKeepMine }: { status: ops.SaveLike; message: string | null; onReload: () => void; onKeepMine: () => void }) {
   const text = { saved: "All changes saved", dirty: "Unsaved changes…", saving: "Saving…", error: `Could not save (${message ?? "error"}). Trying again…`, conflict: message ?? "Changed elsewhere" }[status];
   return (
     <span className={`tl-chip tl-save tl-save-${status}`} role="status">
       {text}
-      {status === "conflict" && <button className="btn" type="button" onClick={onReload}>Discard my edits and reload</button>}
+      {status === "conflict" && (
+        <>
+          <button className="btn" type="button" onClick={onKeepMine} title="Your edits become the new version; what the other window saved is replaced">Keep my edits</button>
+          <button className="btn" type="button" onClick={onReload} title="Load what the other window saved; your unsaved edits are lost">Discard my edits and reload</button>
+        </>
+      )}
     </span>
   );
 }

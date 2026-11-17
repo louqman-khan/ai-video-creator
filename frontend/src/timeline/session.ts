@@ -162,6 +162,16 @@ export class EditSession {
     this.publish();
   }
 
+  /** After a conflict: keep what is on screen and make it the new version (replacing what the other window saved). */
+  keepMine(serverRev: number): void {
+    if (this.status !== "conflict") return;
+    this.rev = serverRev;
+    this.status = "dirty";
+    this.message = null;
+    this.publish();
+    void this.flush();
+  }
+
   dispose(): void {
     this.disposed = true;
     if (this.timer) clearTimeout(this.timer);

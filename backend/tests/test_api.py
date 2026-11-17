@@ -1170,3 +1170,14 @@ def test_export_presets_sizes_encoders_and_estimates(env, monkeypatch):
     assert export_speed.estimate(settings.work_dir, "software", "1080p", "16:9", 10.0)["learned"] is True
     export_speed.record(settings.work_dir, "hardware", "1080p", "16:9", 1.0, 5.0)
     assert export_speed.estimate(settings.work_dir, "hardware", "1080p", "16:9", 10.0)["learned"] is False
+
+
+def test_storage_report_and_clean_up_over_the_api(env):
+    settings, _, tone, _ = env
+    with client(env) as c:
+        pid = finished_project(c, tone)
+        r = c.get("/api/storage").json()
+        assert {i["key"] for i in r["items"]} == {"projects", "segments", "stock", "proxies", "search"} and r["total"] > 0
+        out = c.post("/api/storage/clean", params={"days": 7}).json()
+        assert out["freed"] >= 0 and out["dry_run"] is False
+        assert c.get(f"/api/projects/{pid}").json()["video_ready"] is True                          # the project is untouched

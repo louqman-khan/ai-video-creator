@@ -30,6 +30,7 @@ from app.config import Settings, get_settings
 from app.media import ffmpeg
 from app.pipeline.caption_style import CaptionStyle
 from app.pipeline.runner import ASPECTS, Providers
+import app.maintenance as maintenance
 from app.pipeline import export_speed
 from app.pipeline.sizes import PORTRAIT, render_size
 
@@ -215,6 +216,19 @@ def create_app(settings: Settings | None = None, providers_factory: ProvidersFac
                               error=None, export_ready=False)
         jobs.submit(pid, export_aspect=aspect, export_preset=preset, export_encoder=encoder)
         return queued
+
+    @app.get("/api/storage")
+    def storage(days: float = 7.0) -> dict:
+        """Disk use by category and how much a clean-up could free (`days`: only things unused for that long)."""
+        items = maintenance.survey(settings, days, segments=True)
+        return {"items": [{"key": i.key, "label": i.label, "bytes": i.bytes, "reclaimable": i.reclaimable} for i in items],
+                "total": sum(i.bytes for i in items), "reclaimable": sum(i.reclaimable for i in items)}
+
+    @app.post("/api/storage/clean")
+    def storage_clean(days: float = 7.0, segments: bool = False) -> dict:
+        if any(p.status in ("queued", "running") for p in store.list()):
+            raise HTTPException(409, "Something is being processed right now. Try again when it has finished.")
+        return maintenance.clean(settings, days, segments)
 
     @app.get("/api/projects/{pid}/export/estimate")
     def export_estimate(pid: str, preset: Literal["720p", "1080p", "4k"] = "1080p", encoder: Literal["software", "hardware"] = "software",

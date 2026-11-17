@@ -171,7 +171,7 @@ export function CaptionEditor({ project, onChanged, previewDebounceMs = 400 }: P
         </div>
 
         <div className="captions-main">
-          <ol className="cue-list">
+          <ol className="cue-list" tabIndex={0} aria-label="Caption cues">
             {data.cues.map((c) => {
               const value = texts[c.id] ?? c.text;
               const changed = value !== c.text;

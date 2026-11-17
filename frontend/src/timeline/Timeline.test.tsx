@@ -287,8 +287,42 @@ describe("Timeline editing", () => {
     await userEvent.keyboard("{Delete}");
     expect(await screen.findByText(/changed elsewhere/, {}, { timeout: 3000 })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Discard my edits/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Keep my edits" })).toBeInTheDocument();
     expect(save).toHaveBeenCalledTimes(1);
     expect(clipEls(container)).not.toContain("scene-1");
+  });
+});
+
+describe("Timeline keyboard", () => {
+  it("selects clips with the square brackets, announces them, and moves them with Alt+arrows", async () => {
+    vi.spyOn(api, "saveTimeline").mockResolvedValue(timeline({ rev: 2 }));
+    vi.spyOn(api, "renderTimeline").mockResolvedValue({ id: "p1" } as never);
+    const { container } = await open();
+    const area = screen.getByLabelText(/Timeline tracks/);
+    area.focus();
+    await userEvent.keyboard("]");
+    const note = () => container.querySelector(".tl-notice")!.textContent;
+    expect(note()).toMatch(/Selected .*caption.*starts at/);                     // the top track (captions) comes first
+    await userEvent.keyboard("]]]");
+    expect(note()).toMatch(/Selected .*starts at/);
+    await userEvent.keyboard("]");
+    await userEvent.keyboard("[[");
+    expect(container.querySelectorAll(".tl-selected")).toHaveLength(1);
+    // find a picture clip and move it a frame to the right: it stops at its neighbour, so use the caption (free to move)
+    await userEvent.keyboard("{Escape}");
+    expect(container.querySelectorAll(".tl-selected")).toHaveLength(0);
+    await userEvent.keyboard("]");                                               // the caption cap-0 starts at frame 10
+    await userEvent.keyboard("{Alt>}{ArrowRight}{/Alt}");
+    expect(container.querySelector('[data-clip="cap-0"]')!.getAttribute("aria-label")).toMatch(/starts 00:00:11/);
+    await userEvent.keyboard("{Alt>}{Shift>}{ArrowRight}{/Shift}{/Alt}");        // a second
+    expect(container.querySelector('[data-clip="cap-0"]')!.getAttribute("aria-label")).toMatch(/starts 00:01:11/);
+  });
+
+  it("Alt+arrows without a selection explain what to do instead of doing nothing", async () => {
+    const { container } = await open();
+    screen.getByLabelText(/Timeline tracks/).focus();
+    await userEvent.keyboard("{Alt>}{ArrowRight}{/Alt}");
+    expect(container.querySelector(".tl-notice")!.textContent).toMatch(/Select a clip first/);
   });
 });
 

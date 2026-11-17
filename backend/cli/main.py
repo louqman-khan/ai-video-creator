@@ -157,6 +157,24 @@ def serve(
     uvicorn.run(create_app(), host=host, port=port)
 
 
+@app.command()
+def clean(
+    days: Annotated[float, typer.Option(help="Remove things nothing has used for this many days")] = 7.0,
+    segments: Annotated[bool, typer.Option("--segments", help="Also remove old render caches inside projects (they are made again when needed)")] = False,
+    dry_run: Annotated[bool, typer.Option("--dry-run", help="Only show what would be removed")] = False,
+) -> None:
+    """Free disk space: unused stock media, orphaned editing proxies, stale caches. Your uploads and exports are never touched."""
+    from app.maintenance import clean as do_clean
+    from app.maintenance import survey
+
+    s = get_settings()
+    mb = lambda n: f"{n / 1e6:,.1f} MB"  # noqa: E731
+    for item in survey(s, days, segments):
+        console.print(f"{item.label:42} {mb(item.bytes):>12}   removable {mb(item.reclaimable):>10}")
+    r = do_clean(s, days, segments, dry_run)
+    console.print(f"\n{'Would free' if dry_run else 'Freed'} [bold]{mb(r['freed'])}[/bold] ({r['removed']} items)")
+
+
 @app.command("fetch-models")
 def fetch_models() -> None:
     """Download the RNNoise speech-denoise model (used by the audio cleaner) into assets/models/."""

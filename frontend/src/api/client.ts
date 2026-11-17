@@ -180,6 +180,10 @@ export const api = {
   exportEstimate: (id: string, aspect: Aspect, preset: ExportPreset, encoder: ExportEncoder) =>
     request<{ seconds: number; learned: boolean; video_seconds: number; width: number; height: number }>(
       `/api/projects/${encodeURIComponent(id)}/export/estimate?aspect=${aspect}&preset=${preset}&encoder=${encoder}`),
+  /** Disk use by category and how much a clean-up could free. */
+  storage: () => request<{ items: { key: string; label: string; bytes: number; reclaimable: number }[]; total: number; reclaimable: number }>("/api/storage"),
+  /** Removes unused downloads, orphaned proxies and old render caches (never uploads, exports or timelines). */
+  cleanStorage: () => request<{ freed: number; removed: number }>("/api/storage/clean?days=7&segments=true", { method: "POST" }),
   exportUrl: (id: string) => `/api/projects/${encodeURIComponent(id)}/export`,
   /** `version` changes when a render finishes, so the browser never plays an outdated copy. */
   videoUrl: (id: string, version?: string) =>

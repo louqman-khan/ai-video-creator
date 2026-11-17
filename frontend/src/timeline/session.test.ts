@@ -85,6 +85,27 @@ describe("EditSession", () => {
     expect(s.getSnapshot().doc.clips).toHaveLength(3);
   });
 
+  it("after a conflict the user can keep their edits: they are saved on top of the newer revision", async () => {
+    const bodies: SaveBody[] = [];
+    let n = 0;
+    const s = new EditSession(view(), async (b) => {
+      bodies.push(b);
+      if (++n === 1) throw Object.assign(new Error("changed elsewhere"), { status: 409 });
+      return { rev: 8 };
+    });
+    s.apply(ops.splitClip(s.getSnapshot().doc, "a", 40));
+    await vi.advanceTimersByTimeAsync(900);
+    expect(s.getSnapshot().status).toBe("conflict");
+    s.keepMine(7);                                                           // the other window is at revision 7
+    await vi.advanceTimersByTimeAsync(0);
+    expect(bodies[1]!.base_rev).toBe(7);
+    expect(bodies[1]!.clips).toHaveLength(2);                                // my split, not theirs
+    expect(s.getSnapshot().status).toBe("saved");
+    expect(s.getSnapshot().rev).toBe(8);
+    s.keepMine(9);                                                           // only meaningful in the conflict state
+    expect(s.getSnapshot().rev).toBe(8);
+  });
+
   it("another kind of failure is retried later", async () => {
     let n = 0;
     const s = new EditSession(view(), async () => { if (++n === 1) throw new Error("offline"); return { rev: 2 }; });

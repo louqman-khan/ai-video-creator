@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { isActive } from "../api/types";
 import { ProgressBar } from "../components/ProgressBar";
 import { StatusBadge } from "../components/StatusBadge";
+import { StoragePanel } from "../components/StoragePanel";
 import { useProjects } from "../store/projects";
 
 export function ProjectsPage() {
@@ -39,6 +40,7 @@ export function ProjectsPage() {
         <p className="muted">No projects yet. Create one from an audio file.</p>
       )}
 
+      <StoragePanel />
       <ul className="cards">
         {projects.map((p) => (
           <li key={p.id} className="card">
