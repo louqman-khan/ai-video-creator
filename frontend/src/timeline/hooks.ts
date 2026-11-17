@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { api } from "../api/client";
 import type { FilmMeta, MediaView, Peaks, TimelineView } from "../api/types";
+import { EditSession, type Saver } from "./session";
 
 const messageOf = (e: unknown) => (e instanceof Error ? e.message : "Something went wrong");
 
@@ -159,4 +160,26 @@ export function useDerived(projectId: string, media: Record<string, MediaView>) 
   }, [projectId, media]);
 
   return { peaks, film };
+}
+
+/** One edit session per mounted timeline; components re-render on every change of its snapshot. */
+export function useSession(initial: TimelineView, save: Saver) {
+  const ref = useRef<EditSession | null>(null);
+  if (!ref.current) ref.current = new EditSession(initial, save);
+  const session = ref.current;
+  const snap = useSyncExternalStore(session.subscribe, session.getSnapshot, session.getSnapshot);
+  useEffect(() => {
+    const warn = (e: BeforeUnloadEvent) => {
+      if (session.getSnapshot().status !== "saved") {
+        void session.flush();
+        e.preventDefault(); // ask before closing the tab while edits are not saved yet
+      }
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => {
+      window.removeEventListener("beforeunload", warn);
+      void session.flush(); // leaving the editor saves what is pending
+    };
+  }, [session]);
+  return { session, snap };
 }

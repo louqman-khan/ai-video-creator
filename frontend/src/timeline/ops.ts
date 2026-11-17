@@ -55,6 +55,14 @@ function sourceFrames(doc: Doc, c: TimelineClip): number {
 }
 const usesSource = (c: TimelineClip) => c.kind === "video" || c.kind === "audio";
 
+/** A scene is what the scene list and "swap visual" address. A clip that is cut or copied from a scene becomes a
+ *  scene of its own, so no two clips ever share a scene id. */
+function withNewScene(c: TimelineClip, among: readonly TimelineClip[]): TimelineClip {
+  if (typeof c.meta["scene_id"] !== "number") return c;
+  const top = among.reduce((n, x) => (typeof x.meta["scene_id"] === "number" ? Math.max(n, x.meta["scene_id"] as number) : n), 0);
+  return { ...c, meta: { ...c.meta, scene_id: top + 1 } };
+}
+
 /** fades and a transition can never be longer than the clip */
 function fit(c: TimelineClip): TimelineClip {
   const fade_out = Math.min(c.fade_out, c.duration);
@@ -151,7 +159,7 @@ export function splitClip(doc: Doc, id: string, frame: number): Result {
   let rightIn = usesSource(c) ? c.in_point + cut : 0;
   if (c.kind === "video" && c.loop && asset?.duration) rightIn %= asset.duration;
   const left = fit({ ...c, duration: cut, fade_out: 0, text: leftText });
-  const right = fit({ ...c, id: newId(doc, c.id), start: f, duration: c.duration - cut, in_point: rightIn, fade_in: 0, transition_in: null, text: rightText });
+  const right = fit({ ...withNewScene(c, doc.clips), id: newId(doc, c.id), start: f, duration: c.duration - cut, in_point: rightIn, fade_in: 0, transition_in: null, text: rightText });
   const leftW = c.words.length ? { ...left, words: wordsIn(c.words, c.in_point, c.in_point + cut) } : left;
   const rightW = c.words.length ? { ...right, words: wordsIn(c.words, c.in_point + cut, c.in_point + c.duration) } : right;
   const clips = doc.clips.flatMap((x) => (x.id === id ? [leftW, rightW] : [x]));
@@ -265,7 +273,7 @@ export function deleteRange(doc: Doc, a: number, b: number): Result {
     };
     const left = keepLeft && piece(keepLeft, s, false);
     const right = keepRight && piece(keepRight, keepLeft ? from : from, true);
-    if (left && right) clips.push(left, { ...right, id: fresh(c.id) });
+    if (left && right) clips.push(left, { ...withNewScene(right, [...doc.clips, ...clips]), id: fresh(c.id) });
     else if (left) clips.push(left);
     else if (right) clips.push(right);
   }
@@ -301,7 +309,7 @@ export function duplicateClip(doc: Doc, id: string): Result {
     if (o.start - at >= c.duration) break;
     at = Math.max(at, clipEnd(o));
   }
-  const copy = { ...c, id: newId(doc, c.id), start: at };
+  const copy = { ...withNewScene(c, doc.clips), id: newId(doc, c.id), start: at };
   return ok({ ...doc, clips: [...doc.clips, copy] }, [copy.id]);
 }
 
@@ -377,3 +385,5 @@ export function snapShift(edges: readonly number[], targets: readonly number[], 
   }
   return best;
 }
+
+export type SaveLike = "saved" | "dirty" | "saving" | "error" | "conflict";

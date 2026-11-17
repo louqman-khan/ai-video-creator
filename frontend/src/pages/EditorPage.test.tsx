@@ -46,7 +46,7 @@ describe("EditorPage", () => {
     const first = container.querySelector("video")!;
     await waitFor(() => expect(get.mock.calls.length).toBeGreaterThan(1), { timeout: 4000 });
     expect(container.querySelector("video")).toBe(first); // the very same DOM node
-    expect(first.getAttribute("src")).toBe("/api/projects/p1/video?v=rendering");
+    expect(first.getAttribute("src")).toBe("/api/projects/p1/video?v=t1");   // it keeps its place until the render has finished
   });
 
   it("shows the export panel and hides the caption editor for projects made without captions", async () => {

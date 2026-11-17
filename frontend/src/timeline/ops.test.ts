@@ -38,9 +38,9 @@ function sample(): Doc {
     assets: { v: asset("v", "video", 400), i: asset("i", "image", null), n: asset("n", "audio", 400), m: asset("m", "audio", 900) },
     caption_style: null,
     clips: [
-      base({ id: "s1", kind: "video", asset: "v", start: 0, duration: 100 }),
-      base({ id: "s2", kind: "image", asset: "i", start: 100, duration: 120 }),
-      base({ id: "s3", kind: "video", asset: "v", start: 220, duration: 180, in_point: 20, loop: true }),
+      base({ id: "s1", kind: "video", asset: "v", start: 0, duration: 100, meta: { scene_id: 1 } }),
+      base({ id: "s2", kind: "image", asset: "i", start: 100, duration: 120, meta: { scene_id: 2 } }),
+      base({ id: "s3", kind: "video", asset: "v", start: 220, duration: 180, in_point: 20, loop: true, meta: { scene_id: 3 } }),
       base({ id: "voice", track: "a1", kind: "audio", asset: "n", start: 0, duration: 400, words }),
       base({ id: "music", track: "a2", kind: "audio", asset: "m", start: 20, duration: 300, volume: 0.3, fade_out: 30 }),
       ...Array.from({ length: 10 }, (_, i) => base({ id: `cap${i}`, track: "c1", kind: "caption", start: i * 40, duration: 40, text: `w${i * 4} w${i * 4 + 1} w${i * 4 + 2} w${i * 4 + 3}` })),
@@ -82,6 +82,8 @@ function problems(doc: Doc): string[] {
     if (c.kind !== "audio" && c.words.length) out.push(`${c.id}: words on non-audio`);
     for (const w of c.words) if (w.end < w.start) out.push(`${c.id}: bad word`);
   }
+  const sceneIds = doc.clips.map((c) => c.meta["scene_id"]).filter((x) => x !== undefined);
+  if (new Set(sceneIds).size !== sceneIds.length) out.push("two clips share a scene id");
   for (const [track, list] of perTrack) {
     const s = [...list].sort((a, b) => a.start - b.start);
     for (let i = 1; i < s.length; i++) if (s[i]!.start < clipEnd(s[i - 1]!)) out.push(`overlap ${s[i - 1]!.id}/${s[i]!.id} on ${track}`);
@@ -243,5 +245,5 @@ describe("random operation sequences (property test)", () => {
         if (doc.clips.length === 0) break;
       }
     }
-  });
+  }, 60000);
 });

@@ -48,3 +48,22 @@ scrolling and scrubbing 0-6 frames over 33 ms in 350, playing the video 4 of 351
 
 The track area is a focusable region with a label explaining the keys; clips have names with their timing; the
 timecode is `role="timer"` (not a live region: an `<output>` would make screen readers announce every frame).
+
+## Editing (task 4.5)
+
+Code: `ops.ts` (pure operations), `session.ts` (history + autosave), `Timeline.tsx` (gestures, toolbar, keys).
+
+| Do this | Result |
+|---|---|
+| Drag a clip | moves it (also to another track of the same kind); stops at its neighbours; snaps within 8 px to clip edges, the playhead and 0 |
+| Drag a clip's left/right edge | trims it; never past the media, a neighbour or 0; a trimmed audio clip keeps only its own words |
+| `S` | split the selected clip (or every unlocked clip under the playhead) at the playhead; captions split their words in proportion |
+| `Delete` / `Shift`+`Delete` | remove and leave a gap / remove and close the time on every unlocked track (captions keep the words still spoken) |
+| `Ctrl`/`⌘`+`D` | duplicate into the next free space |
+| `Ctrl`/`⌘`+`Z`, `+Shift+Z` (or `Y`) | undo / redo |
+| Track label buttons | mute / lock (a locked track refuses every edit, with the reason shown) |
+
+Rules to keep: operations never mutate and never return a half-done document (a refusal returns the same object);
+dragging is previewed by running the real operation on every pointer move, so what is shown is what will be saved;
+one gesture = one undo step; the session saves after 0.8 s of quiet, then asks the server for a new preview; a 409
+stops saving (local edits stay) until the user chooses to reload.

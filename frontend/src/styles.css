@@ -124,3 +124,13 @@ input[type="color"] { width: 100%; height: 38px; padding: 2px; border: 1px solid
 .tl-playhead-head { position: absolute; top: 0; left: -7px; width: 12px; height: 12px; background: #e5484d; clip-path: polygon(0 0, 100% 0, 50% 100%); }
 .tl-info { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 6px 16px; margin: 10px 0 0; font-size: .85rem; }
 .tl-info dt { color: var(--muted); font-size: .72rem; } .tl-info dd { margin: 0; overflow-wrap: anywhere; }
+
+.tl-group { display: inline-flex; gap: 4px; margin-left: 8px; }
+.tl-save { margin-left: 8px; }
+.tl-save-error, .tl-save-conflict { color: var(--danger, #b3261e); }
+.tl-notice { min-height: 1.2em; margin: 4px 0; color: var(--muted); }
+.tl-tbtn { border: 0; background: transparent; cursor: pointer; padding: 0 2px; font-size: .75rem; }
+.tl-handle { position: absolute; top: 0; bottom: 0; width: 7px; cursor: ew-resize; z-index: 2; }
+.tl-handle-start { left: 0; }
+.tl-handle-end { right: 0; }
+.tl-handle:hover { background: rgba(255,255,255,.35); }

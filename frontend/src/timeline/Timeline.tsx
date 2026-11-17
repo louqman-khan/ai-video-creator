@@ -1,8 +1,9 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import { api } from "../api/client";
-import type { FilmMeta, MediaView, Peaks, TimelineAsset, TimelineClip, TimelineTrack, TimelineView } from "../api/types";
+import type { FilmMeta, MediaView, Peaks, Project, TimelineAsset, TimelineClip, TimelineTrack, TimelineView } from "../api/types";
 import { Filmstrip } from "./Filmstrip";
-import { useDerived, useFrame, usePlayhead, useTimelineData, type PlayheadStore } from "./hooks";
+import { useDerived, useFrame, usePlayhead, useSession, useTimelineData, type PlayheadStore } from "./hooks";
+import * as ops from "./ops";
 import {
   clampPps, displayOrder, fitPps, formatTimecode, frameToPx, isVisible, MAX_PPS, MIN_PPS, pxToFrame, rulerTicks, zoomScrollLeft,
 } from "./layout";
@@ -19,6 +20,8 @@ interface Props {
   version: string;
   /** the preview player, kept in sync with the playhead */
   video: HTMLVideoElement | null;
+  /** called with the project whenever an edit makes the server start (or queue) a new preview render */
+  onProject?: (p: Project) => void;
 }
 
 const labelOf = (c: TimelineClip, a: TimelineAsset | undefined): string => {
@@ -28,12 +31,12 @@ const labelOf = (c: TimelineClip, a: TimelineAsset | undefined): string => {
   return a?.title || c.id;
 };
 
-export function Timeline({ projectId, version, video }: Props) {
+export function Timeline({ projectId, version, video, onProject }: Props) {
   const { timeline, media, error, preparing } = useTimelineData(projectId, version, true);
   const { peaks, film } = useDerived(projectId, media);
   if (error) return <p className="alert" role="alert">{error}</p>;
   if (!timeline) return <p className="muted">Loading the timeline…</p>;
-  return <TimelineBody projectId={projectId} timeline={timeline} media={media} preparing={preparing} peaks={peaks} film={film} video={video} />;
+  return <TimelineBody projectId={projectId} timeline={timeline} media={media} preparing={preparing} peaks={peaks} film={film} video={video} onProject={onProject} />;
 }
 
 interface BodyProps {
@@ -44,10 +47,24 @@ interface BodyProps {
   peaks: Record<string, Peaks>;
   film: Record<string, FilmMeta>;
   video: HTMLVideoElement | null;
+  onProject?: (p: Project) => void;
 }
 
-function TimelineBody({ projectId, timeline, media, preparing, peaks, film, video }: BodyProps) {
-  const { fps, duration } = timeline;
+function TimelineBody({ projectId, timeline, media, preparing, peaks, film, video, onProject }: BodyProps) {
+  const { session, snap } = useSession(timeline, (body) => api.saveTimeline(projectId, body));
+  const doc = snap.doc;
+  const fps = doc.fps;
+  const duration = Math.max(1, ops.timelineLength(doc));
+  const onProjectRef = useRef(onProject);
+  onProjectRef.current = onProject;
+  // every successful save asks for a new preview (the server merges requests that arrive during a render)
+  useEffect(() => {
+    session.onSaved = () => void api.renderTimeline(projectId).then((p) => onProjectRef.current?.(p), () => undefined);
+  }, [session, projectId]);
+  // a newer document from the server (e.g. after a visual was swapped) replaces ours only when we have no edits of our own
+  useEffect(() => {
+    if (timeline.rev > session.getSnapshot().rev && session.clean) session.reset(timeline);
+  }, [timeline, session]);
   const { head, playing, seek, togglePlay } = usePlayhead(video, fps, duration);
   const scrollRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
@@ -55,6 +72,8 @@ function TimelineBody({ projectId, timeline, media, preparing, peaks, film, vide
   const [scrollLeft, setScrollLeft] = useState(0);
   const [viewport, setViewport] = useState(800);
   const [selected, setSelected] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [drag, setDrag] = useState<TimelineClip | null>(null); // the clip as it would be if dropped now
   const fitted = useRef(false);
 
   // measure the scroll area, and fit the whole timeline into it the first time we know the width
@@ -119,7 +138,69 @@ function TimelineBody({ projectId, timeline, media, preparing, peaks, film, vide
     [pps, fps],
   );
   // stable, so memoised clips are not re-rendered by unrelated state (playing is no longer one of them anyway)
-  const selectAt = useCallback((id: string, clientX: number) => { setSelected(id); seek(frameAt(clientX)); }, [seek, frameAt]);
+  const orderRef = useRef<TimelineTrack[]>([]);
+  const live = useRef({ doc, pps, fps });
+  live.current = { doc, pps, fps };
+  const run = useCallback((r: ops.Result) => {
+    const err = session.apply(r);
+    setNotice(err);
+    if (!err && r.ids) setSelected(r.ids[0] ?? null);
+    scrollRef.current?.focus({ preventScroll: true }); // a removed or replaced clip must not take the keyboard focus with it
+  }, [session]);
+
+  /** Press on a clip (move) or on one of its edges (trim). A press without movement only selects and seeks. */
+  const onGrab = useCallback((e: PointerEvent, id: string, mode: "move" | "start" | "end") => {
+    if (e.button !== 0) return;
+    e.stopPropagation();
+    const L = live.current;
+    const clip = L.doc.clips.find((c) => c.id === id);
+    setSelected(id);
+    setNotice(null);
+    seek(frameAt(e.clientX));
+    if (!clip) return;
+    const x0 = e.clientX;
+    const y0 = e.clientY;
+    const tol = Math.max(1, Math.round((8 / L.pps) * L.fps)); // snap within 8 pixels
+    const targets = ops.snapTargets(L.doc, new Set([id]), [head.get()]);
+    const snap1 = (edges: number[]) => ops.snapShift(edges, targets, tol)?.shift ?? 0;
+    let moved = false;
+    let result: ops.Result | null = null;
+    const trackAt = (clientY: number): string => {
+      const top = (canvasRef.current?.getBoundingClientRect().top ?? 0) + RULER_H;
+      let y = clientY - top;
+      for (const t of orderRef.current) {
+        if (y < ROW_H[t.kind]) return t.id;
+        y -= ROW_H[t.kind];
+      }
+      return clip.track;
+    };
+    const onMove = (ev: globalThis.PointerEvent) => {
+      if (!moved && Math.abs(ev.clientX - x0) < 3 && Math.abs(ev.clientY - y0) < 3) return;
+      moved = true;
+      const dx = Math.round(((ev.clientX - x0) / L.pps) * L.fps);
+      if (mode === "move") {
+        let start = clip.start + dx;
+        start += snap1([start, start + clip.duration]);
+        result = ops.moveClip(L.doc, id, { start, track: trackAt(ev.clientY) });
+        if (result.error) result = ops.moveClip(L.doc, id, { start, track: clip.track });
+      } else {
+        let f = (mode === "start" ? clip.start : clip.start + clip.duration) + dx;
+        f += snap1([f]);
+        result = ops.trimClip(L.doc, id, mode, f);
+      }
+      setDrag(result.error ? null : result.doc.clips.find((c) => c.id === id) ?? null);
+    };
+    const onUp = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+      setDrag(null);
+      if (moved && result) run({ ...result, ids: result.ids });
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+  }, [seek, frameAt, head, run]);
   const scrub = useRef(false);
   const onSeekDown = (e: PointerEvent) => {
     if (e.button !== 0) return;
@@ -137,27 +218,65 @@ function TimelineBody({ projectId, timeline, media, preparing, peaks, film, vide
   const onKey = (e: KeyboardEvent) => {
     const frame = head.get();
     const step = e.shiftKey ? fps : 1;
+    const mod = e.metaKey || e.ctrlKey;
+    const k = e.key.toLowerCase();
+    const editing: [boolean, () => void][] = [
+      [mod && k === "z" && !e.shiftKey, () => session.undo()],
+      [(mod && k === "z" && e.shiftKey) || (mod && k === "y"), () => session.redo()],
+      [mod && k === "d", () => selected && run(ops.duplicateClip(doc, selected))],
+      [!mod && k === "s", splitAtPlayhead],
+      [!mod && (e.key === "Delete" || e.key === "Backspace") && !e.shiftKey, () => removeSelected(false)],
+      [!mod && (e.key === "Delete" || e.key === "Backspace") && e.shiftKey, () => removeSelected(true)],
+    ];
+    const hit = editing.find(([on]) => on);
+    if (hit) {
+      e.preventDefault();
+      hit[1]();
+      return;
+    }
     const keys: Record<string, () => void> = {
       ArrowLeft: () => seek(frame - step), ArrowRight: () => seek(frame + step),
       Home: () => seek(0), End: () => seek(duration - 1),
       " ": togglePlay, "+": () => zoomTo(pps * 1.25), "=": () => zoomTo(pps * 1.25), "-": () => zoomTo(pps / 1.25),
       "0": () => zoomTo(fitPps(duration, fps, (scrollRef.current?.clientWidth ?? viewport) - PAD_RIGHT)),
     };
-    const run = keys[e.key];
-    if (run) {
+    const act = keys[e.key];
+    if (act) {
       e.preventDefault();
-      run();
+      act();
     }
   };
 
-  const order = useMemo(() => displayOrder(timeline.tracks), [timeline.tracks]);
+  const splitAtPlayhead = () => {
+    const f = head.get();
+    const targets = selected ? [selected] : doc.clips.filter((c) => c.start < f && f < ops.clipEnd(c) && !ops.isLocked(doc, c.track)).map((c) => c.id);
+    if (targets.length === 0) return setNotice("Put the playhead on a clip to split it.");
+    let d = doc;
+    const ids: string[] = [];
+    for (const id of targets) {
+      const r = ops.splitClip(d, id, f);
+      if (r.error) { if (selected) return setNotice(r.error); continue; }
+      d = r.doc;
+      ids.push(...(r.ids ?? []));
+    }
+    run({ doc: d, ids: ids.length ? [ids[ids.length - 1]!] : [] });
+  };
+  const removeSelected = (ripple: boolean) => {
+    if (!selected) return setNotice("Select a clip first.");
+    run(ripple ? ops.rippleDelete(doc, [selected]) : ops.deleteClips(doc, [selected]));
+  };
+  const toggleTrack = (id: string, flag: "muted" | "locked", value: boolean) => run(ops.setTrackFlag(doc, id, flag, value));
+
+  const order = useMemo(() => displayOrder(doc.tracks), [doc.tracks]);
+  orderRef.current = order;
+  const shown = useMemo(() => (drag ? doc.clips.map((c) => (c.id === drag.id ? drag : c)) : doc.clips), [doc.clips, drag]);
   const byTrack = useMemo(() => {
     const m = new Map<string, TimelineClip[]>();
-    for (const c of timeline.clips) (m.get(c.track) ?? m.set(c.track, []).get(c.track)!).push(c);
+    for (const c of shown) (m.get(c.track) ?? m.set(c.track, []).get(c.track)!).push(c);
     return m;
-  }, [timeline.clips]);
+  }, [shown]);
   const contentW = Math.max(viewport, frameToPx(duration, pps, fps)) + PAD_RIGHT;
-  const chosen = selected ? timeline.clips.find((c) => c.id === selected) ?? null : null;
+  const chosen = selected ? doc.clips.find((c) => c.id === selected) ?? null : null;
 
   const from = Math.max(0, (scrollLeft - 100) / pps);
   const to = (scrollLeft + viewport + 100) / pps;
@@ -170,6 +289,15 @@ function TimelineBody({ projectId, timeline, media, preparing, peaks, film, vide
         <button className="btn" type="button" onClick={togglePlay} disabled={!video} aria-label={playing ? "Pause" : "Play"}>{playing ? "❚❚" : "▶"}</button>
         {/* role=timer is not a live region: an <output> would make screen readers announce every frame */}
         <Timecode head={head} fps={fps} duration={duration} />
+        <span className="tl-group" role="group" aria-label="Edit">
+          <button className="btn" type="button" onClick={() => session.undo()} disabled={!snap.canUndo} aria-label="Undo" title="Undo (Ctrl/⌘+Z)">↶</button>
+          <button className="btn" type="button" onClick={() => session.redo()} disabled={!snap.canRedo} aria-label="Redo" title="Redo (Ctrl/⌘+Shift+Z)">↷</button>
+          <button className="btn" type="button" onClick={splitAtPlayhead} title="Split at the playhead (S)">Split</button>
+          <button className="btn" type="button" onClick={() => removeSelected(false)} disabled={!selected} title="Delete the clip and leave a gap (Delete)">Delete</button>
+          <button className="btn" type="button" onClick={() => removeSelected(true)} disabled={!selected} title="Delete and close the gap on every track (Shift+Delete)">Ripple delete</button>
+          <button className="btn" type="button" onClick={() => selected && run(ops.duplicateClip(doc, selected))} disabled={!selected} title="Duplicate (Ctrl/⌘+D)">Duplicate</button>
+        </span>
+        <SaveChip status={snap.status} message={snap.message} onReload={() => void api.getTimeline(projectId).then((v) => session.reset(v), (er) => setNotice(er instanceof Error ? er.message : "Reload failed"))} />
         <span className="tl-spacer" />
         {preparing > 0 && <span className="tl-chip" role="status">Preparing previews ({preparing} left)…</span>}
         <button className="btn" type="button" onClick={() => zoomTo(pps / 1.25)} aria-label="Zoom out">−</button>
@@ -186,8 +314,8 @@ function TimelineBody({ projectId, timeline, media, preparing, peaks, film, vide
             <div key={t.id} className={`tl-label${t.muted ? " tl-muted" : ""}`} style={{ height: ROW_H[t.kind] }}>
               <span className="tl-kind" aria-hidden="true">{t.kind === "video" ? "▣" : t.kind === "audio" ? "♪" : "T"}</span>
               <span className="tl-name">{t.name || t.id}</span>
-              {t.muted && <span className="tl-tag">muted</span>}
-              {t.locked && <span className="tl-tag">locked</span>}
+              <button type="button" className="tl-tbtn" aria-pressed={t.muted} aria-label={`Mute ${t.name || t.id}`} title="Mute" onClick={() => toggleTrack(t.id, "muted", !t.muted)}>{t.muted ? "🔇" : "🔊"}</button>
+              <button type="button" className="tl-tbtn" aria-pressed={t.locked} aria-label={`Lock ${t.name || t.id}`} title="Lock" onClick={() => toggleTrack(t.id, "locked", !t.locked)}>{t.locked ? "🔒" : "🔓"}</button>
             </div>
           ))}
         </div>
@@ -212,10 +340,10 @@ function TimelineBody({ projectId, timeline, media, preparing, peaks, film, vide
                     const left = frameToPx(c.start, pps, fps);
                     const width = Math.max(2, frameToPx(c.duration, pps, fps));
                     if (!isVisible(left, width, scrollLeft, viewport, 600)) return null;
-                    const asset = c.asset ? timeline.assets[c.asset] : undefined;
+                    const asset = c.asset ? doc.assets[c.asset] : undefined;
                     return (
                       <ClipView key={c.id} clip={c} asset={asset} label={labelOf(c, asset)} left={left} width={width} height={ROW_H[t.kind]}
-                        selected={c.id === selected} onSelect={selectAt}
+                        selected={c.id === selected} onGrab={onGrab}
                         projectId={projectId} pps={pps} fps={fps} scrollLeft={scrollLeft} viewport={viewport}
                         media={asset ? media[asset.id] : undefined} peaks={asset ? peaks[asset.id] : undefined} film={asset ? film[asset.id] : undefined} />
                     );
@@ -229,10 +357,21 @@ function TimelineBody({ projectId, timeline, media, preparing, peaks, film, vide
         </div>
       </div>
 
-      {chosen ? <ClipInfo clip={chosen} asset={chosen.asset ? timeline.assets[chosen.asset] : undefined} fps={fps} /> : (
-        <p className="muted small">Click the ruler or a track to move the playhead; click a clip to see what it is. Editing arrives in the next task.</p>
+      <p className="small tl-notice" role="status">{notice}</p>
+      {chosen ? <ClipInfo clip={chosen} asset={chosen.asset ? doc.assets[chosen.asset] : undefined} fps={fps} /> : (
+        <p className="muted small">Click the ruler or a track to move the playhead. Drag a clip to move it, drag its edges to trim, press S to split at the playhead, Delete to remove, Ctrl/⌘+Z to undo.</p>
       )}
     </section>
+  );
+}
+
+function SaveChip({ status, message, onReload }: { status: ops.SaveLike; message: string | null; onReload: () => void }) {
+  const text = { saved: "All changes saved", dirty: "Unsaved changes…", saving: "Saving…", error: `Could not save (${message ?? "error"}). Trying again…`, conflict: message ?? "Changed elsewhere" }[status];
+  return (
+    <span className={`tl-chip tl-save tl-save-${status}`} role="status">
+      {text}
+      {status === "conflict" && <button className="btn" type="button" onClick={onReload}>Discard my edits and reload</button>}
+    </span>
   );
 }
 
@@ -265,7 +404,7 @@ function PlayheadLine({ head, pps, fps, height, playing, scrollRef, onScrolled }
 
 interface ClipProps {
   clip: TimelineClip; asset: TimelineAsset | undefined; label: string; left: number; width: number; height: number; selected: boolean;
-  onSelect: (id: string, clientX: number) => void; projectId: string; pps: number; fps: number; scrollLeft: number; viewport: number;
+  onGrab: (e: PointerEvent, id: string, mode: "move" | "start" | "end") => void; projectId: string; pps: number; fps: number; scrollLeft: number; viewport: number;
   media: MediaView | undefined; peaks: Peaks | undefined; film: FilmMeta | undefined;
 }
 
@@ -281,7 +420,7 @@ const ClipView = memo(function ClipView(p: ClipProps) {
       role="button" tabIndex={-1} aria-pressed={p.selected}
       aria-label={`${label || c.kind}, ${c.kind} clip, starts ${formatTimecode(c.start, p.fps)}, lasts ${formatTimecode(c.duration, p.fps)}`}
       data-clip={c.id}
-      onPointerDown={(e) => { e.stopPropagation(); p.onSelect(c.id, e.clientX); }}
+      onPointerDown={(e) => p.onGrab(e, c.id, "move")}
     >
       {!tiny && c.kind === "video" && media?.derived.includes("film") && film && (
         <Filmstrip url={api.filmUrl(p.projectId, asset!.id)} meta={film} inSec={inSec} clipLeftPx={left} clipWidthPx={width} pps={p.pps}
@@ -294,6 +433,8 @@ const ClipView = memo(function ClipView(p: ClipProps) {
         <Waveform peaks={peaks} inSec={inSec} clipLeftPx={left} clipWidthPx={width} pps={p.pps} scrollLeft={scroll} viewportPx={p.viewport}
           height={height - 2} gain={c.volume} />
       )}
+      {!tiny && <span className="tl-handle tl-handle-start" aria-hidden="true" onPointerDown={(e) => p.onGrab(e, c.id, "start")} />}
+      {!tiny && <span className="tl-handle tl-handle-end" aria-hidden="true" onPointerDown={(e) => p.onGrab(e, c.id, "end")} />}
       {!tiny && <span className="tl-cliplabel" dir="auto">{label}</span>}
       {!tiny && c.loop && <span className="tl-tag tl-loop" title="This video repeats to fill the clip">⟳</span>}
     </div>

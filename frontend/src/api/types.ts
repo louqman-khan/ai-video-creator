@@ -18,6 +18,7 @@ export interface Project {
   video_ready: boolean; // a playable preview exists
   export_ready: boolean; // a full-quality export exists and matches the current edits
   export_aspect: string | null;
+  preview_rev?: number | null; // the timeline revision the current preview was rendered from
 }
 
 export const isActive = (p: Pick<Project, "status">): boolean =>

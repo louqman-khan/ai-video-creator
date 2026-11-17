@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../api/client";
 import { isActive } from "../api/types";
@@ -17,6 +17,12 @@ export function EditorPage() {
   const { project, error, refresh } = useProject(id);
   const upsert = useProjects((s) => s.upsert);
   const [video, setVideo] = useState<HTMLVideoElement | null>(null);
+  // the player keeps its place while an edit re-renders the preview; it reloads when the render has finished
+  const settled = useRef<string>("");
+  if (project && (!isActive(project) || !settled.current)) settled.current = project.updated_at;
+  // once the timeline is open it stays open while a preview re-renders (it would lose the selection and the keyboard focus)
+  const opened = useRef<string | null>(null);
+  if (project && project.status === "done" && project.video_ready) opened.current = project.id;
 
   if (!project) {
     return error ? (
@@ -29,7 +35,7 @@ export function EditorPage() {
   }
 
   // changes only when a render finishes (not on every progress update)
-  const playerVersion = isActive(project) ? "rendering" : project.updated_at;
+  const playerVersion = settled.current || project.updated_at;
 
   return (
     <section>
@@ -57,8 +63,8 @@ export function EditorPage() {
           <p className="muted small">Preview (low resolution). Edits re-render it in a few seconds.</p>
         </div>
       )}
-      {project.status === "done" && project.video_ready && (
-        <Timeline projectId={project.id} version={project.updated_at} video={video} />
+      {project.video_ready && (project.status === "done" || opened.current === project.id) && (
+        <Timeline projectId={project.id} version={project.updated_at} video={video} onProject={(p) => { upsert(p); refresh(); }} />
       )}
       {project.video_ready && (
         <ExportPanel project={project} onStarted={(p) => { upsert(p); refresh(); }} />

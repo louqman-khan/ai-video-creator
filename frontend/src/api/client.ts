@@ -93,6 +93,13 @@ export const api = {
     return res.text();
   },
   getTimeline: (id: string) => request<TimelineView>(`/api/projects/${encodeURIComponent(id)}/timeline`),
+  /** Saves the edited timeline; the server answers 409 when it changed elsewhere, 422 when it is invalid. */
+  saveTimeline: (id: string, body: { base_rev: number; tracks: unknown[]; clips: unknown[]; caption_style: unknown }) =>
+    request<TimelineView>(`/api/projects/${encodeURIComponent(id)}/timeline`, {
+      method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    }),
+  /** Re-render the preview from the saved timeline (several requests while one runs are merged into one). */
+  renderTimeline: (id: string) => request<Project>(`/api/projects/${encodeURIComponent(id)}/timeline/render`, { method: "POST" }),
   getMedia: (id: string) => request<MediaView[]>(`/api/projects/${encodeURIComponent(id)}/media`),
   getPeaks: (id: string, asset: string) =>
     request<Peaks>(`/api/projects/${encodeURIComponent(id)}/media/peaks?asset=${encodeURIComponent(asset)}`),

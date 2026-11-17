@@ -86,7 +86,7 @@ describe("Timeline", () => {
   it("marks a muted track and a looping clip", async () => {
     vi.spyOn(api, "getTimeline").mockResolvedValue(timeline({ tracks: timeline().tracks.map((t) => (t.id === "A1" ? { ...t, muted: true } : t)) }));
     await open();
-    expect(screen.getByText("muted")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Mute/, pressed: true })).toBeInTheDocument();
     expect(screen.getByTitle("This video repeats to fill the clip")).toBeInTheDocument();
   });
 
@@ -187,7 +187,7 @@ describe("Timeline", () => {
   it("draws a waveform for audio once its peaks are ready, and nothing before", async () => {
     vi.spyOn(api, "getMedia").mockResolvedValue([mediaItem("narration", [], "processing")]);
     const { unmount } = await open();
-    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Preparing previews (1 left)"));
+    await waitFor(() => expect(screen.getByText(/Preparing previews/)).toHaveTextContent("Preparing previews (1 left)"));
     expect(document.querySelectorAll("canvas")).toHaveLength(0);
     unmount();
     ctx.fillRect.mockClear();
@@ -196,7 +196,7 @@ describe("Timeline", () => {
     await waitFor(() => expect(document.querySelectorAll("canvas")).toHaveLength(1));
     await waitFor(() => expect(ctx.fillRect).toHaveBeenCalled());
     expect(api.getPeaks).toHaveBeenCalledWith("p1", "narration");
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Preparing previews/)).not.toBeInTheDocument();
   });
 
   it("shows filmstrip thumbnails for prepared video and the picture for stills", async () => {
@@ -236,6 +236,59 @@ describe("Timeline", () => {
     area.focus();
     await userEvent.keyboard("{ArrowRight}{ArrowRight}{ArrowRight}");
     expect(screen.getByLabelText("Playhead position")).toHaveTextContent("00:00:03");
+  });
+});
+
+describe("Timeline editing", () => {
+  const clipEls = (c: HTMLElement) => [...c.querySelectorAll("[data-clip]")].map((e) => e.getAttribute("data-clip"));
+
+  it("splits at the playhead, saves automatically, then asks for a new preview; undo goes back", async () => {
+    const save = vi.spyOn(api, "saveTimeline").mockResolvedValue(timeline({ rev: 2 }));
+    const renderCall = vi.spyOn(api, "renderTimeline").mockResolvedValue({ id: "p1" } as never);
+    const onProject = vi.fn();
+    const video = fakeVideo();
+    const { container } = render(<Timeline projectId="p1" version="v1" video={video} onProject={onProject} />);
+    await screen.findByRole("region", { name: "Timeline" });
+    fireEvent.pointerDown(container.querySelector('[data-clip="scene-2"]')!, { button: 0, clientX: 0 });
+    const area = screen.getByLabelText(/Timeline tracks/);
+    area.focus();
+    video.currentTime = 200 / 30;
+    fireEvent(video, new Event("seeked"));
+    await userEvent.keyboard("s");
+    await waitFor(() => expect(clipEls(container)).toHaveLength(5));
+    expect(screen.getByText("Unsaved changes…")).toBeInTheDocument();
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(1), { timeout: 3000 });
+    expect(save.mock.calls[0]![1].base_rev).toBe(1);
+    await waitFor(() => expect(renderCall).toHaveBeenCalledWith("p1"));
+    await waitFor(() => expect(onProject).toHaveBeenCalled());
+    await userEvent.keyboard("{Meta>}z{/Meta}");
+    await waitFor(() => expect(clipEls(container)).toHaveLength(4));
+  });
+
+  it("deleting needs a selection; a locked track cannot be edited and says why", async () => {
+    vi.spyOn(api, "saveTimeline").mockResolvedValue(timeline({ rev: 2 }));
+    vi.spyOn(api, "renderTimeline").mockResolvedValue({ id: "p1" } as never);
+    const { container } = await open().then((r) => r);
+    expect(screen.getByRole("button", { name: "Delete" })).toBeDisabled();                  // nothing selected
+    await userEvent.click(screen.getByRole("button", { name: /^Lock Visuals/ }));
+    fireEvent.pointerDown(container.querySelector('[data-clip="scene-1"]')!, { button: 0, clientX: 0 });
+    screen.getByLabelText(/Timeline tracks/).focus();
+    await userEvent.keyboard("{Delete}");
+    expect(await screen.findByText(/locked/i, { selector: ".tl-notice" })).toBeInTheDocument();
+    expect(clipEls(container)).toContain("scene-1");
+  });
+
+  it("a conflict is shown, edits stay, and nothing more is sent", async () => {
+    const { ApiError } = await import("../api/client");
+    const save = vi.spyOn(api, "saveTimeline").mockRejectedValue(new ApiError("The timeline was changed elsewhere", 409));
+    const { container } = await open();
+    fireEvent.pointerDown(container.querySelector('[data-clip="scene-1"]')!, { button: 0, clientX: 0 });
+    screen.getByLabelText(/Timeline tracks/).focus();
+    await userEvent.keyboard("{Delete}");
+    expect(await screen.findByText(/changed elsewhere/, {}, { timeout: 3000 })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Discard my edits/ })).toBeInTheDocument();
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(clipEls(container)).not.toContain("scene-1");
   });
 });
 
