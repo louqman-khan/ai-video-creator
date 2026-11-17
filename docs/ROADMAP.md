@@ -108,7 +108,7 @@ Approved plan: `docs/STEP4_PLAN.md` (decisions D1–D7, phases, tests, risks). O
 
 - [~] Tauri desktop app (run processing locally on the user's machine) — built and verified on macOS; Windows/Linux written but never run (docs/desktop.md, docs/windows.md)
 - [ ] Windows: run the GitHub Actions matrix or a Windows PC and fix what fails (docs/windows.md)
-- [~] User accounts, cloud storage (Cloudflare R2), deployment — **Step 6 (`docs/STEP6_PLAN.md`): accounts, ownership, limits, hosted UI, Docker deployment built and tested locally (`docs/hosting.md`, `docs/security.md`); NOT on a real server/domain, no object storage (one-machine design, D8), no Google sign-in, no independent security review**
+- [~] **DEFERRED by the owner (2026-11-17): hosting/going public is handled after the whole project is complete.** User accounts, cloud storage (Cloudflare R2), deployment — **Step 6 (`docs/STEP6_PLAN.md`): accounts, ownership, limits, hosted UI, Docker deployment built and tested locally (`docs/hosting.md`, `docs/security.md`); NOT on a real server/domain, no object storage (one-machine design, D8), no Google sign-in, no independent security review**
 - [ ] AI-generated images/clips provider
 
 ---
