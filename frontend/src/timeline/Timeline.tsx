@@ -2,7 +2,7 @@ import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useStat
 import { api } from "../api/client";
 import type { FilmMeta, MediaView, Peaks, Project, TimelineAsset, TimelineClip, TimelineTrack, TimelineView } from "../api/types";
 import { Filmstrip } from "./Filmstrip";
-import { useDerived, useFrame, usePlayhead, useSession, useTimelineData, type PlayheadStore } from "./hooks";
+import { useDerived, useFrame, usePlayhead, useSession, useTimelineData, type PlayheadStore, type Transport } from "./hooks";
 import * as ops from "./ops";
 import {
   clampPps, displayOrder, fitPps, formatTimecode, frameToPx, isVisible, MAX_PPS, MIN_PPS, pxToFrame, rulerTicks, zoomScrollLeft,
@@ -19,7 +19,9 @@ interface Props {
   /** changes whenever a render finished: the document is read again */
   version: string;
   /** the preview player, kept in sync with the playhead */
-  video: HTMLVideoElement | null;
+  video: Transport | null;
+  /** the document being edited, reported whenever it changes (the live preview draws it) */
+  onDoc?: (doc: ops.Doc) => void;
   /** called with the project whenever an edit makes the server start (or queue) a new preview render */
   onProject?: (p: Project) => void;
 }
@@ -31,12 +33,12 @@ const labelOf = (c: TimelineClip, a: TimelineAsset | undefined): string => {
   return a?.title || c.id;
 };
 
-export function Timeline({ projectId, version, video, onProject }: Props) {
+export function Timeline({ projectId, version, video, onProject, onDoc }: Props) {
   const { timeline, media, error, preparing } = useTimelineData(projectId, version, true);
   const { peaks, film } = useDerived(projectId, media);
   if (error) return <p className="alert" role="alert">{error}</p>;
   if (!timeline) return <p className="muted">Loading the timeline…</p>;
-  return <TimelineBody projectId={projectId} timeline={timeline} media={media} preparing={preparing} peaks={peaks} film={film} video={video} onProject={onProject} />;
+  return <TimelineBody projectId={projectId} timeline={timeline} media={media} preparing={preparing} peaks={peaks} film={film} video={video} onProject={onProject} onDoc={onDoc} />;
 }
 
 interface BodyProps {
@@ -46,14 +48,16 @@ interface BodyProps {
   preparing: number;
   peaks: Record<string, Peaks>;
   film: Record<string, FilmMeta>;
-  video: HTMLVideoElement | null;
+  video: Transport | null;
+  onDoc?: (doc: ops.Doc) => void;
   onProject?: (p: Project) => void;
 }
 
-function TimelineBody({ projectId, timeline, media, preparing, peaks, film, video, onProject }: BodyProps) {
+function TimelineBody({ projectId, timeline, media, preparing, peaks, film, video, onProject, onDoc }: BodyProps) {
   const { session, snap } = useSession(timeline, (body) => api.saveTimeline(projectId, body));
   const doc = snap.doc;
   const fps = doc.fps;
+  useEffect(() => { onDoc?.(doc); }, [doc, onDoc]);
   const duration = Math.max(1, ops.timelineLength(doc));
   const onProjectRef = useRef(onProject);
   onProjectRef.current = onProject;

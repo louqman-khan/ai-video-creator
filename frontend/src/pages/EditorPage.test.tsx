@@ -1,4 +1,5 @@
 import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { api } from "../api/client";
@@ -11,6 +12,9 @@ const project = (over: Partial<Project> = {}): Project => ({
   created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:01Z", original_filename: "",
   language: "en", aspect: "16:9", options: {}, video_ready: true, export_ready: false, export_aspect: null, ...over,
 });
+
+/** the live preview is the default; these tests are about the rendered video */
+const showRendered = async () => userEvent.click(await screen.findByRole("button", { name: "Rendered preview" }));
 
 const renderPage = () =>
   render(
@@ -32,6 +36,7 @@ describe("EditorPage", () => {
   it("plays the preview with a version in the URL so a re-render is never served from the browser cache", async () => {
     vi.spyOn(api, "getProject").mockResolvedValue(project({ updated_at: "2026-01-01T00:00:09Z" }));
     const { container } = renderPage();
+    await showRendered();
     await screen.findByText(/Preview \(low resolution\)/);
     const video = container.querySelector("video")!;
     expect(video.getAttribute("src")).toBe("/api/projects/p1/video?v=2026-01-01T00%3A00%3A09Z");
@@ -42,6 +47,7 @@ describe("EditorPage", () => {
       .mockResolvedValueOnce(project({ status: "running", progress: 0.2, updated_at: "t1" }))
       .mockResolvedValue(project({ status: "running", progress: 0.6, updated_at: "t2" }));
     const { container } = renderPage();
+    await showRendered();
     await screen.findByText(/Preview \(low resolution\)/);
     const first = container.querySelector("video")!;
     await waitFor(() => expect(get.mock.calls.length).toBeGreaterThan(1), { timeout: 4000 });
@@ -60,6 +66,7 @@ describe("EditorPage", () => {
     vi.spyOn(api, "getProject").mockResolvedValue(project({ error: "The export failed: disk full" }));
     renderPage();
     expect(await screen.findByRole("alert")).toHaveTextContent("disk full");
+    await showRendered();
     expect(screen.getByText(/Preview \(low resolution\)/)).toBeInTheDocument();
   });
 

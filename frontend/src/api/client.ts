@@ -106,6 +106,7 @@ export const api = {
   getFilmMeta: (id: string, asset: string) =>
     request<FilmMeta>(`/api/projects/${encodeURIComponent(id)}/media/film.json?asset=${encodeURIComponent(asset)}`),
   filmUrl: (id: string, asset: string) => `/api/projects/${encodeURIComponent(id)}/media/film?asset=${encodeURIComponent(asset)}`,
+  mediaAudioUrl: (id: string, asset: string) => `/api/projects/${encodeURIComponent(id)}/media/audio?asset=${encodeURIComponent(asset)}`,
   mediaProxyUrl: (id: string, asset: string) => `/api/projects/${encodeURIComponent(id)}/media/proxy?asset=${encodeURIComponent(asset)}`,
   getScenes: (id: string) => request<Scene[]>(`/api/projects/${encodeURIComponent(id)}/scenes`),
   getCandidates: (id: string, sceneId: number, query: string) =>

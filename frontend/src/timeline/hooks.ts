@@ -5,6 +5,14 @@ import { EditSession, type Saver } from "./session";
 
 const messageOf = (e: unknown) => (e instanceof Error ? e.message : "Something went wrong");
 
+/** What the playhead needs from a player: an HTMLVideoElement, or the live preview engine. */
+export interface Transport extends EventTarget {
+  currentTime: number;
+  readonly paused: boolean;
+  play(): Promise<void>;
+  pause(): void;
+}
+
 export interface PlayheadStore {
   get(): number;
   subscribe(listener: () => void): () => void;
@@ -16,7 +24,7 @@ export interface PlayheadStore {
  * re-render for that, never the clips. Both directions work: playing or scrubbing the video moves the playhead,
  * and `seek` moves the video. Without a video it still holds a position.
  */
-export function usePlayhead(video: HTMLVideoElement | null, fps: number, durationFrames: number) {
+export function usePlayhead(video: Transport | null, fps: number, durationFrames: number) {
   const store = useRef<(PlayheadStore & { set(f: number): void }) | null>(null);
   if (!store.current) {
     let value = 0;

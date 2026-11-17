@@ -8,7 +8,10 @@ import { CreditsPanel } from "../components/CreditsPanel";
 import { ExportPanel } from "../components/ExportPanel";
 import { SceneList } from "../components/SceneList";
 import { StatusBadge } from "../components/StatusBadge";
+import type { Doc } from "../timeline/ops";
 import { Timeline } from "../timeline/Timeline";
+import { LivePreview } from "../preview/LivePreview";
+import type { LiveEngine } from "../preview/engine";
 import { useProjects } from "../store/projects";
 import { useProject } from "../hooks";
 
@@ -17,6 +20,10 @@ export function EditorPage() {
   const { project, error, refresh } = useProject(id);
   const upsert = useProjects((s) => s.upsert);
   const [video, setVideo] = useState<HTMLVideoElement | null>(null);
+  const [mode, setMode] = useState<"live" | "rendered">("live");
+  const [liveDoc, setLiveDoc] = useState<Doc | null>(null);
+  const [engine, setEngine] = useState<LiveEngine | null>(null);
+  const live = mode === "live" && liveDoc !== null;
   // the player keeps its place while an edit re-renders the preview; it reloads when the render has finished
   const settled = useRef<string>("");
   if (project && (!isActive(project) || !settled.current)) settled.current = project.updated_at;
@@ -57,14 +64,25 @@ export function EditorPage() {
       )}
       {project.video_ready && (
         <div className="panel">
-          {/* key: reload the player once a re-render has finished (not on every progress update) */}
-          <video key={playerVersion} ref={setVideo} className="player" controls preload="metadata"
-            src={api.videoUrl(project.id, playerVersion)} />
-          <p className="muted small">Preview (low resolution). Edits re-render it in a few seconds.</p>
+          <div className="tl-group" role="group" aria-label="Preview type">
+            <button type="button" className="btn" aria-pressed={mode === "live"} onClick={() => setMode("live")} disabled={!liveDoc}>Live preview</button>
+            <button type="button" className="btn" aria-pressed={mode === "rendered"} onClick={() => setMode("rendered")}>Rendered preview</button>
+          </div>
+          {live ? (
+            <LivePreview projectId={project.id} doc={liveDoc} aspect={project.aspect} onEngine={setEngine} />
+          ) : (
+            /* key: reload the player once a re-render has finished (not on every progress update) */
+            <video key={playerVersion} ref={setVideo} className="player" controls preload="metadata"
+              src={api.videoUrl(project.id, playerVersion)} />
+          )}
+          <p className="muted small">
+            {live ? "Live preview: shows your edits instantly, using small proxy copies of the media. Captions are approximate; export is the exact result."
+              : "Preview (low resolution). Edits re-render it in a few seconds."}
+          </p>
         </div>
       )}
       {project.video_ready && (project.status === "done" || opened.current === project.id) && (
-        <Timeline projectId={project.id} version={project.updated_at} video={video} onProject={(p) => { upsert(p); refresh(); }} />
+        <Timeline projectId={project.id} version={project.updated_at} video={live ? engine : video} onDoc={setLiveDoc} onProject={(p) => { upsert(p); refresh(); }} />
       )}
       {project.video_ready && (
         <ExportPanel project={project} onStarted={(p) => { upsert(p); refresh(); }} />

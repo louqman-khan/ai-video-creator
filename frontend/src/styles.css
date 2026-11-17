@@ -134,3 +134,5 @@ input[type="color"] { width: 100%; height: 38px; padding: 2px; border: 1px solid
 .tl-handle-start { left: 0; }
 .tl-handle-end { right: 0; }
 .tl-handle:hover { background: rgba(255,255,255,.35); }
+
+.live-canvas { background: #000; max-width: 100%; height: auto; display: block; }
