@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Literal
 
@@ -8,10 +9,17 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # backend/app/config.py -> parents[2] is the repo root
 ROOT = Path(__file__).resolve().parents[2]
 
+# Installed desktop app: everything the user creates or downloads lives in one per-user folder (AVC_DATA), never inside the app itself.
+DATA = Path(os.environ["AVC_DATA"]).expanduser() if os.environ.get("AVC_DATA") else None
+_BASE = DATA or ROOT
+if DATA:
+    os.environ.setdefault("HF_HOME", str(DATA / "cache" / "hf"))  # speech model downloads go here too
+ENV_FILES = (ROOT / ".env", ROOT / "backend" / ".env") + ((DATA / ".env",) if DATA else ())  # the last file wins
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=(ROOT / ".env", ROOT / "backend" / ".env"),
+        env_file=ENV_FILES,
         extra="ignore",
     )
 
@@ -51,7 +59,7 @@ class Settings(BaseSettings):
     target_lufs: float = -14.0
 
     # web API
-    projects_dir: str = str(ROOT / "work" / "projects")
+    projects_dir: str = str(_BASE / "work" / "projects")
     max_upload_mb: int = 200
     max_audio_minutes: float = 30.0  # CPU-only start: keep jobs bounded
     cors_origins: str = "http://127.0.0.1:5742,http://localhost:5742"  # the Vite dev server
@@ -97,11 +105,11 @@ class Settings(BaseSettings):
     # output
     fps: int = 30
     fonts_dir: str = str(ROOT / "assets" / "fonts")
-    work_dir: str = str(ROOT / "work")
-    models_dir: str = str(ROOT / "assets" / "models")
+    work_dir: str = str(_BASE / "work")
+    models_dir: str = str(_BASE / "assets" / "models")
     frontend_dist: str = str(ROOT / "frontend" / "dist")  # the built web app; when it exists the server shows it at / (one process = the whole app)
-    clip_dir: str = str(ROOT / "assets" / "models" / "clip")
-    tts_dir: str = str(ROOT / "assets" / "models" / "tts")
+    clip_dir: str = str(_BASE / "assets" / "models" / "clip")
+    tts_dir: str = str(_BASE / "assets" / "models" / "tts")
     rnnoise_model: str = "cb.rnnn"  # file name inside models_dir
 
     @property

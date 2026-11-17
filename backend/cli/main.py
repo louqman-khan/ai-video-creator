@@ -142,9 +142,6 @@ def transcribe(
     console.print(f"\nlanguage={t.language} duration={t.duration:.1f}s -> {rd / 'transcript.json'}")
 
 
-RNNOISE_URL = "https://raw.githubusercontent.com/GregorR/rnnoise-models/master/conjoined-burgers-2018-08-28/cb.rnnn"
-
-
 @app.command()
 def serve(
     host: Annotated[str, typer.Option(help="Bind address (localhost only by default)")] = "127.0.0.1",
@@ -256,44 +253,26 @@ def fetch_ffmpeg() -> None:
 @app.command("fetch-models")
 def fetch_models(
     clip: Annotated[bool, typer.Option("--clip", help="Also download the CLIP picture-ranking model (about 155 MB)")] = False,
+    whisper: Annotated[bool, typer.Option("--whisper", help="Also download the speech-recognition model chosen by WHISPER_MODEL")] = False,
 ) -> None:
-    """Download the RNNoise speech-denoise model (used by the audio cleaner) into assets/models/; with --clip also the CLIP ranker."""
-    from app.http import make_client
+    """Download the RNNoise speech-denoise model (used by the audio cleaner); with --clip the picture ranker, with --whisper the speech recognition model."""
+    from app.media import models
 
     s = get_settings()
-    dst = Path(s.models_dir) / s.rnnoise_model
-    dst.parent.mkdir(parents=True, exist_ok=True)
-    with make_client() as c:
-        r = c.get(RNNOISE_URL)
-        if r.is_error:
-            console.print(f"[red]Download failed:[/red] HTTP {r.status_code}")
-            raise typer.Exit(1)
-    dst.write_bytes(r.content)
-    console.print(f"[green]Saved[/green] {dst} ({len(r.content) // 1024} KB)")
-    console.print(
-        "[dim]Source: github.com/GregorR/rnnoise-models (author states the models are not subject to "
-        "copyright). Check this is acceptable for your product before shipping it.[/dim]"
-    )
-    if clip:
-        base = "https://huggingface.co/Xenova/clip-vit-base-patch32/resolve/main/"
-        folder = Path(s.clip_dir)
-        folder.mkdir(parents=True, exist_ok=True)
-        for remote, name in (("onnx/vision_model_quantized.onnx", "vision_model_quantized.onnx"), ("onnx/text_model_quantized.onnx", "text_model_quantized.onnx"),
-                             ("tokenizer.json", "tokenizer.json"), ("preprocessor_config.json", "preprocessor_config.json")):
-            target = folder / name
-            if target.is_file() and target.stat().st_size > 0:
-                continue
-            part = target.with_suffix(target.suffix + ".part")
-            with make_client(read_timeout=120.0) as c, c.stream("GET", base + remote) as r:
-                if r.is_error:
-                    console.print(f"[red]Download of {name} failed:[/red] HTTP {r.status_code}")
-                    raise typer.Exit(1)
-                with part.open("wb") as f:
-                    for chunk in r.iter_bytes():
-                        f.write(chunk)
-            part.replace(target)
-            console.print(f"[green]Saved[/green] {target} ({target.stat().st_size // 1024 // 1024} MB)")
-        console.print("[dim]CLIP ViT-B/32 (OpenAI, MIT licence), ONNX int8 files by Xenova (Hugging Face).[/dim]")
+    say = lambda m: console.print(f"[dim]{m}[/dim]")  # noqa: E731
+    try:
+        console.print(f"[green]Saved[/green] {models.fetch_rnnoise(s, say)}")
+        console.print("[dim]Source: github.com/GregorR/rnnoise-models (author states the models are not subject to copyright). Check this is acceptable for your product before shipping it.[/dim]")
+        if clip:
+            for f in models.fetch_clip(s, say):
+                console.print(f"[green]Saved[/green] {f}")
+            console.print("[dim]CLIP ViT-B/32 (OpenAI, MIT licence), ONNX int8 files by Xenova (Hugging Face).[/dim]")
+        if whisper:
+            models.fetch_whisper(s.whisper_model, say)
+            console.print(f"[green]Ready[/green] speech model '{s.whisper_model}'")
+    except models.ModelError as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1) from None
 
 
 @app.command()

@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { isActive } from "../api/types";
 import { ProgressBar } from "../components/ProgressBar";
 import { StatusBadge } from "../components/StatusBadge";
+import { SetupBanner } from "../components/SetupBanner";
 import { StoragePanel } from "../components/StoragePanel";
 import { useAuth } from "../store/auth";
 import { useProjects } from "../store/projects";
@@ -32,6 +33,7 @@ export function ProjectsPage() {
         </Link>
       </div>
 
+      <SetupBanner />
       {error && (
         <p className="alert" role="alert">
           {error}

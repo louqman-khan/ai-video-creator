@@ -110,6 +110,10 @@ def create_app(settings: Settings | None = None, providers_factory: ProvidersFac
     app.add_middleware(CORSMiddleware, allow_origins=origins, allow_methods=["*"], allow_headers=["*"])
     app.state.store, app.state.jobs = store, jobs
     app.include_router(auth_routes.build_router(settings, store, accounts, quotas, create_mailer(settings) if hosted else None, limiter))
+    if not hosted:
+        from app.api import setup as setup_routes
+
+        app.include_router(setup_routes.build_router(settings))
 
     if hosted:
         secure = settings.public_url.startswith("https://")

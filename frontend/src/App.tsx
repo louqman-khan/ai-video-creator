@@ -4,6 +4,7 @@ import { AccountPage, ForgotPage, LegalPage, LoginPage, ResetPage, SignupPage, V
 import { EditorPage } from "./pages/EditorPage";
 import { NewProjectPage } from "./pages/NewProjectPage";
 import { ProjectsPage } from "./pages/ProjectsPage";
+import { SetupPage } from "./pages/SetupPage";
 import { useAuth } from "./store/auth";
 
 export function App() {
@@ -49,6 +50,7 @@ export function App() {
           <Routes>
             <Route path="/" element={<ProjectsPage />} />
             <Route path="/new" element={<NewProjectPage />} />
+            {!hosted && <Route path="/setup" element={<SetupPage />} />}
             <Route path="/projects/:id" element={<EditorPage />} />
             {hosted && <Route path="/account" element={<AccountPage />} />}
             {hosted && <Route path="/terms" element={<LegalPage kind="terms" />} />}
