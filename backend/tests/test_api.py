@@ -737,16 +737,16 @@ def test_features_the_renderer_cannot_do_yet_are_reported_and_keep_the_last_prev
         good = (d / "preview.mp4").read_bytes()
         tl = c.get(f"/api/projects/{pid}/timeline").json()
         v1 = next(x for x in tl["clips"] if x["track"] == "V1")
-        v1["effects"] = [*v1["effects"], {"type": "blur", "value": 10}]
+        v1["transform"] = {**v1["transform"], "rotation": 10}
         assert put_tl(c, pid, tl).status_code == 200                                # the document may hold it ...
         assert c.put(f"/api/projects/{pid}/captions", json={"style": {"bold": True}}).status_code == 202
         done = wait_done(c, pid)                                                    # ... but the renderer says so, in plain words
         assert done["status"] == "done" and done["video_ready"] is True
-        assert "Not supported yet" in done["error"] and "blur" in done["error"]
+        assert "Not supported yet" in done["error"] and "rotation" in done["error"]
         assert (d / "preview.mp4").read_bytes() == good                             # the last good preview is untouched
         assert c.get(f"/api/projects/{pid}/video").status_code == 200
         tl = c.get(f"/api/projects/{pid}/timeline").json()
-        next(x for x in tl["clips"] if x["id"] == v1["id"])["effects"] = [e for e in v1["effects"] if e["type"] != "blur"]
+        next(x for x in tl["clips"] if x["id"] == v1["id"])["transform"] = {**v1["transform"], "rotation": 0}
         assert put_tl(c, pid, tl).status_code == 200
         assert c.put(f"/api/projects/{pid}/captions", json={"style": {"bold": False}}).status_code == 202
         assert wait_done(c, pid)["error"] is None

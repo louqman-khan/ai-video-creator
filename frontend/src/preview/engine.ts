@@ -19,6 +19,17 @@ const KEEP = 6;         // media elements kept per kind (older, unused ones are 
 
 interface AudioVoice { el: HTMLAudioElement; gain: GainNode | null }
 
+/** The colour and blur effects as a CSS filter: the same mapping as `_fx_args` in render.py. */
+function cssFilter(l: Layer, W: number): string {
+  const { brightness: b, contrast: c, saturation: s, blur } = l.fx;
+  const parts: string[] = [];
+  if (b) parts.push(`brightness(${Math.max(0, 1 + 0.8 * (b / 100))})`);
+  if (c) parts.push(`contrast(${Math.max(0, 1 + c / 100)})`);
+  if (s) parts.push(`saturate(${Math.max(0, 1 + s / 100)})`);
+  if (blur > 0) parts.push(`blur(${(blur * 0.00015 * W).toFixed(2)}px)`);
+  return parts.length ? parts.join(" ") : "none";
+}
+
 export class LiveEngine extends EventTarget {
   private doc: Doc;
   private frame = 0;
@@ -185,8 +196,10 @@ export class LiveEngine extends EventTarget {
       if (l.clip.kind !== "video" || !l.clip.asset) continue;
       const v = this.videoFor(l.clip.id, l.clip.asset);
       if (!v) continue;
-      if (force || Math.abs(v.currentTime - l.time) > (this.playing ? DRIFT : 0.5 / this.doc.fps)) {
-        try { v.currentTime = l.time; } catch { /* not loaded yet: loadeddata draws it */ }
+      // aim at the middle of the frame: a time that is a hair before a frame's own time would show the frame before it
+      const want = l.time + 0.5 / this.doc.fps;
+      if (force || Math.abs(v.currentTime - want) > (this.playing ? DRIFT : 0.5 / this.doc.fps)) {
+        try { v.currentTime = want; } catch { /* not loaded yet: loadeddata draws it */ }
       }
       if (this.playing && v.paused) void v.play().catch(() => undefined);
       if (!this.playing && !v.paused) v.pause();
@@ -239,9 +252,11 @@ export class LiveEngine extends EventTarget {
       if (!im || !im.complete || !im.naturalWidth) return;
       src = im; w = im.naturalWidth; h = im.naturalHeight;
     }
-    const s = Math.max(W / w, H / h) * l.zoom * l.scale; // "cover", then the picture-in-picture size, like the renderer
+    const s = Math.max(W / w, H / h) * l.zoom * l.scale * l.zoomMul; // "cover", then the picture-in-picture size, like the renderer
     g.globalAlpha = l.opacity;
-    g.drawImage(src, (W - w * s) / 2 + l.x * W, (H - h * s) / 2 + l.y * H, w * s, h * s);
+    g.filter = cssFilter(l, W);
+    g.drawImage(src, (W - w * s) / 2 + (l.x + l.dx) * W, (H - h * s) / 2 + l.y * H, w * s, h * s);
+    g.filter = "none";
   }
 
   /** An approximation of the burned-in caption (the export uses libass and the caption style): white text, dark outline. */

@@ -96,25 +96,23 @@ def test_audio_only_timelines_get_one_black_segment(media):
 # ------------------------------------------------------------------ what is refused
 
 def test_unsupported_features_are_named_not_ignored(media):
-    ok = make_tl(media, [vclip("i", "pic", 0, 30, kind="image", effects=[Effect(type="kenburns", value=10)],
-                               transform=Transform(opacity=0.5)), vclip("v", "red", 30, 30)])
+    ok = make_tl(media, [vclip("i", "pic", 0, 30, kind="image", effects=[Effect(type="kenburns", value=10), Effect(type="blur", value=20)],
+                               transform=Transform(opacity=0.5), fade_in=5),
+                         vclip("v", "red", 30, 30, transition_in={"type": "crossfade", "duration": 10}, effects=[Effect(type="contrast", value=30)])])
     assert unsupported_features(ok) == []
     bad = make_tl(media, [
-        vclip("fx", "red", 0, 30, effects=[Effect(type="blur", value=5)]),
         vclip("kb", "red", 30, 30, effects=[Effect(type="kenburns", value=5)]),
-        vclip("tr", "red", 60, 30, transition_in={"type": "crossfade", "duration": 10}),
-        vclip("fd", "red", 90, 30, fade_in=5),
         vclip("tf", "red", 120, 30, transform=Transform(rotation=10)),
         vclip("ps", "red", 150, 30, transform=Transform(crop=(0.1, 0, 0, 0))),
     ])
     msg = " | ".join(unsupported_features(bad))
-    for word in ("blur", "zoom on video", "transitions", "fades on pictures", "crop and rotation"):
+    for word in ("zoom on video", "crop and rotation"):
         assert word in msg
 
 
 def test_render_refuses_before_doing_any_work(media, tmp_path):
-    tl = make_tl(media, [vclip("fx", "red", 0, 30, effects=[Effect(type="blur", value=5)])])
-    with pytest.raises(RenderUnsupported, match="blur"):
+    tl = make_tl(media, [vclip("fx", "red", 0, 30, transform=Transform(rotation=5))])
+    with pytest.raises(RenderUnsupported, match="rotation"):
         render_timeline(tl, tmp_path, SETTINGS, quality="preview", out=tmp_path / "o.mp4")
     assert not (tmp_path / "tl_segments_preview").exists()
     with pytest.raises(ValueError, match="empty"):
@@ -374,3 +372,117 @@ def test_music_is_ducked_under_the_narration_only_on_a_ducked_track(media, tmp_p
     assert abs(plain_under - plain_free) < 1.5   # without ducking the music is steady
     assert band_level(ducked, 2.0, 0.8, hz=440) > plain_nar - 1.5   # the narration itself is not touched
     assert band_level(ducked, 4.0, 0.8) > plain_free - 1.5   # and the music comes back to full volume
+
+
+# ------------------------------------------------------------------ transitions, fades, effects
+
+def render_to(tl, tmp_path, name="t.mp4"):
+    out = tmp_path / name
+    render_timeline(tl, tmp_path, SETTINGS, quality="preview", out=out, captions=False, normalize=False)
+    return out
+
+
+def px(path, t, x, y):
+    raw = subprocess.run(["ffmpeg", "-v", "error", "-ss", str(t), "-i", str(path), "-frames:v", "1", "-vf", f"crop=4:4:{x}:{y}", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"],
+                         capture_output=True, check=True).stdout
+    return tuple(sum(raw[i::3]) // (len(raw) // 3) for i in range(3))
+
+
+def two_clips(media, kind, d=30, **kw):
+    # red 2 s, then green 2 s; the transition runs over the first `d` frames of green (frames 60..90)
+    return make_tl(media, [vclip("a", "red", 0, 60), vclip("b", "green", 60, 60, transition_in={"type": kind, "duration": d}, **kw)])
+
+
+def test_crossfade_blends_the_outgoing_and_incoming_pictures(media, tmp_path):
+    out = render_to(two_clips(media, "crossfade"), tmp_path)
+    assert px(out, 0.9, 480, 270)[0] > 200                                    # before: red
+    r, g, b = px(out, 2.5, 480, 270)                                         # halfway through (frame 75)
+    assert 90 < r < 170 and 90 < g < 170 and b < 40
+    r, g, b = px(out, 3.3, 480, 270)
+    assert g > 200 and r < 40                                                 # after: green
+    assert abs(float(probe(out, "format=duration", stream="v:0")) - 4.0) < 0.05   # the transition does not change the length
+
+
+def test_dip_goes_through_black(media, tmp_path):
+    out = render_to(two_clips(media, "dip"), tmp_path)
+    assert sum(px(out, 2.5, 480, 270)) < 40                                  # the middle is black
+    assert px(out, 2.2, 480, 270)[0] > 40 and px(out, 2.2, 480, 270)[1] < 40  # first half: red going dark
+    assert px(out, 2.8, 480, 270)[1] > 40 and px(out, 2.8, 480, 270)[0] < 40  # second half: green coming up
+    assert px(out, 3.3, 480, 270)[1] > 200
+
+
+def test_slide_pushes_the_new_picture_in_from_the_right(media, tmp_path):
+    out = render_to(two_clips(media, "slide"), tmp_path)
+    left, right = px(out, 2.5, 100, 270), px(out, 2.5, 860, 270)
+    assert left[0] > 200 and left[1] < 40                                    # the old picture is still on the left
+    assert right[1] > 200 and right[0] < 40                                  # the new one covers the right half
+    assert px(out, 3.3, 100, 270)[1] > 200
+
+
+def test_zoom_transition_fades_in_while_settling(media, tmp_path):
+    out = render_to(two_clips(media, "zoom"), tmp_path)
+    r, g, b = px(out, 2.5, 480, 270)
+    assert 80 < r < 180 and 80 < g < 180
+    assert px(out, 3.3, 480, 270)[1] > 200 and px(out, 3.3, 20, 20)[1] > 200   # settled: the picture fills the frame again
+
+
+def test_a_transition_cut_into_several_segments_is_the_same_picture(media, tmp_path):
+    whole = two_clips(media, "crossfade")
+    cut = two_clips(media, "crossfade").model_copy(update={"clips": [*whole.clips, vclip("pip", "blue", 70, 10, track="V2", transform=Transform(scale=0.2))]})
+    out = render_to(cut, tmp_path)
+    r, g, _ = px(out, 2.3, 480, 270)                                         # frame 69: p = 0.3, before the overlay appears: still on the same ramp
+    assert 130 < r < 200 and 30 < g < 110
+
+
+def test_a_video_that_has_run_out_is_held_under_the_transition(media, tmp_path):
+    # "moving" is 1 s long; the transition starts when it ends: its last frame stays instead of failing or going black
+    tl = make_tl(media, [vclip("a", "moving", 0, 30), vclip("b", "green", 30, 60, transition_in={"type": "crossfade", "duration": 20})])
+    out = render_to(tl, tmp_path)
+    assert sum(px(out, 1.2, 480, 270)) > 60                                   # not black halfway through
+    assert px(out, 2.0, 480, 270)[1] > 200
+
+
+def test_fades_on_pictures_start_from_what_is_underneath(media, tmp_path):
+    tl = make_tl(media, [vclip("a", "red", 0, 90, fade_in=30, fade_out=30)])
+    out = render_to(tl, tmp_path)
+    assert sum(px(out, 0.0, 480, 270)) < 30                                    # starts from black
+    assert 90 < px(out, 0.5, 480, 270)[0] < 170                                # half way in
+    assert px(out, 1.5, 480, 270)[0] > 200
+    assert 90 < px(out, 2.5, 480, 270)[0] < 170 and sum(px(out, 2.9, 480, 270)) < 60   # and out again
+
+
+def test_colour_effects_and_blur_change_the_picture(media, tmp_path):
+    base = render_to(make_tl(media, [vclip("a", "red", 0, 30)]), tmp_path, "base.mp4")
+    gray = render_to(make_tl(media, [vclip("a", "red", 0, 30, effects=[Effect(type="saturation", value=-100)])]), tmp_path, "gray.mp4")
+    r, g, b = px(gray, 0.5, 480, 270)
+    assert abs(r - g) < 25 and abs(g - b) < 25 and px(base, 0.5, 480, 270)[0] > 200    # red became grey
+    dark = render_to(make_tl(media, [vclip("a", "red", 0, 30, effects=[Effect(type="brightness", value=-60)])]), tmp_path, "dark.mp4")
+    assert 90 < px(dark, 0.5, 480, 270)[0] < 160 and px(base, 0.5, 480, 270)[0] > 200        # 255 * (1 - 0.48) = 133
+    flat = render_to(make_tl(media, [vclip("a", "red", 0, 30, effects=[Effect(type="contrast", value=-100)])]), tmp_path, "flat.mp4")
+    r, g, b = px(flat, 0.5, 480, 270)
+    assert abs(r - g) < 25 and abs(g - b) < 25 and 90 < r < 170                                # no contrast left: mid grey
+    contrast = render_to(make_tl(media, [vclip("a", "moving", 0, 30, effects=[Effect(type="contrast", value=-80)])]), tmp_path, "contrast.mp4")
+    plain = render_to(make_tl(media, [vclip("a", "moving", 0, 30)]), tmp_path, "plain.mp4")
+    blurred = render_to(make_tl(media, [vclip("a", "moving", 0, 30, effects=[Effect(type="blur", value=100)])]), tmp_path, "blur.mp4")
+    assert ssim(plain, contrast) < 0.9 and ssim(plain, blurred) < 0.95 and ssim(plain, plain) > 0.99
+
+
+def frame_row(path, n, y=20):
+    raw = subprocess.run(["ffmpeg", "-v", "error", "-i", str(path), "-vf", f"select=eq(n\\,{n}),crop=960:4:0:{y}", "-fps_mode", "passthrough", "-frames:v", "1",
+                          "-f", "rawvideo", "-pix_fmt", "rgb24", "-"], capture_output=True, check=True).stdout
+    return [(raw[i * 3], raw[i * 3 + 1]) for i in range(960)]
+
+
+def green_edge(path, n):
+    return next((i for i, (r, g) in enumerate(frame_row(path, n)) if g > 128 and r < 100), None)
+
+
+def test_slide_is_frame_exact_also_when_its_segment_is_cut(media, tmp_path):
+    base = two_clips(media, "slide")
+    cut = base.model_copy(update={"clips": [*base.clips, vclip("pip", "blue", 70, 10, track="V2", transform=Transform(scale=0.2))]})
+    for tl, name in ((base, "a.mp4"), (cut, "b.mp4")):
+        out = render_to(tl, tmp_path, name)
+        for n in (61, 69, 70, 75, 85):                          # the new picture's left edge is where the maths says, to within 2 pixels
+            expected = round(960 * (1 - (n - 60) / 30))
+            assert abs(green_edge(out, n) - expected) <= 2, (name, n, green_edge(out, n), expected)
+        assert green_edge(out, 60) is None                     # the first frame of the transition shows only the old picture

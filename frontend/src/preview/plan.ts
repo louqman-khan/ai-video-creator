@@ -8,6 +8,8 @@ import type { TimelineClip } from "../api/types";
 
 export interface Layer {
   clip: TimelineClip;
+  /** the outgoing picture kept alive underneath a transition */
+  ghost: boolean;
   /** seconds into the source file */
   time: number;
   opacity: number;
@@ -17,6 +19,11 @@ export interface Layer {
   scale: number;
   x: number;
   y: number;
+  /** transition: extra horizontal shift in frame widths, and extra size factor (slide / zoom) */
+  dx: number;
+  zoomMul: number;
+  /** colour and blur effects, as the editor stores them (-100..100) */
+  fx: { brightness: number; contrast: number; saturation: number; blur: number };
 }
 
 const active = (c: TimelineClip, frame: number) => c.start <= frame && frame < clipEnd(c);
@@ -29,7 +36,7 @@ function mutedTracks(doc: Doc): Set<string> {
 export function sourceSeconds(doc: Doc, c: TimelineClip, frame: number): number {
   let f = c.in_point + (frame - c.start);
   const len = c.asset ? doc.assets[c.asset]?.duration : undefined;
-  if (c.loop && c.kind === "video" && len) f %= len;
+  if (c.kind === "video" && len) f = c.loop ? f % len : Math.min(f, len - 1); // a video that ran out shows its last frame
   return f / doc.fps;
 }
 
@@ -40,15 +47,67 @@ export function kenBurnsZoom(c: TimelineClip, frame: number): number {
   return kb ? 1 + (kb.value / 100) * ((frame - c.start) / c.duration) : 1;
 }
 
-/** Pictures to draw, bottom first. */
+const clamp01 = (x: number) => Math.min(1, Math.max(0, x));
+
+/**
+ * A transition needs the outgoing picture for as long as it lasts; the clip before the incoming one ends exactly where
+ * it starts, so it is carried on underneath ("ghost") for the length of the transition. Mirrors `ghosts` in render.py.
+ */
+export function ghostsOf(doc: Doc, pictures: TimelineClip[]): TimelineClip[] {
+  const byEnd = new Map(pictures.map((c) => [`${c.track}:${clipEnd(c)}`, c]));
+  const out: TimelineClip[] = [];
+  for (const b of pictures) {
+    const t = b.transition_in;
+    const a = t ? byEnd.get(`${b.track}:${b.start}`) : undefined;
+    if (!t || !a || a.id === b.id) continue;
+    const d = Math.min(t.duration, b.duration);
+    const len = a.asset ? doc.assets[a.asset]?.duration : undefined;
+    let pos = a.in_point + a.duration;
+    if (a.kind === "video" && len) pos = a.loop ? pos % len : Math.min(pos, len - 1);
+    out.push({ ...a, id: `${a.id}~out`, start: b.start, duration: d, in_point: a.kind === "video" ? pos : 0, fade_in: 0, fade_out: 0, transition_in: null,
+      meta: { ghost: true, trans: [t.type, t.duration] } });
+  }
+  return out;
+}
+
+/** How a picture looks `F` frames after its clip started: opacity factor, shift and size factor. Mirrors `_timing` in render.py. */
+export function appearance(c: TimelineClip, F: number): { alpha: number; dx: number; zoomMul: number } {
+  let alpha = 1;
+  let dx = 0;
+  let zoomMul = 1;
+  const t = c.transition_in;
+  if (t) {
+    const p = clamp01(F / t.duration);
+    if (t.type === "crossfade") alpha *= p;
+    else if (t.type === "dip") alpha *= clamp01(2 * p - 1);
+    else if (t.type === "slide") dx = 1 - p;
+    else if (t.type === "zoom") { alpha *= p; zoomMul = 1 + 0.5 * (1 - p); }
+  }
+  const ghost = c.meta["trans"] as [string, number] | undefined;
+  if (ghost && ghost[0] === "dip") alpha *= clamp01(1 - 2 * clamp01(F / ghost[1]));
+  if (c.fade_in) alpha *= clamp01(F / c.fade_in);
+  if (c.fade_out) alpha *= clamp01((c.duration - F) / c.fade_out);
+  return { alpha, dx, zoomMul };
+}
+
+const effectValue = (c: TimelineClip, type: string) => c.effects.find((e) => e.type === type)?.value ?? 0;
+
+/** Pictures to draw, bottom first (a ghost lies under the clip it hands over to). */
 export function layersAt(doc: Doc, frame: number): Layer[] {
   const hidden = mutedTracks(doc);
   const rank = new Map(doc.tracks.map((t, i) => [t.id, i]));
-  return doc.clips
-    .filter((c) => (c.kind === "video" || c.kind === "image") && active(c, frame) && !hidden.has(c.track))
-    .sort((a, b) => (rank.get(a.track) ?? 0) - (rank.get(b.track) ?? 0) || a.start - b.start)
-    .map((clip) => ({ clip, time: sourceSeconds(doc, clip, frame), opacity: clip.transform.opacity, zoom: kenBurnsZoom(clip, frame),
-      scale: clip.transform.scale, x: clip.transform.x, y: clip.transform.y }));
+  const pictures = doc.clips.filter((c) => (c.kind === "video" || c.kind === "image") && !hidden.has(c.track));
+  return [...pictures, ...ghostsOf(doc, pictures)]
+    .filter((c) => active(c, frame))
+    .sort((a, b) => (rank.get(a.track) ?? 0) - (rank.get(b.track) ?? 0) || (b.meta["ghost"] ? 1 : 0) - (a.meta["ghost"] ? 1 : 0) || a.start - b.start)
+    .map((clip) => {
+      const look = appearance(clip, frame - clip.start);
+      return {
+        clip, ghost: !!clip.meta["ghost"], time: sourceSeconds(doc, clip, frame), opacity: clip.transform.opacity * look.alpha, zoom: kenBurnsZoom(clip, frame),
+        scale: clip.transform.scale, x: clip.transform.x, y: clip.transform.y, dx: look.dx, zoomMul: look.zoomMul,
+        fx: { brightness: effectValue(clip, "brightness"), contrast: effectValue(clip, "contrast"), saturation: effectValue(clip, "saturation"), blur: effectValue(clip, "blur") },
+      };
+    });
 }
 
 /** Audio clips that sound at this frame. */

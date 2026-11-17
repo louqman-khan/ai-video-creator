@@ -340,7 +340,7 @@ export function setVolume(doc: Doc, id: string, volume: number): Result {
 
 export function setFades(doc: Doc, id: string, fades: { fade_in?: number; fade_out?: number }): Result {
   const c = findClip(doc, id);
-  if (!c || c.kind !== "audio") return refuse(doc, "Fades are only available for audio clips for now.");
+  if (!c || c.kind === "caption") return refuse(doc, "Captions have no fades.");
   if (isLocked(doc, c.track)) return refuse(doc, "That track is locked.");
   const clamp = (v: number) => Math.min(c.duration, Math.max(0, Math.round(v)));
   let fade_in = fades.fade_in === undefined ? c.fade_in : clamp(fades.fade_in);
@@ -381,6 +381,29 @@ export function removeTrack(doc: Doc, trackId: string): Result {
   if (doc.clips.some((c) => c.track === trackId)) return refuse(doc, "Move or delete the clips on this track first.");
   if (doc.tracks.filter((x) => x.kind === t.kind).length <= 1) return refuse(doc, `There must be at least one ${t.kind} track.`);
   return ok({ ...doc, tracks: doc.tracks.filter((x) => x.id !== trackId) });
+}
+
+export type TransitionType = "crossfade" | "dip" | "slide" | "zoom";
+export type EffectType = "brightness" | "contrast" | "saturation" | "blur";
+
+/** The transition into a picture clip (null removes it). It lasts at most as long as the clip. */
+export function setTransition(doc: Doc, id: string, t: { type: TransitionType; duration: number } | null): Result {
+  const c = findClip(doc, id);
+  if (!c || (c.kind !== "video" && c.kind !== "image")) return refuse(doc, "Only pictures have transitions.");
+  if (isLocked(doc, c.track)) return refuse(doc, "That track is locked.");
+  if (!t) return ok(replaceClip(doc, { ...c, transition_in: null }), [id]);
+  const duration = Math.max(1, Math.min(c.duration, Math.round(t.duration)));
+  return ok(replaceClip(doc, fit({ ...c, transition_in: { type: t.type, duration } })), [id]);
+}
+
+/** Set (or, with 0, remove) a colour or blur effect of a picture clip. */
+export function setEffect(doc: Doc, id: string, type: EffectType, value: number): Result {
+  const c = findClip(doc, id);
+  if (!c || (c.kind !== "video" && c.kind !== "image")) return refuse(doc, "Only pictures have effects.");
+  if (isLocked(doc, c.track)) return refuse(doc, "That track is locked.");
+  const v = Math.round(Math.min(type === "blur" ? 100 : 100, Math.max(type === "blur" ? 0 : -100, value)));
+  const rest = c.effects.filter((e) => e.type !== type);
+  return ok(replaceClip(doc, { ...c, effects: v === 0 ? rest : [...rest, { type, value: v }] }), [id]);
 }
 
 export interface Picture { opacity?: number; scale?: number; x?: number; y?: number }

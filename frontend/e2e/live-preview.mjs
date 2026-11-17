@@ -66,6 +66,7 @@ step("narration audio is playing in sync", !!narr && Math.abs(narr.t - res.pos) 
 await seek(1);
 const before = await page.evaluate(() => document.querySelector("canvas.live-canvas").toDataURL());
 const first = page.locator('[data-clip="scene-1"]');
+await first.scrollIntoViewIfNeeded();
 const box = await first.boundingBox();
 await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
 await page.getByLabel(/Timeline tracks/).focus();

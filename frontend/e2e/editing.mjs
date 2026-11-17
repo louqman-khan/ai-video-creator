@@ -19,6 +19,7 @@ const n0 = (await clips()).length;
 
 // 1. split the first visual at the playhead: click a clip, then press S
 const v = page.locator('.tl-video [data-clip], [data-track] .tl-clip-video, [data-track] .tl-clip-image').first();
+await v.scrollIntoViewIfNeeded();
 const box = await v.boundingBox();
 await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
 await page.getByLabel(/Timeline tracks/).focus();
@@ -36,6 +37,7 @@ step("preview re-rendered from the saved revision", info.status === "done" && in
 
 // 3. drag the right edge of a clip left (trim), with snapping
 const target = page.locator('[data-clip]').nth(1);
+await target.scrollIntoViewIfNeeded();
 const b2 = await target.boundingBox();
 const startDuration = (await api("/timeline")).clips.find((c) => c.id === (undefined))?.duration;
 await page.mouse.move(b2.x + b2.width - 3, b2.y + b2.height / 2);

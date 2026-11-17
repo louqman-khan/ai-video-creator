@@ -29,7 +29,7 @@ from app.pipeline.sizes import base_video_name, render_size
 from app.timeline.models import Clip, Timeline
 
 log = logging.getLogger("avc.render")
-RENDER_VERSION = "r1"  # bump when the pictures a segment produces change: invalidates every cached segment
+RENDER_VERSION = "r2"  # bump when the pictures a segment produces change: invalidates every cached segment
 Progress = Callable[[str, float, str], None]
 
 
@@ -48,16 +48,10 @@ def unsupported_features(tl: Timeline) -> list[str]:
             continue
         t = c.transform
         if c.kind in ("video", "image"):
-            if c.transition_in:
-                problems.append(f"clip '{c.id}': transitions")
-            if c.fade_in or c.fade_out:
-                problems.append(f"clip '{c.id}': fades on pictures")
             if t.rotation or any(t.crop):
                 problems.append(f"clip '{c.id}': crop and rotation")
             for e in c.effects:
-                if e.type != "kenburns":
-                    problems.append(f"clip '{c.id}': the '{e.type}' effect")
-                elif c.kind != "image":
+                if e.type == "kenburns" and c.kind != "image":
                     problems.append(f"clip '{c.id}': zoom on video")
         elif c.effects or c.transition_in:
             problems.append(f"clip '{c.id}': effects or transitions on audio")
@@ -77,6 +71,33 @@ class Segment:
         return self.end - self.start
 
 
+def ghosts(tl: Timeline, clips: list[Clip]) -> list[Clip]:
+    """A transition needs the outgoing picture for as long as it lasts. The clip before it ends exactly where the
+    incoming one starts, so its last moments are carried on ("ghost") underneath, for the length of the transition:
+    still pictures stay, a video goes on playing (a looping one loops, otherwise its last frame is held)."""
+    out: list[Clip] = []
+    by_end = {(c.track, c.start + c.duration): c for c in clips if not c.meta.get("ghost")}
+    for b in clips:
+        t = b.transition_in
+        a = by_end.get((b.track, b.start))
+        if t is None or a is None or a.id == b.id:
+            continue
+        d = min(t.duration, b.duration)
+        asset = tl.assets.get(a.asset or "")
+        length = asset.duration if asset is not None else None
+        pos = a.in_point + a.duration
+        hold = False
+        if a.kind == "video" and length:
+            if a.loop:
+                pos %= length
+            elif pos >= length:
+                pos, hold = length - 1, True
+        out.append(a.model_copy(update={"id": f"{a.id}~out", "start": b.start, "duration": d, "in_point": pos if a.kind == "video" else 0,
+                                        "fade_in": 0, "fade_out": 0, "transition_in": None,
+                                        "meta": {"ghost": True, "hold": hold, "trans": [t.type, t.duration]}}))
+    return out
+
+
 def _track_order(tl: Timeline) -> dict[str, int]:
     return {t.id: i for i, t in enumerate(tl.tracks)}
 
@@ -86,13 +107,15 @@ def plan_segments(tl: Timeline) -> list[Segment]:
     order = _track_order(tl)
     hidden = {t.id for t in tl.tracks if t.muted}  # a muted video track is hidden
     clips = [c for c in tl.clips if c.kind in ("video", "image") and c.track not in hidden]
+    clips += ghosts(tl, clips)
     total = tl.duration
     bounds = sorted({0, total, *(c.start for c in clips), *(c.start + c.duration for c in clips)})
     segs: list[Segment] = []
     for a, b in zip(bounds, bounds[1:]):
         if b <= a:
             continue
-        layers = tuple(sorted((c for c in clips if c.start <= a < c.start + c.duration), key=lambda c: order[c.track]))
+        layers = tuple(sorted((c for c in clips if c.start <= a < c.start + c.duration),
+                              key=lambda c: (order[c.track], 0 if c.meta.get("ghost") else 1)))  # a ghost lies under the clip it hands over to
         if segs and segs[-1].layers == layers:
             segs[-1] = Segment(segs[-1].start, b, layers)  # same picture continues
         else:
@@ -107,6 +130,66 @@ def _identity(tl: Timeline, c: Clip) -> list:
     return [a.id, a.path, st.st_size, st.st_mtime_ns, a.kind]
 
 
+@dataclass(frozen=True)
+class Timing:
+    """The parts of a picture's look that change while the clip plays, as ffmpeg expressions of `{F}` = frames
+    since the clip started (`clip(x,0,1)` clamps). `alpha` multiplies the opacity, `dx` is a horizontal shift in
+    frame widths, `zoom` a size factor."""
+
+    alpha: str | None = None
+    dx: str | None = None
+    zoom: str | None = None
+
+
+def _timing(c: Clip) -> Timing:
+    """Fades, the transition into this clip, and (for a ghost) the transition it hands over to. The same maths is in
+    frontend/src/preview/plan.ts (`appearance`): change both together."""
+    parts: list[str] = []
+    dx = zoom = None
+    t = c.transition_in
+    if t is not None:
+        p = f"clip({{F}}/{t.duration},0,1)"
+        if t.type == "crossfade":
+            parts.append(p)
+        elif t.type == "dip":
+            parts.append(f"clip(2*{p}-1,0,1)")
+        elif t.type == "slide":
+            dx = f"(1-{p})"
+        elif t.type == "zoom":
+            parts.append(p)
+            zoom = f"(1+0.5*(1-{p}))"
+    ghost = c.meta.get("trans")
+    if ghost and ghost[0] == "dip":
+        parts.append(f"clip(1-2*clip({{F}}/{ghost[1]},0,1),0,1)")
+    if c.fade_in:
+        parts.append(f"clip({{F}}/{c.fade_in},0,1)")
+    if c.fade_out:
+        parts.append(f"clip(({c.duration}-{{F}})/{c.fade_out},0,1)")
+    return Timing("*".join(parts) or None, dx, zoom)
+
+
+def _fx_args(c: Clip, w: int) -> list[str]:
+    """Colour and blur effects as ffmpeg filters, written to give the same result as the CSS filters the live preview
+    uses: brightness b (-100..100) multiplies every channel by 1 + 0.8 b/100, contrast c scales around mid grey by
+    1 + c/100, saturation s by 1 + s/100, blur v is a Gaussian of 0.00015 * v * frame-width pixels."""
+    v = {e.type: e.value for e in c.effects}
+    out: list[str] = []
+    rgb = []
+    if v.get("brightness"):
+        m = max(0.0, 1 + 0.8 * v["brightness"] / 100)
+        rgb.append("lutrgb=r='clip(val*{m},0,255)':g='clip(val*{m},0,255)':b='clip(val*{m},0,255)'".format(m=f"{m:.4f}"))
+    if v.get("contrast"):
+        k = max(0.0, 1 + v["contrast"] / 100)
+        rgb.append("lutrgb=r='clip((val-128)*{k}+128,0,255)':g='clip((val-128)*{k}+128,0,255)':b='clip((val-128)*{k}+128,0,255)'".format(k=f"{k:.4f}"))
+    if rgb:
+        out += ["format=rgb24", *rgb, "format=yuv420p"]
+    if v.get("saturation"):
+        out.append(f"eq=saturation={max(0.0, 1 + v['saturation'] / 100):.4f}")
+    if v.get("blur", 0) > 0:
+        out.append(f"gblur=sigma={v['blur'] * 0.00015 * w:.3f}")
+    return out
+
+
 def _layer_spec(tl: Timeline, seg: Segment, c: Clip) -> dict:
     """Everything about one visible clip that decides the pixels of this segment (and nothing else)."""
     a = tl.assets[c.asset]  # type: ignore[index]
@@ -115,11 +198,18 @@ def _layer_spec(tl: Timeline, seg: Segment, c: Clip) -> dict:
     if c.kind == "video" and c.loop and a.duration:
         offset %= a.duration
     kb = next((e.value for e in c.effects if e.type == "kenburns"), None)
-    return {
+    spec = {
         "asset": _identity(tl, c), "kind": c.kind, "offset": offset if c.kind == "video" else 0, "loop": c.loop,
         "opacity": c.transform.opacity, "place": [c.transform.x, c.transform.y, c.transform.scale],
         "kb": None if kb is None else [kb, into, c.duration],  # the zoom runs over the whole clip, not the segment
     }
+    timing = _timing(c)
+    if timing.alpha or timing.dx or timing.zoom or c.meta.get("hold"):  # time-varying look: where in the clip this segment starts matters
+        spec["timing"] = [timing.alpha, timing.dx, timing.zoom, into, c.meta.get("hold", False)]
+    fx = _fx_args(c, 1920)
+    if fx:
+        spec["fx"] = fx
+    return spec
 
 
 def segment_key(tl: Timeline, seg: Segment, w: int, h: int, profile: assemble.RenderProfile) -> str:
@@ -138,31 +228,56 @@ def _even(v: float) -> int:
 def _placed(c: Clip) -> bool:
     """True when the layer does not simply cover the whole frame (so something must lie underneath it)."""
     t = c.transform
-    return t.opacity < 1 or t.scale < 1 or bool(t.x or t.y)
+    timing = _timing(c)
+    return t.opacity < 1 or t.scale < 1 or bool(t.x or t.y) or bool(timing.alpha or timing.dx or timing.zoom)
 
 
-def _overlay(c: Clip, w: int, h: int) -> str:
+def _frames_expr(expr: str, var: str, into: int) -> str:
+    return expr.replace("{F}", f"({var}+{into})")
+
+
+def _overlay(seg: Segment, c: Clip, w: int, h: int) -> str:
     t = c.transform
-    return f"overlay=x='(main_w-overlay_w)/2+{t.x * w:.2f}':y='(main_h-overlay_h)/2+{t.y * h:.2f}':format=auto:shortest=0"
+    into = seg.start - c.start
+    dx = _timing(c).dx
+    shift = f"+main_w*{_frames_expr(dx, 'n-1', into)}" if dx else ""  # in `overlay` the first frame has n=1 (measured)
+    return f"overlay=x='(main_w-overlay_w)/2+{t.x * w:.2f}{shift}':y='(main_h-overlay_h)/2+{t.y * h:.2f}':format=auto:shortest=0"
 
 
-def _layer_chain(tl: Timeline, seg: Segment, c: Clip, idx: int, w: int, h: int) -> str:
+def _layer_chain(tl: Timeline, seg: Segment, c: Clip, idx: int, w: int, h: int) -> list[str]:
+    """Filter-graph pieces for one layer, ending in the label `[l<idx>]`."""
     cover = f"scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h},setsar=1"
     spec = _layer_spec(tl, seg, c)
-    if c.kind == "video":
+    into = seg.start - c.start
+    if c.kind == "video" or spec["kb"] is None:
         chain = f"[{idx}:v]{cover},fps={tl.fps}"
-    elif spec["kb"] is None:
-        chain = f"[{idx}:v]{cover},fps={tl.fps}"
+        if c.meta.get("hold"):  # a ghost whose video has run out: keep showing its last frame
+            chain += ",tpad=stop_mode=clone:stop_duration=600"
     else:
-        pct, into, total = spec["kb"]
+        pct, into_kb, total = spec["kb"]
         # the zoom is a function of the clip-relative frame: `on` counts from the start of the segment
         chain = (f"[{idx}:v]scale={2 * w}:{2 * h}:force_original_aspect_ratio=increase,crop={2 * w}:{2 * h},"
-                 f"zoompan=z='1+{pct / 100:.6f}*(on+{into})/{total}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s={w}x{h}:fps={tl.fps},setsar=1")
+                 f"zoompan=z='1+{pct / 100:.6f}*(on+{into_kb})/{total}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s={w}x{h}:fps={tl.fps},setsar=1")
+    for f in _fx_args(c, w):
+        chain += "," + f
     if c.transform.scale != 1:  # picture-in-picture / zoom: the covered picture is resized, `_overlay` positions it
-        chain += f",scale={_even(w * c.transform.scale)}:{_even(h * c.transform.scale)}"
-    if c.transform.opacity < 1:
-        chain += f",format=yuva420p,colorchannelmixer=aa={c.transform.opacity:.4f}"
-    return chain + f"[l{idx}]"
+        sw, sh = _even(w * c.transform.scale), _even(h * c.transform.scale)
+        chain += f",scale={sw}:{sh}"
+    else:
+        sw, sh = w, h
+    timing = _timing(c)
+    pieces: list[str] = []
+    zoom = f",scale=w='{_even(sw)}*{_frames_expr(timing.zoom, 'n', into)}':h='{_even(sh)}*{_frames_expr(timing.zoom, 'n', into)}':eval=frame" if timing.zoom else ""
+    if timing.alpha:
+        # a moving opacity: a tiny animated grey picture (its brightness is the opacity of that frame), enlarged and used as the alpha channel
+        op = c.transform.opacity
+        mask = f"color=c=white:s=2x2:r={tl.fps},format=gray,geq=lum='255*{op:.4f}*{_frames_expr(timing.alpha, 'N', into)}',scale={sw}:{sh}"
+        pieces += [chain + f",format=yuva420p[r{idx}]", mask + f"[m{idx}]", f"[r{idx}][m{idx}]alphamerge{zoom}[l{idx}]"]
+    else:
+        if c.transform.opacity < 1:
+            chain += f",format=yuva420p,colorchannelmixer=aa={c.transform.opacity:.4f}"
+        pieces.append(chain + zoom + f"[l{idx}]")
+    return pieces
 
 
 def _segment_args(tl: Timeline, seg: Segment, w: int, h: int, profile: assemble.RenderProfile, dst: Path) -> list[str]:
@@ -180,15 +295,15 @@ def _segment_args(tl: Timeline, seg: Segment, w: int, h: int, profile: assemble.
             args += ["-ss", f"{off / tl.fps:.6f}", "-i", a.path]
         else:
             args += ["-loop", "1", "-framerate", str(tl.fps), "-i", a.path]
-        chains.append(_layer_chain(tl, seg, c, i, w, h))
+        chains += _layer_chain(tl, seg, c, i, w, h)
     base = "[l0]"
-    if _placed(seg.layers[0]) or seg.layers[0].transform.scale > 1:  # a see-through/smaller/moved bottom layer needs a black frame under it
+    if _placed(seg.layers[0]) or seg.layers[0].transform.scale > 1 or _timing(seg.layers[0]).alpha:  # a see-through/smaller/moved bottom layer needs a black frame under it
         args += ["-f", "lavfi", "-i", f"color=c=black:s={w}x{h}:r={tl.fps}"]
         chains.append(f"[{len(seg.layers)}:v]null[black]")
-        chains.append(f"[black][l0]{_overlay(seg.layers[0], w, h)}[o0]")
+        chains.append(f"[black][l0]{_overlay(seg, seg.layers[0], w, h)}[o0]")
         base = "[o0]"
     for i in range(1, len(seg.layers)):
-        chains.append(f"{base}[l{i}]{_overlay(seg.layers[i], w, h)}[o{i}]")
+        chains.append(f"{base}[l{i}]{_overlay(seg, seg.layers[i], w, h)}[o{i}]")
         base = f"[o{i}]"
     return [*args, "-filter_complex", ";".join(chains), "-map", base, "-frames:v", str(seg.frames), *enc, str(dst)]
 

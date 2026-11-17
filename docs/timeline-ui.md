@@ -84,3 +84,10 @@ sound effects from free-to-reuse sources; **Add at playhead** downloads the item
 sees the address) and puts it on the timeline. *Upload*: your own file; the rights checkbox is required. Credits for stock
 items are collected automatically (`GET /credits`, the credits panel, `CREDITS.txt`); your own uploads are not listed.
 Placement rule (`ops.insertAsset`): lowest track of the right kind that is free at the playhead, otherwise a new track on top.
+
+## Transitions and effects (task 4.9)
+
+Select a picture clip: **Transition** (none, crossfade, dip to black, slide in, zoom in) with its **Length**; **Fade in / out**;
+**Brightness, Contrast, Saturation, Blur**. A transition needs the picture before it to touch the clip on the same track (that
+picture stays visible during the transition); without a neighbour the new picture simply comes in over what is underneath.
+Details and formulas: `docs/transitions-effects.md`.

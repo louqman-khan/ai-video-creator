@@ -233,6 +233,38 @@ describe("tracks and pictures", () => {
   });
 });
 
+describe("transitions and effects", () => {
+  const s = (d: Doc, id: string) => d.clips.find((c) => c.id === id)!;
+  it("a transition is at most as long as its clip, can be removed, and only pictures have one", () => {
+    const d = sample();
+    expect(s(ops.setTransition(d, "s1", { type: "crossfade", duration: 9999 }).doc, "s1").transition_in).toEqual({ type: "crossfade", duration: 100 });
+    const on = ops.setTransition(d, "s2", { type: "slide", duration: 20 }).doc;
+    expect(s(ops.setTransition(on, "s2", null).doc, "s2").transition_in).toBeNull();
+    expect(ops.setTransition(d, "voice", { type: "dip", duration: 5 }).error).toBeDefined();
+  });
+  it("trimming or splitting keeps a transition valid (never longer than the clip, only on the first piece)", () => {
+    let d = ops.setTransition(sample(), "s1", { type: "dip", duration: 60 }).doc;
+    d = ops.trimClip(d, "s1", "end", 30).doc;
+    expect(s(d, "s1").transition_in!.duration).toBe(30);
+    const sp = ops.splitClip(ops.setTransition(sample(), "s1", { type: "dip", duration: 60 }).doc, "s1", 50);
+    expect(s(sp.doc, "s1").transition_in).not.toBeNull();
+    expect(s(sp.doc, sp.ids![1]!).transition_in).toBeNull();
+  });
+  it("effects are clamped, replaced and removed with 0", () => {
+    let d = ops.setEffect(sample(), "s1", "blur", 500).doc;
+    expect(s(d, "s1").effects).toEqual([{ type: "blur", value: 100 }]);
+    d = ops.setEffect(d, "s1", "brightness", -30).doc;
+    d = ops.setEffect(d, "s1", "blur", 0).doc;
+    expect(s(d, "s1").effects).toEqual([{ type: "brightness", value: -30 }]);
+    expect(ops.setEffect(d, "voice", "blur", 5).error).toBeDefined();
+  });
+  it("pictures can fade now", () => {
+    const f = ops.setFades(sample(), "s1", { fade_in: 20, fade_out: 5000 }).doc;
+    expect(s(f, "s1").fade_in + s(f, "s1").fade_out).toBeLessThanOrEqual(100);
+    expect(ops.setFades(sample(), "cap0", { fade_in: 3 }).error).toBeDefined();
+  });
+});
+
 describe("insertAsset", () => {
   const song = { ...asset("song", "audio", 450), title: "Calm" };
   const photo = asset("photo", "image", null);
@@ -281,7 +313,7 @@ describe("random operation sequences (property test)", () => {
         const ids = doc.clips.map((c) => c.id);
         const id = pick(ids);
         const frame = Math.floor(rand() * (ops.timelineLength(doc) + 40));
-        const which = Math.floor(rand() * 17);
+        const which = Math.floor(rand() * 18);
         let r: ops.Result;
         let name: string;
         switch (which) {
@@ -300,6 +332,7 @@ describe("random operation sequences (property test)", () => {
           case 10: name = `dup ${id}`; r = ops.duplicateClip(doc, id); break;
           case 11: name = `reorder ${id}`; r = ops.reorderClip(doc, id, rand() < 0.5 ? -1 : 1); break;
           case 11 + 5: name = `insert`; r = ops.insertAsset(doc, asset("v", rand() < 0.5 ? "video" : "audio", 200 + Math.floor(rand() * 300)), frame); break;
+          case 17: name = `transition ${id}`; r = rand() < 0.2 ? ops.setTransition(doc, id, null) : ops.setTransition(doc, id, { type: pick(["crossfade", "dip", "slide", "zoom"] as const), duration: 1 + Math.floor(rand() * 200) }); break;
           case 12: name = `addTrack`; r = ops.addTrack(doc, rand() < 0.5 ? "video" : "audio"); break;
           case 13: name = `removeTrack`; r = ops.removeTrack(doc, pick(doc.tracks).id); break;
           case 14: name = `picture ${id}`; r = ops.setPicture(doc, id, { scale: rand() * 3, x: rand() * 6 - 3, y: rand() * 6 - 3, opacity: rand() }); break;

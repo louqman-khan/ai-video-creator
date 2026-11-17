@@ -44,6 +44,8 @@ export function Inspector({ clip: c, doc, onApply }: { clip: TimelineClip; doc: 
   }
   if (c.kind === "video" || c.kind === "image") {
     const t = c.transform;
+    const fx = (type: ops.EffectType) => c.effects.find((e) => e.type === type)?.value ?? 0;
+    const tr = c.transition_in;
     return (
       <fieldset className="insp" aria-label="Picture settings">
         <legend>Picture</legend>
@@ -56,6 +58,24 @@ export function Inspector({ clip: c, doc, onApply }: { clip: TimelineClip; doc: 
               onClick={() => onApply(ops.setPicture(doc, c.id, p))}>{p.name}</button>
           ))}
         </div>
+        <Slider label="Fade in" value={c.fade_in} min={0} max={Math.min(c.duration, fps * 5)} step={1} show={sec} onCommit={(v) => onApply(ops.setFades(doc, c.id, { fade_in: v }))} />
+        <Slider label="Fade out" value={c.fade_out} min={0} max={Math.min(c.duration, fps * 5)} step={1} show={sec} onCommit={(v) => onApply(ops.setFades(doc, c.id, { fade_out: v }))} />
+        <div className="insp-row">
+          <label htmlFor={`${c.id}-tr`}>Transition</label>
+          <select id={`${c.id}-tr`} value={tr?.type ?? ""} onChange={(e) => onApply(ops.setTransition(doc, c.id, e.target.value ? { type: e.target.value as ops.TransitionType, duration: tr?.duration ?? Math.round(fps * 1) } : null))}>
+            <option value="">None</option>
+            <option value="crossfade">Crossfade</option>
+            <option value="dip">Dip to black</option>
+            <option value="slide">Slide in</option>
+            <option value="zoom">Zoom in</option>
+          </select>
+        </div>
+        {tr && <Slider label="Length" value={tr.duration} min={1} max={Math.min(c.duration, fps * 5)} step={1} show={sec} onCommit={(v) => onApply(ops.setTransition(doc, c.id, { type: tr.type as ops.TransitionType, duration: v }))} />}
+        {tr && <p className="muted small">The picture before this one is kept on screen while the transition runs.</p>}
+        <Slider label="Brightness" value={fx("brightness")} min={-100} max={100} step={5} show={(v) => `${v}`} onCommit={(v) => onApply(ops.setEffect(doc, c.id, "brightness", v))} />
+        <Slider label="Contrast" value={fx("contrast")} min={-100} max={100} step={5} show={(v) => `${v}`} onCommit={(v) => onApply(ops.setEffect(doc, c.id, "contrast", v))} />
+        <Slider label="Saturation" value={fx("saturation")} min={-100} max={100} step={5} show={(v) => `${v}`} onCommit={(v) => onApply(ops.setEffect(doc, c.id, "saturation", v))} />
+        <Slider label="Blur" value={fx("blur")} min={0} max={100} step={5} show={(v) => `${v}`} onCommit={(v) => onApply(ops.setEffect(doc, c.id, "blur", v))} />
         <p className="muted small">Put a clip on a higher video track and make it smaller to get a picture-in-picture.</p>
       </fieldset>
     );

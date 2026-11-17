@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { TimelineClip } from "../api/types";
 import type { Doc } from "../timeline/ops";
-import { audioAt, audioGain, captionAt, DUCK_GAIN, duckFactor, kenBurnsZoom, layersAt, sourceSeconds } from "./plan";
+import { appearance, audioAt, audioGain, captionAt, DUCK_GAIN, duckFactor, kenBurnsZoom, layersAt, sourceSeconds } from "./plan";
 
 const c = (o: Partial<TimelineClip>): TimelineClip => ({
   id: "x", track: "V1", kind: "video", asset: "v", start: 0, duration: 30, in_point: 0, loop: false, volume: 1, fade_in: 0, fade_out: 0,
@@ -61,6 +61,35 @@ describe("live preview plan", () => {
     expect(gain(40)).toBe(DUCK_GAIN);
     expect(gain(120)).toBe(1);
     expect(audioAt(d, 40).find((x) => x.clip.id === "nar")!.gain).toBe(1);   // the narration itself is untouched
+  });
+  it("keeps the outgoing picture under a transition and ramps the incoming one (same numbers as the renderer)", () => {
+    const d = doc([c({ id: "a", start: 0, duration: 60 }), c({ id: "b", start: 60, duration: 60, transition_in: { type: "crossfade", duration: 30 } })]);
+    const mid = layersAt(d, 75);
+    expect(mid.map((l) => l.clip.id)).toEqual(["a~out", "b"]);                 // the ghost lies under
+    expect(mid[0]!.opacity).toBe(1);
+    expect(mid[1]!.opacity).toBeCloseTo(0.5);
+    expect(layersAt(d, 95).map((l) => l.clip.id)).toEqual(["b"]);              // the ghost ends with the transition
+    expect(layersAt(d, 59).map((l) => l.clip.id)).toEqual(["a"]);
+  });
+  it("dip fades the old picture out, then the new one in; slide and zoom move and scale", () => {
+    const b = c({ id: "b", start: 60, duration: 60, transition_in: { type: "dip", duration: 30 } });
+    const d = doc([c({ id: "a", start: 0, duration: 60 }), b]);
+    expect(layersAt(d, 67)[0]!.opacity).toBeCloseTo(1 - 2 * (7 / 30));        // ghost going dark
+    expect(layersAt(d, 67)[1]!.opacity).toBe(0);
+    expect(layersAt(d, 83)[1]!.opacity).toBeCloseTo(2 * (23 / 30) - 1);
+    expect(appearance({ ...b, transition_in: { type: "slide", duration: 30 } }, 15)).toEqual({ alpha: 1, dx: 0.5, zoomMul: 1 });
+    expect(appearance({ ...b, transition_in: { type: "zoom", duration: 30 } }, 15)).toEqual({ alpha: 0.5, dx: 0, zoomMul: 1.25 });
+  });
+  it("fades apply to pictures; a video that ran out holds its last frame", () => {
+    const f = c({ id: "f", duration: 100, fade_in: 20, fade_out: 20 });
+    expect(appearance(f, 10).alpha).toBeCloseTo(0.5);
+    expect(appearance(f, 90).alpha).toBeCloseTo(0.5);
+    const d = doc([c({ id: "v", start: 0, duration: 200, in_point: 0 })]);          // asset "v" is 45 frames long, not looping
+    expect(sourceSeconds(d, d.clips[0]!, 150)).toBeCloseTo(44 / 30);
+  });
+  it("carries effects", () => {
+    const d = doc([c({ id: "e", effects: [{ type: "blur", value: 40 }, { type: "brightness", value: -20 }] })]);
+    expect(layersAt(d, 1)[0]!.fx).toEqual({ brightness: -20, contrast: 0, saturation: 0, blur: 40 });
   });
   it("finds the caption under the playhead", () => {
     const d = doc([c({ id: "k", track: "C1", kind: "caption", asset: null, start: 10, duration: 20, text: "سلام" })]);
