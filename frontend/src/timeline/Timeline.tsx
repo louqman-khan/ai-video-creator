@@ -48,7 +48,7 @@ export function Timeline({ projectId, version, video, onProject, onDoc, onMedia,
   const { timeline, media, error, preparing, refreshMedia } = useTimelineData(projectId, version, true);
   const { peaks, film } = useDerived(projectId, media);
   useEffect(() => { onMedia?.(media); }, [media, onMedia]);
-  if (error) return <p className="alert" role="alert">{error}</p>;
+  if (error && !timeline) return <p className="alert" role="alert">{error}</p>;   // once it is loaded, a failed refresh must not replace the editor
   if (!timeline) return <p className="muted">Loading the timeline…</p>;
   return <TimelineBody projectId={projectId} timeline={timeline} media={media} preparing={preparing} peaks={peaks} film={film} video={video} onProject={onProject} onDoc={onDoc} overlayHost={overlayHost} sampler={sampler} refreshMedia={refreshMedia} />;
 }

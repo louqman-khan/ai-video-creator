@@ -32,7 +32,9 @@ class Settings(BaseSettings):
     media_ranker: str = "auto"  # auto | clip | heuristic: auto = CLIP when its model files are in clip_dir (docs/clip-ranker.md)
     audio_cleaner: str = "ffmpeg"  # ffmpeg | noop (--no-clean)
     tts: str = "auto"  # auto | mms | piper | none  (docs/tts.md)
-    avatar_renderer: str = "none"
+    avatar_renderer: str = "simple"  # simple (cartoon, CPU) | remote (GPU service, AVATAR_URL) | none
+    avatar_url: str = ""
+    avatar_token: str = ""
 
     # silence removal (avc make --remove-silence)
     silence_min_gap_s: float = 0.8   # pauses at least this long are shortened

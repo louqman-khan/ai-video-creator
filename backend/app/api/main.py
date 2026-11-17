@@ -32,6 +32,7 @@ from app.media import ffmpeg
 from app.pipeline.caption_style import CaptionStyle
 from app.pipeline.runner import ASPECTS, Providers
 import app.maintenance as maintenance
+from app.api import avatars as avatars_api
 from app.pipeline import export_speed
 from app.providers.tts import TTSUnavailable
 from app.pipeline.sizes import PORTRAIT, render_size
@@ -291,5 +292,6 @@ def create_app(settings: Settings | None = None, providers_factory: ProvidersFac
     media_worker = media_api.MediaWorker(settings)
     timeline_api.register(app, store, settings, on_built=media_worker.ensure_timeline, jobs=jobs)
     media_api.register(app, store, settings, media_worker)
+    avatars_api.register(app, store, settings, jobs, media_worker)
     app.state.media = media_worker
     return app

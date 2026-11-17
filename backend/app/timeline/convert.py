@@ -165,7 +165,7 @@ def used_media(tl: Timeline) -> list[tuple[MediaAsset, list[int]]]:
     found: dict[str, tuple[MediaAsset, list[int]]] = {}
     for c in sorted(tl.clips, key=lambda x: x.start):
         a = tl.assets.get(c.asset) if c.asset else None
-        if a is None or a.license == "User-provided":
+        if a is None or a.license == "User-provided" or a.source == "avatar":  # the user's own files and generated avatars need no credit
             continue
         if a.id not in found:
             found[a.id] = (MediaAsset(id=a.id, source=a.source, kind=a.kind, url=a.url or "-", license=a.license, license_url=a.license_url,

@@ -640,3 +640,16 @@ def test_rotated_phone_video_renders_upright(media, tmp_path):
     out = render_to(tl, tmp_path, "rot_out.mp4")
     assert probe(out, "stream=width,height") == "540,960"
     assert sum(px(out, 0.5, 270, 480)) > 60                                                             # a real picture, not black
+
+
+def test_bars_around_a_fitted_green_screen_picture_are_transparent_too(media, tmp_path):
+    # a 16:9 green-screen clip shown whole in a square frame: the bars above and below must show what is underneath (blue), not black
+    green_screen(tmp_path)
+    extra = asset(tmp_path, "screen", "video", 120)
+    tl = make_tl(media, [vclip("bg", "blue", 0, 60), vclip("fg", "screen", 0, 60, track="V2", fit="fit", key=ChromaKey(despill=False))],
+                 extra_assets=[extra]).model_copy(update={"aspect": "1:1"})
+    out = render_to(tl, tmp_path, "bars.mp4")
+    r, g, b = px(out, 0.5, 270, 30)                                              # in the top bar
+    assert b > 200 and r < 60 and g < 60
+    r, g, b = px(out, 0.5, 270, 270)                                             # the picture's own green area is keyed too
+    assert b > 200 and g < 60

@@ -1,4 +1,4 @@
-import type { Aspect, Asset, ExportEncoder, ExportPreset, Attribution, CaptionsView, CaptionStyle, FilmMeta, MediaView, Peaks, Project, Scene, TimelineAsset, TimelineView } from "./types";
+import type { Aspect, Asset, AvatarCorner, ExportEncoder, ExportPreset, Attribution, CaptionsView, CaptionStyle, FilmMeta, MediaView, Peaks, Project, Scene, TimelineAsset, TimelineView } from "./types";
 
 export class ApiError extends Error {
   constructor(
@@ -184,6 +184,14 @@ export const api = {
   storage: () => request<{ items: { key: string; label: string; bytes: number; reclaimable: number }[]; total: number; reclaimable: number }>("/api/storage"),
   /** Removes unused downloads, orphaned proxies and old render caches (never uploads, exports or timelines). */
   cleanStorage: () => request<{ freed: number; removed: number }>("/api/storage/clean?days=7&segments=true", { method: "POST" }),
+  /** Characters that can speak the narration. */
+  avatars: () => request<{ id: string; name: string }[]>("/api/avatars"),
+  avatarThumbUrl: (avatarId: string) => `/api/avatars/${encodeURIComponent(avatarId)}/thumb`,
+  /** Makes the avatar speak the project's narration and puts it on the timeline (a render follows). */
+  addAvatar: (id: string, body: { avatar: string; corner: AvatarCorner; size: number }) =>
+    request<Project>(`/api/projects/${encodeURIComponent(id)}/avatar`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    }),
   exportUrl: (id: string) => `/api/projects/${encodeURIComponent(id)}/export`,
   /** `version` changes when a render finishes, so the browser never plays an outdated copy. */
   videoUrl: (id: string, version?: string) =>

@@ -31,7 +31,7 @@ from app.pipeline.sizes import base_video_name, render_size
 from app.timeline.models import Clip, Timeline
 
 log = logging.getLogger("avc.render")
-RENDER_VERSION = "r5"
+RENDER_VERSION = "r6"
 BLUR_ZOOM = 1.15  # the blurred copy behind a "fit" picture is enlarged a little so its blurred edges stay out of the frame
 BLUR_SIGMA = 0.03  # blur strength of that copy, in frame widths  # bump when the pictures a segment produces change: invalidates every cached segment
 Progress = Callable[[str, float, str], None]
@@ -326,7 +326,7 @@ def _layer_chain(tl: Timeline, seg: Segment, c: Clip, idx: int, w: int, h: int) 
                  f"zoompan=z='1+{pct / 100:.6f}*(on+{into_kb})/{total}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s={w}x{h}:fps={tl.fps},setsar=1")
     elif c.fit == "fit":
         chain = (f"[{idx}:v]{tm}scale={w}:{h}:force_original_aspect_ratio=decrease,fps={tl.fps}{hold},format=yuva420p,"
-                 f"pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:color=black@0,setsar=1")
+                 f"pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:color={'0x' + c.key.color[1:] + '@1' if c.key else 'black@0'},setsar=1")  # with a green screen the bars are keyed away too (chromakey would otherwise make them opaque)
     elif c.fit == "blur":
         pieces += [f"[{idx}:v]{tm}fps={tl.fps}{hold},split[a{idx}][b{idx}]",
                    f"[a{idx}]scale={int(w * BLUR_ZOOM)}:{int(h * BLUR_ZOOM)}:force_original_aspect_ratio=increase,crop={w}:{h},gblur=sigma={w * BLUR_SIGMA:.2f}[bg{idx}]",

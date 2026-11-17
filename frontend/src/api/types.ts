@@ -143,6 +143,7 @@ export interface TimelineAsset {
   attribution_required: boolean;
 }
 
+export type AvatarCorner = "bottom-right" | "bottom-left" | "top-right" | "top-left";
 export type ExportPreset = "720p" | "1080p" | "4k";
 export type ExportEncoder = "software" | "hardware";
 export type Aspect = "16:9" | "9:16" | "1:1" | "4:5";

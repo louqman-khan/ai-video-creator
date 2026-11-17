@@ -107,3 +107,8 @@ Select a picture clip > **Green screen**: tick it, choose the colour (or **Pick 
 
 Format (shows the pixel size), Size (720p / 1080p / 4K), Encoder (best quality, or the fast one if this computer has a video chip) and a time
 estimate that gets more accurate with every export. Details: `docs/export-presets.md`.
+
+## Talking avatar (task 5.2)
+
+Below the preview: **Talking avatar**. Pick a character, a corner and a size and press **Add avatar to the video**. A new "Avatar" track appears with a keyed,
+fitted clip as long as the narration; edit it like any clip. Details and the protocol for GPU lip-sync services: `docs/avatars.md`.

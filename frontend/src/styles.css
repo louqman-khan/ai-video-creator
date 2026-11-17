@@ -162,3 +162,10 @@ input[type="color"] { width: 100%; height: 38px; padding: 2px; border: 1px solid
 .ch-edge { fill: var(--accent, #4c8dff); fill-opacity: .55; stroke: #fff; stroke-width: 1; cursor: ew-resize; vector-effect: non-scaling-stroke; }
 
 .pick-layer { position: absolute; inset: 0; cursor: crosshair; background: rgba(76,141,255,.08); outline: 2px dashed var(--accent, #4c8dff); outline-offset: -2px; }
+
+.avatar-grid { display: flex; gap: 12px; flex-wrap: wrap; margin: 8px 0; }
+.avatar-choice { display: grid; justify-items: center; gap: 4px; padding: 8px; border: 2px solid var(--line); border-radius: 10px; cursor: pointer; }
+.avatar-choice input { position: absolute; opacity: 0; pointer-events: none; }
+.avatar-choice:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+.avatar-chosen { border-color: var(--accent); }
+.avatar-choice img { border-radius: 8px; background: #e8ecf3; }

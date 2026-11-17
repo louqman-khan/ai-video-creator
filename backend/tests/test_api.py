@@ -1228,3 +1228,50 @@ def test_a_typed_script_is_spoken_and_becomes_a_normal_project(env, monkeypatch)
             assert r2.status_code == 202
             failed = wait_done(c2, r2.json()["id"])
             assert failed["status"] == "failed" and "damaged" in failed["error"]
+
+
+def test_an_avatar_speaks_the_narration_and_lands_on_the_timeline_keyed_in_a_corner(env):
+    import subprocess
+
+    from app.pipeline.sizes import ASPECTS
+
+    settings, _, tone, _ = env
+    with client(env) as c:
+        listed = c.get("/api/avatars").json()
+        assert {a["id"] for a in listed} >= {"sara", "ali"}
+        t = c.get("/api/avatars/sara/thumb")
+        assert t.status_code == 200 and t.headers["content-type"] == "image/png" and t.content[:4] == b"\x89PNG"
+        assert c.get("/api/avatars/nobody/thumb").status_code == 404
+        pid = finished_project(c, tone)
+        assert c.post(f"/api/projects/{pid}/avatar", json={"avatar": "nobody"}).status_code == 422
+        assert c.post(f"/api/projects/{pid}/avatar", json={"avatar": "sara", "size": 5}).status_code == 422
+        r = c.post(f"/api/projects/{pid}/avatar", json={"avatar": "sara", "corner": "bottom-left", "size": 0.35})
+        assert r.status_code == 202
+        done = wait_done(c, pid)
+        assert done["status"] == "done" and done["error"] is None and done["video_ready"]
+        tl = c.get(f"/api/projects/{pid}/timeline").json()
+        clip = next(x for x in tl["clips"] if x["id"] == "avatar-1")
+        narration = next(x for x in tl["clips"] if x["kind"] == "audio")
+        track = next(x for x in tl["tracks"] if x["id"] == clip["track"])
+        assert track["name"] == "Avatar" and clip["key"]["color"] == "#00ff00" and clip["fit"] == "fit"
+        assert clip["start"] == narration["start"] and abs(clip["duration"] - narration["duration"]) <= 2        # as long as the narration
+        assert clip["transform"]["x"] < 0 and clip["transform"]["y"] > 0 and clip["transform"]["scale"] == 0.35  # bottom-left
+        assert tl["assets"][clip["asset"]]["source"] == "avatar" and "path" not in tl["assets"][clip["asset"]]
+        assert "avatar" not in c.get(f"/api/projects/{pid}/credits").text.lower()                                # generated: nothing to credit
+        # the preview shows the avatar in the corner and the video underneath everywhere else (the green is keyed out)
+        d = Path(settings.projects_dir) / pid
+        def rgb(x, y):
+            raw = subprocess.run(["ffmpeg", "-v", "error", "-ss", "1", "-i", str(d / "preview.mp4"), "-frames:v", "1", "-vf", f"crop=6:6:{x}:{y}", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"],
+                                 capture_output=True, check=True).stdout
+            return tuple(sum(raw[i::3]) // (len(raw) // 3) for i in range(3))
+        w, h = (960, 540) if tl["aspect"] == "16:9" else (540, 960)
+        far = rgb(w - 40, 40)                                                                                    # top-right: no avatar
+        near = rgb(int(w * 0.03) + 8, int(h * 0.97) - 8)                                                         # the avatar's own square corner: transparent, so the video shows
+        assert not (near[1] > 200 and near[0] < 60 and near[2] < 60)                                              # not the key green
+        assert not (far[1] > 200 and far[0] < 60 and far[2] < 60)
+        # a second avatar goes on its own track
+        assert c.post(f"/api/projects/{pid}/avatar", json={"avatar": "ali"}).status_code == 202
+        assert wait_done(c, pid)["status"] == "done"
+        tl2 = c.get(f"/api/projects/{pid}/timeline").json()
+        assert [x["id"] for x in tl2["clips"] if x["id"].startswith("avatar-")] == ["avatar-1", "avatar-2"]
+        assert len({x["track"] for x in tl2["clips"] if x["id"].startswith("avatar-")}) == 2
