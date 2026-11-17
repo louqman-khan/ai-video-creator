@@ -102,17 +102,16 @@ def test_unsupported_features_are_named_not_ignored(media):
     assert unsupported_features(ok) == []
     bad = make_tl(media, [
         vclip("kb", "red", 30, 30, effects=[Effect(type="kenburns", value=5)]),
-        vclip("tf", "red", 120, 30, transform=Transform(rotation=10)),
-        vclip("ps", "red", 150, 30, transform=Transform(crop=(0.1, 0, 0, 0))),
+        Clip(id="au", track="A1", kind="audio", asset="tone", start=0, duration=30, effects=[Effect(type="blur", value=5)]),
     ])
     msg = " | ".join(unsupported_features(bad))
-    for word in ("zoom on video", "crop and rotation"):
+    for word in ("zoom on video", "effects or transitions on audio"):
         assert word in msg
 
 
 def test_render_refuses_before_doing_any_work(media, tmp_path):
-    tl = make_tl(media, [vclip("fx", "red", 0, 30, transform=Transform(rotation=5))])
-    with pytest.raises(RenderUnsupported, match="rotation"):
+    tl = make_tl(media, [vclip("fx", "red", 0, 30, effects=[Effect(type="kenburns", value=5)])])
+    with pytest.raises(RenderUnsupported, match="zoom on video"):
         render_timeline(tl, tmp_path, SETTINGS, quality="preview", out=tmp_path / "o.mp4")
     assert not (tmp_path / "tl_segments_preview").exists()
     with pytest.raises(ValueError, match="empty"):
@@ -486,3 +485,53 @@ def test_slide_is_frame_exact_also_when_its_segment_is_cut(media, tmp_path):
             expected = round(960 * (1 - (n - 60) / 30))
             assert abs(green_edge(out, n) - expected) <= 2, (name, n, green_edge(out, n), expected)
         assert green_edge(out, 60) is None                     # the first frame of the transition shows only the old picture
+
+
+# ------------------------------------------------------------------ crop, rotation, aspect ratios, reframing
+
+def half_red_half_blue(tmp_path):
+    p = tmp_path / "split.png"
+    sh("-f", "lavfi", "-i", "color=c=red:s=80x180", "-f", "lavfi", "-i", "color=c=blue:s=80x180", "-filter_complex", "[0][1]hstack", "-frames:v", "1", str(p))
+    return p
+
+
+def test_crop_keeps_the_remaining_part_where_it_was(media, tmp_path):
+    # red | blue picture, crop away the left 25 %: the red part that is left stays on the left of the blue part, the rest shows what is underneath (black)
+    pic = half_red_half_blue(tmp_path)
+    extra = asset(media.parent if False else tmp_path, "split", "image")
+    tl = make_tl(media, [vclip("p", "split", 0, 30, kind="image", transform=Transform(crop=(0.25, 0, 0, 0)))], extra_assets=[extra])
+    out = render_to(tl, tmp_path)
+    assert sum(px(out, 0.5, 40, 270)) < 40                                      # the cropped-away strip is empty
+    assert px(out, 0.5, 300, 270)[0] > 200 and px(out, 0.5, 700, 270)[2] > 200   # red then blue, at their old places
+
+
+def test_rotation_turns_clockwise_and_leaves_the_corners_empty(media, tmp_path):
+    pic = half_red_half_blue(tmp_path)
+    extra = asset(tmp_path, "split", "image")
+    tl = make_tl(media, [vclip("p", "split", 0, 30, kind="image", transform=Transform(rotation=90, scale=0.5))], extra_assets=[extra])
+    out = render_to(tl, tmp_path)
+    # turned a quarter clockwise: the left (red) half is now on top, the right (blue) half at the bottom
+    assert px(out, 0.5, 480, 200)[0] > 150 and px(out, 0.5, 480, 340)[2] > 150
+    assert sum(px(out, 0.5, 20, 20)) < 40                                       # outside the turned picture: black
+
+
+def test_fit_shows_the_whole_picture_with_bars_and_blur_fills_them(media, tmp_path):
+    pic = half_red_half_blue(tmp_path)
+    extra = asset(tmp_path, "split", "image")
+    sq = make_tl(media, [vclip("p", "split", 0, 30, kind="image")], extra_assets=[extra]).model_copy(update={"aspect": "16:9"})
+    fill = render_to(sq, tmp_path, "fill.mp4")
+    assert px(fill, 0.5, 10, 270)[0] > 200 and px(fill, 0.5, 940, 270)[2] > 200   # 8:9 picture covers the whole 16:9 frame (cropped top/bottom)
+    fit = render_to(make_tl(media, [vclip("p", "split", 0, 30, kind="image", fit="fit")], extra_assets=[extra]), tmp_path, "fit.mp4")
+    assert sum(px(fit, 0.5, 20, 270)) < 40 and sum(px(fit, 0.5, 940, 270)) < 40   # bars at the sides
+    assert px(fit, 0.5, 400, 270)[0] > 200 and px(fit, 0.5, 560, 270)[2] > 200     # the whole picture, red | blue, in the middle
+    blur = render_to(make_tl(media, [vclip("p", "split", 0, 30, kind="image", fit="blur")], extra_assets=[extra]), tmp_path, "blur.mp4")
+    assert px(blur, 0.5, 20, 270)[0] > 100 and px(blur, 0.5, 940, 270)[2] > 100    # the bars are a blurred copy of the picture
+    assert px(blur, 0.5, 400, 270)[0] > 200 and px(blur, 0.5, 560, 270)[2] > 200
+
+
+@pytest.mark.parametrize("aspect,size", [("16:9", "960,540"), ("9:16", "540,960"), ("1:1", "540,540"), ("4:5", "560,700")])
+def test_every_aspect_ratio_renders_at_its_size(media, tmp_path, aspect, size):
+    tl = make_tl(media, [vclip("a", "red", 0, 30)]).model_copy(update={"aspect": aspect})
+    out = render_to(tl, tmp_path, f"{aspect.replace(':', 'x')}.mp4")
+    assert probe(out, "stream=width,height") == size
+    assert px(out, 0.5, 100, 100)[0] > 200                                      # the picture fills the frame

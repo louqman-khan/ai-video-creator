@@ -1,9 +1,12 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import { api } from "../api/client";
-import type { FilmMeta, MediaView, Peaks, Project, TimelineAsset, TimelineClip, TimelineTrack, TimelineView } from "../api/types";
+import type { Aspect, FilmMeta, MediaView, Peaks, Project, TimelineAsset, TimelineClip, TimelineTrack, TimelineView } from "../api/types";
 import { Filmstrip } from "./Filmstrip";
 import { useDerived, useFrame, usePlayhead, useSession, useTimelineData, type PlayheadStore, type Transport } from "./hooks";
+import { createPortal } from "react-dom";
+import { CanvasHandles } from "./CanvasHandles";
 import { Inspector } from "./Inspector";
+import { CANVAS_SIZES } from "../preview/LivePreview";
 import { MediaBin } from "./MediaBin";
 import * as ops from "./ops";
 import {
@@ -24,6 +27,8 @@ interface Props {
   video: Transport | null;
   /** the document being edited, reported whenever it changes (the live preview draws it) */
   onDoc?: (doc: ops.Doc) => void;
+  /** where to draw the picture handles (the element around the live preview); null when the live preview is not shown */
+  overlayHost?: HTMLElement | null;
   /** the preparation state of every asset, whenever it changes */
   onMedia?: (media: Record<string, MediaView>) => void;
   /** called with the project whenever an edit makes the server start (or queue) a new preview render */
@@ -37,13 +42,13 @@ const labelOf = (c: TimelineClip, a: TimelineAsset | undefined): string => {
   return a?.title || c.id;
 };
 
-export function Timeline({ projectId, version, video, onProject, onDoc, onMedia }: Props) {
+export function Timeline({ projectId, version, video, onProject, onDoc, onMedia, overlayHost }: Props) {
   const { timeline, media, error, preparing, refreshMedia } = useTimelineData(projectId, version, true);
   const { peaks, film } = useDerived(projectId, media);
   useEffect(() => { onMedia?.(media); }, [media, onMedia]);
   if (error) return <p className="alert" role="alert">{error}</p>;
   if (!timeline) return <p className="muted">Loading the timeline…</p>;
-  return <TimelineBody projectId={projectId} timeline={timeline} media={media} preparing={preparing} peaks={peaks} film={film} video={video} onProject={onProject} onDoc={onDoc} refreshMedia={refreshMedia} />;
+  return <TimelineBody projectId={projectId} timeline={timeline} media={media} preparing={preparing} peaks={peaks} film={film} video={video} onProject={onProject} onDoc={onDoc} overlayHost={overlayHost} refreshMedia={refreshMedia} />;
 }
 
 interface BodyProps {
@@ -56,14 +61,18 @@ interface BodyProps {
   video: Transport | null;
   onDoc?: (doc: ops.Doc) => void;
   onProject?: (p: Project) => void;
+  overlayHost?: HTMLElement | null;
   refreshMedia: () => void;
 }
 
-function TimelineBody({ projectId, timeline, media, preparing, peaks, film, video, onProject, onDoc, refreshMedia }: BodyProps) {
+function TimelineBody({ projectId, timeline, media, preparing, peaks, film, video, onProject, onDoc, overlayHost, refreshMedia }: BodyProps) {
   const { session, snap } = useSession(timeline, (body) => api.saveTimeline(projectId, body));
   const doc = snap.doc;
   const fps = doc.fps;
-  useEffect(() => { onDoc?.(doc); }, [doc, onDoc]);
+  const [draft, setDraft] = useState<{ id: string; patch: ops.Picture } | null>(null);   // a handle is being dragged
+  const [cropMode, setCropMode] = useState(false);
+  const shownDoc = useMemo(() => (draft ? ops.setPicture(doc, draft.id, draft.patch).doc : doc), [doc, draft]);
+  useEffect(() => { onDoc?.(shownDoc); }, [shownDoc, onDoc]);
   const duration = Math.max(1, ops.timelineLength(doc));
   const onProjectRef = useRef(onProject);
   onProjectRef.current = onProject;
@@ -306,6 +315,12 @@ function TimelineBody({ projectId, timeline, media, preparing, peaks, film, vide
           <button className="btn" type="button" onClick={() => removeSelected(false)} disabled={!selected} title="Delete the clip and leave a gap (Delete)">Delete</button>
           <button className="btn" type="button" onClick={() => removeSelected(true)} disabled={!selected} title="Delete and close the gap on every track (Shift+Delete)">Ripple delete</button>
           <button className="btn" type="button" onClick={() => selected && run(ops.duplicateClip(doc, selected))} disabled={!selected} title="Duplicate (Ctrl/⌘+D)">Duplicate</button>
+          <label className="tl-fmt">Frame <select aria-label="Frame shape" value={doc.aspect ?? "16:9"} onChange={(e) => run(ops.setAspect(doc, e.target.value as Aspect))}>
+            {ops.ASPECTS.map((a) => <option key={a} value={a}>{a}</option>)}
+          </select></label>
+          <label className="tl-fmt">Pictures <select aria-label="Pictures that do not match the frame" value={fitOfAll(doc)} onChange={(e) => e.target.value && run(ops.setFitAll(doc, e.target.value as "fill" | "fit" | "blur"))}>
+            <option value="">(mixed)</option><option value="fill">Fill</option><option value="fit">Fit with bars</option><option value="blur">Fit over blur</option>
+          </select></label>
           <button className="btn" type="button" onClick={() => run(ops.addTrack(doc, "video"))}>+ Video track</button>
           <button className="btn" type="button" onClick={() => run(ops.addTrack(doc, "audio"))}>+ Audio track</button>
         </span>
@@ -374,12 +389,23 @@ function TimelineBody({ projectId, timeline, media, preparing, peaks, film, vide
       <p className="small tl-notice" role="status">{notice}</p>
       <MediaBin projectId={projectId} doc={doc} media={media} onInsert={(a, title) => run(ops.insertAsset(doc, a, head.get(), title))}
         onAdded={refreshMedia} onNotice={setNotice} />
-      {chosen && <Inspector clip={chosen} doc={doc} onApply={run} />}
+      {chosen && <Inspector clip={chosen} doc={doc} onApply={run} cropMode={cropMode} onCropMode={overlayHost ? setCropMode : undefined} />}
+      {overlayHost && chosen && (chosen.kind === "video" || chosen.kind === "image") && createPortal(
+        <CanvasHandles clip={chosen} width={(CANVAS_SIZES[doc.aspect ?? "16:9"] ?? CANVAS_SIZES["16:9"]!)[0]} height={(CANVAS_SIZES[doc.aspect ?? "16:9"] ?? CANVAS_SIZES["16:9"]!)[1]}
+          cropMode={cropMode} onDraft={(patch) => setDraft(patch ? { id: chosen.id, patch } : null)} onCommit={(patch) => run(ops.setPicture(doc, chosen.id, patch))} />,
+        overlayHost,
+      )}
       {chosen ? <ClipInfo clip={chosen} asset={chosen.asset ? doc.assets[chosen.asset] : undefined} fps={fps} /> : (
         <p className="muted small">Click the ruler or a track to move the playhead. Drag a clip to move it, drag its edges to trim, press S to split at the playhead, Delete to remove, Ctrl/⌘+Z to undo.</p>
       )}
     </section>
   );
+}
+
+/** the `fit` every picture shares, or "" when they differ */
+function fitOfAll(doc: ops.Doc): string {
+  const fits = new Set(doc.clips.filter((c) => c.kind === "video" || c.kind === "image").map((c) => c.fit ?? "fill"));
+  return fits.size === 1 ? [...fits][0]! : "";
 }
 
 function SaveChip({ status, message, onReload }: { status: ops.SaveLike; message: string | null; onReload: () => void }) {

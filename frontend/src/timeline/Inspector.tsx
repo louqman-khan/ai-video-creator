@@ -28,7 +28,9 @@ const PRESETS: { name: string; x: number; y: number; scale: number }[] = [
   { name: "Bottom right", x: 0.3, y: 0.3, scale: 0.35 },
 ];
 
-export function Inspector({ clip: c, doc, onApply }: { clip: TimelineClip; doc: ops.Doc; onApply: (r: ops.Result) => void }) {
+export function Inspector({ clip: c, doc, onApply, cropMode = false, onCropMode }: {
+  clip: TimelineClip; doc: ops.Doc; onApply: (r: ops.Result) => void; cropMode?: boolean; onCropMode?: (on: boolean) => void;
+}) {
   const fps = doc.fps;
   const pct = (v: number) => `${Math.round(v * 100)}%`;
   const sec = (f: number) => `${(f / fps).toFixed(1)} s`;
@@ -76,6 +78,21 @@ export function Inspector({ clip: c, doc, onApply }: { clip: TimelineClip; doc: 
         <Slider label="Contrast" value={fx("contrast")} min={-100} max={100} step={5} show={(v) => `${v}`} onCommit={(v) => onApply(ops.setEffect(doc, c.id, "contrast", v))} />
         <Slider label="Saturation" value={fx("saturation")} min={-100} max={100} step={5} show={(v) => `${v}`} onCommit={(v) => onApply(ops.setEffect(doc, c.id, "saturation", v))} />
         <Slider label="Blur" value={fx("blur")} min={0} max={100} step={5} show={(v) => `${v}`} onCommit={(v) => onApply(ops.setEffect(doc, c.id, "blur", v))} />
+        <Slider label="Turn" value={t.rotation} min={-180} max={180} step={1} show={(v) => `${v}°`} onCommit={(v) => onApply(ops.setPicture(doc, c.id, { rotation: v }))} />
+        {(["Left", "Top", "Right", "Bottom"] as const).map((name, i) => (
+          <Slider key={name} label={`Crop ${name.toLowerCase()}`} value={t.crop[i]!} min={0} max={0.8} step={0.01} show={pct}
+            onCommit={(v) => { const crop = [...t.crop] as [number, number, number, number]; crop[i] = v; onApply(ops.setPicture(doc, c.id, { crop })); }} />
+        ))}
+        <div className="insp-row">
+          <label htmlFor={`${c.id}-fit`}>Fit to frame</label>
+          <select id={`${c.id}-fit`} value={c.fit ?? "fill"} onChange={(e) => onApply(ops.setFit(doc, c.id, e.target.value as "fill" | "fit" | "blur"))}>
+            <option value="fill">Fill (crop the edges)</option>
+            <option value="fit">Fit (whole picture, bars)</option>
+            <option value="blur">Fit over a blurred copy</option>
+          </select>
+          {onCropMode && <button type="button" className="btn" aria-pressed={cropMode} onClick={() => onCropMode(!cropMode)}>Crop on the preview</button>}
+          <button type="button" className="btn" onClick={() => onApply(ops.setPicture(doc, c.id, { x: 0, y: 0, scale: 1, rotation: 0, crop: [0, 0, 0, 0] }))}>Reset position and size</button>
+        </div>
         <p className="muted small">Put a clip on a higher video track and make it smaller to get a picture-in-picture.</p>
       </fieldset>
     );

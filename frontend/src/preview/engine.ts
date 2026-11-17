@@ -30,6 +30,10 @@ function cssFilter(l: Layer, W: number): string {
   return parts.length ? parts.join(" ") : "none";
 }
 
+/** Match `BLUR_ZOOM` / `BLUR_SIGMA` in render.py. */
+const BLUR_ZOOM = 1.15;
+const BLUR_SIGMA = 0.03;
+
 export class LiveEngine extends EventTarget {
   private doc: Doc;
   private frame = 0;
@@ -238,6 +242,20 @@ export class LiveEngine extends EventTarget {
     if (cap) this.drawCaption(g, cap, W, H);
     this.stats.drawn++;
   }
+  private scratch: HTMLCanvasElement[] = [];
+  private offscreen(i: number, W: number, H: number): CanvasRenderingContext2D | null {
+    let c = this.scratch[i];
+    if (!c) c = this.scratch[i] = document.createElement("canvas");
+    if (c.width !== W || c.height !== H) { c.width = W; c.height = H; }
+    const g = c.getContext("2d");
+    g?.clearRect(0, 0, W, H);
+    return g;
+  }
+
+  /**
+   * One picture, the same steps in the same order as the renderer's `_layer_chain`: show it in the frame (fill, fit or
+   * blurred background; a still with Ken Burns zooms), effects, crop, resize, rotate, opacity, transition shift and zoom.
+   */
   private drawLayer(g: CanvasRenderingContext2D, l: Layer, W: number, H: number) {
     if (!l.clip.asset) return;
     let src: CanvasImageSource;
@@ -252,11 +270,36 @@ export class LiveEngine extends EventTarget {
       if (!im || !im.complete || !im.naturalWidth) return;
       src = im; w = im.naturalWidth; h = im.naturalHeight;
     }
-    const s = Math.max(W / w, H / h) * l.zoom * l.scale * l.zoomMul; // "cover", then the picture-in-picture size, like the renderer
+    // 1. the picture in a frame-sized image
+    const a = this.offscreen(0, W, H);
+    const b = this.offscreen(1, W, H);
+    if (!a || !b) return;
+    const place = (ctx: CanvasRenderingContext2D, scale: number) => ctx.drawImage(src, (W - w * scale) / 2, (H - h * scale) / 2, w * scale, h * scale);
+    const cover = Math.max(W / w, H / h);
+    const contain = Math.min(W / w, H / h);
+    if (l.fit === "fit" && l.zoom === 1) place(a, contain);
+    else if (l.fit === "blur" && l.zoom === 1) {
+      a.filter = `blur(${(W * BLUR_SIGMA).toFixed(1)}px)`;
+      place(a, cover * BLUR_ZOOM);
+      a.filter = "none";
+      place(a, contain);
+    } else place(a, cover * l.zoom); // fill (and Ken Burns, which is always "fill")
+    // 2. effects
+    b.filter = cssFilter(l, W);
+    b.drawImage(a.canvas, 0, 0);
+    b.filter = "none";
+    // 3. crop, resize, rotate, opacity, shift, transition zoom
+    const [cl, ct, cr, cb] = l.crop;
+    const sx = cl * W, sy = ct * H, sw = W * (1 - cl - cr), sh = H * (1 - ct - cb);
+    const cx = W / 2 + (l.x + l.dx) * W + ((cl - cr) / 2) * W * l.scale;
+    const cy = H / 2 + l.y * H + ((ct - cb) / 2) * H * l.scale;
+    const k = l.scale * l.zoomMul;
+    g.save();
     g.globalAlpha = l.opacity;
-    g.filter = cssFilter(l, W);
-    g.drawImage(src, (W - w * s) / 2 + (l.x + l.dx) * W, (H - h * s) / 2 + l.y * H, w * s, h * s);
-    g.filter = "none";
+    g.translate(cx, cy);
+    g.rotate((l.rotation * Math.PI) / 180);
+    g.drawImage(b.canvas, sx, sy, sw, sh, (-sw * k) / 2, (-sh * k) / 2, sw * k, sh * k);
+    g.restore();
   }
 
   /** An approximation of the burned-in caption (the export uses libass and the caption style): white text, dark outline. */

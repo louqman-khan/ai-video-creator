@@ -152,3 +152,11 @@ input[type="color"] { width: 100%; height: 38px; padding: 2px; border: 1px solid
 .bin-list li { display: flex; gap: 8px; align-items: center; padding: 4px 0; border-top: 1px solid var(--line); }
 .bin-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bin-thumb { width: 64px; height: 36px; object-fit: cover; border-radius: 4px; background: #000; }
+.live-host { position: relative; width: fit-content; max-width: 100%; }
+.canvas-handles { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+.canvas-handles > g * { pointer-events: all; }
+.ch-box { fill: transparent; stroke: var(--accent, #4c8dff); stroke-width: 2; cursor: move; vector-effect: non-scaling-stroke; }
+.ch-corner { fill: #fff; stroke: var(--accent, #4c8dff); stroke-width: 2; cursor: nwse-resize; vector-effect: non-scaling-stroke; }
+.ch-rotate { fill: #fff; stroke: var(--accent, #4c8dff); stroke-width: 2; cursor: grab; vector-effect: non-scaling-stroke; }
+.ch-stem { stroke: var(--accent, #4c8dff); stroke-width: 1.5; vector-effect: non-scaling-stroke; pointer-events: none !important; }
+.ch-edge { fill: var(--accent, #4c8dff); fill-opacity: .55; stroke: #fff; stroke-width: 1; cursor: ew-resize; vector-effect: non-scaling-stroke; }

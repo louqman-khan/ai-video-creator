@@ -8,6 +8,7 @@ export type SaveStatus = "saved" | "dirty" | "saving" | "error" | "conflict";
 
 export interface SaveBody {
   base_rev: number;
+  aspect?: Doc["aspect"];
   tracks: Doc["tracks"];
   clips: Doc["clips"];
   caption_style: Doc["caption_style"];
@@ -24,7 +25,7 @@ export interface Snapshot {
 }
 
 const HISTORY_LIMIT = 200;
-export const docOf = (v: TimelineView): Doc => ({ fps: v.fps, tracks: v.tracks, clips: v.clips, assets: v.assets, caption_style: v.caption_style });
+export const docOf = (v: TimelineView): Doc => ({ fps: v.fps, aspect: v.aspect, tracks: v.tracks, clips: v.clips, assets: v.assets, caption_style: v.caption_style });
 
 export class EditSession {
   private doc: Doc;
@@ -116,7 +117,7 @@ export class EditSession {
         this.status = "saving";
         this.publish();
         try {
-          const res = await this.save({ base_rev: this.rev, tracks: sent.tracks, clips: sent.clips, caption_style: sent.caption_style });
+          const res = await this.save({ base_rev: this.rev, aspect: sent.aspect, tracks: sent.tracks, clips: sent.clips, caption_style: sent.caption_style });
           this.rev = res.rev;
           this.savedDoc = sent;
           this.onSaved(res.rev);

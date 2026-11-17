@@ -4,6 +4,9 @@ import type { MediaView } from "../api/types";
 import type { Doc } from "../timeline/ops";
 import { LiveEngine } from "./engine";
 
+/** Same sizes as the renderer's preview (`PREVIEW_SIZES`). */
+export const CANVAS_SIZES: Record<string, [number, number]> = { "16:9": [960, 540], "9:16": [540, 960], "1:1": [540, 540], "4:5": [560, 700] };
+
 interface Props {
   projectId: string;
   doc: Doc;
@@ -21,7 +24,7 @@ export function LivePreview({ projectId, doc, aspect, media, onEngine }: Props) 
   const ref = useRef<HTMLCanvasElement>(null);
   const engine = useRef<LiveEngine | null>(null);
   const first = useRef(doc);
-  const portrait = aspect === "9:16";
+  const [width, height] = CANVAS_SIZES[aspect] ?? CANVAS_SIZES["16:9"]!;
 
   useEffect(() => {
     const canvas = ref.current;
@@ -41,11 +44,11 @@ export function LivePreview({ projectId, doc, aspect, media, onEngine }: Props) 
     };
   }, [projectId, onEngine]);
 
-  useEffect(() => { engine.current?.setDoc(doc); }, [doc]);
+  useEffect(() => { engine.current?.setDoc(doc); }, [doc, width, height]);
   useEffect(() => { engine.current?.refresh(); }, [media]);
 
   return (
-    <canvas ref={ref} className="player live-canvas" width={portrait ? 540 : 960} height={portrait ? 960 : 540}
+    <canvas ref={ref} className="player live-canvas" width={width} height={height}
       aria-label="Live preview of the timeline" role="img" />
   );
 }

@@ -20,6 +20,7 @@ step("a second video track appears", (await page.locator("[data-track]").count()
 
 // drag the first scene up onto the new track (it is shown above V1)
 const clip = page.locator('[data-clip="scene-1"]');
+await clip.scrollIntoViewIfNeeded();
 const cb = await clip.boundingBox();
 const v2 = await page.locator('[data-track="V2"]').boundingBox();
 await page.mouse.move(cb.x + cb.width / 2, cb.y + cb.height / 2);

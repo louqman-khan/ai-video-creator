@@ -4,6 +4,7 @@ revision it was based on; the server validates everything and never exposes path
 from __future__ import annotations
 
 from collections.abc import Callable
+from typing import Literal
 from pathlib import Path
 
 from fastapi import APIRouter, FastAPI, HTTPException, Query
@@ -34,6 +35,7 @@ class TimelineView(BaseModel):
 class TimelineUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     base_rev: int = Field(..., ge=1)  # the revision this edit started from
+    aspect: Literal["16:9", "9:16", "1:1", "4:5"] | None = None  # the frame shape (unchanged when absent)
     tracks: list[Track]
     clips: list[Clip]
     caption_style: dict | None = None
@@ -119,7 +121,7 @@ def build_router(store: ProjectStore, settings: Settings, on_built: Callable[[st
                 except ValueError as e:
                     raise HTTPException(422, f"Invalid caption style: {e}") from None
             try:  # re-validates every limit (clip count, track count, ...) on the complete document
-                new = Timeline.model_validate({**tl.model_dump(), "rev": tl.rev + 1, "tracks": [t.model_dump() for t in body.tracks],
+                new = Timeline.model_validate({**tl.model_dump(), "rev": tl.rev + 1, "aspect": body.aspect or tl.aspect, "tracks": [t.model_dump() for t in body.tracks],
                                                "clips": [c.model_dump() for c in body.clips], "caption_style": style})
             except ValueError as e:
                 raise HTTPException(422, str(e).splitlines()[0]) from None
@@ -128,6 +130,8 @@ def build_router(store: ProjectStore, settings: Settings, on_built: Callable[[st
                 more = f" (+{len(problems) - MAX_PROBLEMS_SHOWN} more)" if len(problems) > MAX_PROBLEMS_SHOWN else ""
                 raise HTTPException(422, "Invalid timeline: " + "; ".join(problems[:MAX_PROBLEMS_SHOWN]) + more)
             convert.save(store.path(pid), new)
+            if new.aspect != info.aspect:
+                store.update(pid, aspect=new.aspect, export_ready=False)
             return view_of(new)
 
     @router.post("/render", status_code=202, response_model=ProjectInfo)

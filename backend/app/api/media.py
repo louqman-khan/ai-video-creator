@@ -289,7 +289,7 @@ def build_router(store: ProjectStore, settings: Settings, worker: MediaWorker) -
         query = " ".join(q.split())
         if not query:
             raise HTTPException(422, "Type what to look for")
-        orientation = "portrait" if info.aspect == "9:16" else "landscape"
+        orientation = "portrait" if info.aspect in ("9:16", "4:5") else "landscape"
 
         def search() -> list[MediaAsset]:
             if kind in ("music", "sound"):

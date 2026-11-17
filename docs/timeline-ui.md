@@ -91,3 +91,9 @@ Select a picture clip: **Transition** (none, crossfade, dip to black, slide in, 
 **Brightness, Contrast, Saturation, Blur**. A transition needs the picture before it to touch the clip on the same track (that
 picture stays visible during the transition); without a neighbour the new picture simply comes in over what is underneath.
 Details and formulas: `docs/transitions-effects.md`.
+
+## Reframing (task 4.10)
+
+Toolbar: **Frame** (16:9, 9:16, 1:1, 4:5) and **Pictures** (fill / fit with bars / fit over a blurred copy). With the live preview
+showing, the selected picture has handles: drag it, drag a corner to resize, drag the round handle to turn it; **Crop on the preview**
+(in the inspector) switches to edge handles. Everything is also available as sliders in the inspector. Details: `docs/reframing.md`.

@@ -120,6 +120,7 @@ export interface TimelineClip {
   transform: TimelineTransform;
   effects: TimelineEffect[];
   transition_in: TimelineTransition | null;
+  fit?: "fill" | "fit" | "blur"; // a picture that does not match the frame: crop to fill / whole with bars / whole over a blurred copy
   text: string | null;
   words: { text: string; start: number; end: number }[];
   meta: Record<string, unknown>;
@@ -139,10 +140,12 @@ export interface TimelineAsset {
   attribution_required: boolean;
 }
 
+export type Aspect = "16:9" | "9:16" | "1:1" | "4:5";
+
 export interface TimelineView {
   rev: number;
   fps: number;
-  aspect: string;
+  aspect: Aspect;
   duration: number; // frames
   tracks: TimelineTrack[];
   clips: TimelineClip[];

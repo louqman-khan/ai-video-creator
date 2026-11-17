@@ -11,6 +11,7 @@ Features the renderer cannot do yet are refused loudly (`RenderUnsupported`), ne
 from __future__ import annotations
 
 import hashlib
+import math
 import json
 import logging
 import os
@@ -29,7 +30,9 @@ from app.pipeline.sizes import base_video_name, render_size
 from app.timeline.models import Clip, Timeline
 
 log = logging.getLogger("avc.render")
-RENDER_VERSION = "r2"  # bump when the pictures a segment produces change: invalidates every cached segment
+RENDER_VERSION = "r3"
+BLUR_ZOOM = 1.15  # the blurred copy behind a "fit" picture is enlarged a little so its blurred edges stay out of the frame
+BLUR_SIGMA = 0.03  # blur strength of that copy, in frame widths  # bump when the pictures a segment produces change: invalidates every cached segment
 Progress = Callable[[str, float, str], None]
 
 
@@ -48,8 +51,6 @@ def unsupported_features(tl: Timeline) -> list[str]:
             continue
         t = c.transform
         if c.kind in ("video", "image"):
-            if t.rotation or any(t.crop):
-                problems.append(f"clip '{c.id}': crop and rotation")
             for e in c.effects:
                 if e.type == "kenburns" and c.kind != "image":
                     problems.append(f"clip '{c.id}': zoom on video")
@@ -201,6 +202,7 @@ def _layer_spec(tl: Timeline, seg: Segment, c: Clip) -> dict:
     spec = {
         "asset": _identity(tl, c), "kind": c.kind, "offset": offset if c.kind == "video" else 0, "loop": c.loop,
         "opacity": c.transform.opacity, "place": [c.transform.x, c.transform.y, c.transform.scale],
+        "shape": [c.transform.rotation, list(c.transform.crop), c.fit],
         "kb": None if kb is None else [kb, into, c.duration],  # the zoom runs over the whole clip, not the segment
     }
     timing = _timing(c)
@@ -229,7 +231,38 @@ def _placed(c: Clip) -> bool:
     """True when the layer does not simply cover the whole frame (so something must lie underneath it)."""
     t = c.transform
     timing = _timing(c)
-    return t.opacity < 1 or t.scale < 1 or bool(t.x or t.y) or bool(timing.alpha or timing.dx or timing.zoom)
+    return (t.opacity < 1 or t.scale < 1 or bool(t.x or t.y or t.rotation or any(t.crop)) or c.fit == "fit"
+            or bool(timing.alpha or timing.dx or timing.zoom))
+
+
+@dataclass(frozen=True)
+class Geometry:
+    """Sizes of a layer after each step (pixels): the cropped part, the resized part, and the part after rotation."""
+
+    cx: int
+    cy: int
+    cw: int
+    ch: int  # the crop rectangle inside the frame-sized picture
+    sw: int
+    sh: int  # after the picture-in-picture size
+    ow: int
+    oh: int  # after rotation (the bounding box)
+    shift_x: float
+    shift_y: float  # how far the cropped piece's centre is from the picture's centre, in pixels
+
+
+def _geometry(c: Clip, w: int, h: int) -> Geometry:
+    t = c.transform
+    left, top, right, bottom = t.crop
+    cx, cy = int(w * left), int(h * top)
+    cw, ch = max(2, int(w * (1 - left - right))), max(2, int(h * (1 - top - bottom)))
+    sw, sh = (_even(cw * t.scale), _even(ch * t.scale)) if (t.scale != 1 or any(t.crop)) else (w, h)
+    if t.rotation:
+        a = math.radians(t.rotation)
+        ow, oh = _even(abs(sw * math.cos(a)) + abs(sh * math.sin(a))), _even(abs(sw * math.sin(a)) + abs(sh * math.cos(a)))
+    else:
+        ow, oh = sw, sh
+    return Geometry(cx, cy, cw, ch, sw, sh, ow, oh, (left - right) / 2 * w * t.scale, (top - bottom) / 2 * h * t.scale)
 
 
 def _frames_expr(expr: str, var: str, into: int) -> str:
@@ -241,41 +274,54 @@ def _overlay(seg: Segment, c: Clip, w: int, h: int) -> str:
     into = seg.start - c.start
     dx = _timing(c).dx
     shift = f"+main_w*{_frames_expr(dx, 'n-1', into)}" if dx else ""  # in `overlay` the first frame has n=1 (measured)
-    return f"overlay=x='(main_w-overlay_w)/2+{t.x * w:.2f}{shift}':y='(main_h-overlay_h)/2+{t.y * h:.2f}':format=auto:shortest=0"
+    g = _geometry(c, w, h)
+    return (f"overlay=x='(main_w-overlay_w)/2+{t.x * w + g.shift_x:.2f}{shift}':y='(main_h-overlay_h)/2+{t.y * h + g.shift_y:.2f}':"
+            f"format=auto:shortest=0")
 
 
 def _layer_chain(tl: Timeline, seg: Segment, c: Clip, idx: int, w: int, h: int) -> list[str]:
-    """Filter-graph pieces for one layer, ending in the label `[l<idx>]`."""
+    """Filter-graph pieces for one layer, ending in the label `[l<idx>]`. Order: show the picture in the frame
+    (fill / fit / blurred background / Ken Burns), effects, crop, resize, rotate, opacity and fades, transition zoom."""
     cover = f"scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h},setsar=1"
     spec = _layer_spec(tl, seg, c)
     into = seg.start - c.start
-    if c.kind == "video" or spec["kb"] is None:
-        chain = f"[{idx}:v]{cover},fps={tl.fps}"
-        if c.meta.get("hold"):  # a ghost whose video has run out: keep showing its last frame
-            chain += ",tpad=stop_mode=clone:stop_duration=600"
-    else:
+    hold = ",tpad=stop_mode=clone:stop_duration=600" if c.meta.get("hold") else ""  # a ghost whose video has run out keeps its last frame
+    pieces: list[str] = []
+    if c.kind == "image" and spec["kb"] is not None:
         pct, into_kb, total = spec["kb"]
         # the zoom is a function of the clip-relative frame: `on` counts from the start of the segment
         chain = (f"[{idx}:v]scale={2 * w}:{2 * h}:force_original_aspect_ratio=increase,crop={2 * w}:{2 * h},"
                  f"zoompan=z='1+{pct / 100:.6f}*(on+{into_kb})/{total}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s={w}x{h}:fps={tl.fps},setsar=1")
+    elif c.fit == "fit":
+        chain = (f"[{idx}:v]scale={w}:{h}:force_original_aspect_ratio=decrease,fps={tl.fps}{hold},format=yuva420p,"
+                 f"pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:color=black@0,setsar=1")
+    elif c.fit == "blur":
+        pieces += [f"[{idx}:v]fps={tl.fps}{hold},split[a{idx}][b{idx}]",
+                   f"[a{idx}]scale={int(w * BLUR_ZOOM)}:{int(h * BLUR_ZOOM)}:force_original_aspect_ratio=increase,crop={w}:{h},gblur=sigma={w * BLUR_SIGMA:.2f}[bg{idx}]",
+                   f"[b{idx}]scale={w}:{h}:force_original_aspect_ratio=decrease[fg{idx}]"]
+        chain = f"[bg{idx}][fg{idx}]overlay=x=(main_w-overlay_w)/2:y=(main_h-overlay_h)/2,setsar=1"
+    else:
+        chain = f"[{idx}:v]{cover},fps={tl.fps}{hold}"
     for f in _fx_args(c, w):
         chain += "," + f
-    if c.transform.scale != 1:  # picture-in-picture / zoom: the covered picture is resized, `_overlay` positions it
-        sw, sh = _even(w * c.transform.scale), _even(h * c.transform.scale)
-        chain += f",scale={sw}:{sh}"
-    else:
-        sw, sh = w, h
+    g = _geometry(c, w, h)
+    t = c.transform
+    if any(t.crop):
+        chain += f",crop={g.cw}:{g.ch}:{g.cx}:{g.cy}"
+    if (g.sw, g.sh) != (g.cw, g.ch) or any(t.crop):
+        chain += f",scale={g.sw}:{g.sh}"
+    if t.rotation:
+        chain += f",format=yuva420p,rotate=a={math.radians(t.rotation):.6f}:ow={g.ow}:oh={g.oh}:c=black@0,setsar=1"
     timing = _timing(c)
-    pieces: list[str] = []
-    zoom = f",scale=w='{_even(sw)}*{_frames_expr(timing.zoom, 'n', into)}':h='{_even(sh)}*{_frames_expr(timing.zoom, 'n', into)}':eval=frame" if timing.zoom else ""
+    zoom = (f",scale=w='{_even(g.ow)}*{_frames_expr(timing.zoom, 'n', into)}':h='{_even(g.oh)}*{_frames_expr(timing.zoom, 'n', into)}':eval=frame"
+            if timing.zoom else "")
     if timing.alpha:
         # a moving opacity: a tiny animated grey picture (its brightness is the opacity of that frame), enlarged and used as the alpha channel
-        op = c.transform.opacity
-        mask = f"color=c=white:s=2x2:r={tl.fps},format=gray,geq=lum='255*{op:.4f}*{_frames_expr(timing.alpha, 'N', into)}',scale={sw}:{sh}"
+        mask = f"color=c=white:s=2x2:r={tl.fps},format=gray,geq=lum='255*{t.opacity:.4f}*{_frames_expr(timing.alpha, 'N', into)}',scale={g.ow}:{g.oh}"
         pieces += [chain + f",format=yuva420p[r{idx}]", mask + f"[m{idx}]", f"[r{idx}][m{idx}]alphamerge{zoom}[l{idx}]"]
     else:
-        if c.transform.opacity < 1:
-            chain += f",format=yuva420p,colorchannelmixer=aa={c.transform.opacity:.4f}"
+        if t.opacity < 1:
+            chain += f",format=yuva420p,colorchannelmixer=aa={t.opacity:.4f}"
         pieces.append(chain + zoom + f"[l{idx}]")
     return pieces
 

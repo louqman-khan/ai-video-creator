@@ -64,6 +64,9 @@ function problems(doc: Doc): string[] {
     else if (!accepts[t.kind]!.includes(c.kind)) out.push(`${c.id}: wrong track kind`);
     else perTrack.set(c.track, [...(perTrack.get(c.track) ?? []), c]);
     for (const n of [c.start, c.duration, c.in_point, c.fade_in, c.fade_out]) if (!Number.isInteger(n)) out.push(`${c.id}: non-integer ${n}`);
+    const [cl, ct, cr, cb] = c.transform.crop;
+    if (cl + cr >= 1 || ct + cb >= 1 || Math.min(cl, ct, cr, cb) < 0) out.push(`${c.id}: crop leaves nothing`);
+    if (c.transform.rotation < -360 || c.transform.rotation > 360 || c.transform.scale <= 0) out.push(`${c.id}: bad transform`);
     if (c.start < 0) out.push(`${c.id}: negative start`);
     if (c.duration < 1) out.push(`${c.id}: empty`);
     if (c.in_point < 0) out.push(`${c.id}: negative in_point`);
@@ -295,6 +298,33 @@ describe("insertAsset", () => {
   });
 });
 
+describe("frame shape, fit, crop and turn", () => {
+  const s = (d: Doc, id: string) => d.clips.find((c) => c.id === id)!;
+  it("changes the frame shape and reframes all pictures in one step", () => {
+    let d = ops.setAspect(sample(), "9:16").doc;
+    expect(d.aspect).toBe("9:16");
+    d = ops.setFitAll(d, "blur").doc;
+    expect(s(d, "s1").fit).toBe("blur");
+    expect(s(d, "voice").fit).toBeUndefined();                                    // only pictures
+    expect(ops.setFitAll(d, "blur").doc).toBe(d);                                 // nothing to do: the same document
+    const locked = ops.setFitAll(ops.setTrackFlag(sample(), "v1", "locked", true).doc, "fit").doc;
+    expect(s(locked, "s1").fit).toBeUndefined();                                  // a locked track is left alone
+  });
+  it("a crop always leaves some picture and a turn stays within a full circle", () => {
+    const t = (p: ops.Picture) => s(ops.setPicture(sample(), "s1", p).doc, "s1").transform;
+    expect(t({ crop: [0.9, 0.9, 0.9, 0.9] }).crop.every((v) => v <= 0.45)).toBe(true);
+    expect(t({ crop: [-1, 2, 0, 0] }).crop).toEqual([0, 0.9, 0, 0]);
+    expect(t({ rotation: 200 }).rotation).toBe(-160);
+    expect(t({ rotation: -540 }).rotation).toBe(-180);
+  });
+  it("crop and turn survive splitting (both pieces keep the framing)", () => {
+    const d = ops.setPicture(sample(), "s1", { rotation: 30, crop: [0.1, 0, 0, 0.2] }).doc;
+    const sp = ops.splitClip(d, "s1", 50);
+    expect(s(sp.doc, sp.ids![1]!).transform.crop).toEqual([0.1, 0, 0, 0.2]);
+    expect(s(sp.doc, sp.ids![1]!).transform.rotation).toBe(30);
+  });
+});
+
 describe("snapping", () => {
   it("snaps to the nearest target within tolerance only", () => {
     expect(ops.snapShift([98], [0, 100, 220], 4)).toEqual({ shift: 2, target: 100 });
@@ -335,7 +365,7 @@ describe("random operation sequences (property test)", () => {
           case 17: name = `transition ${id}`; r = rand() < 0.2 ? ops.setTransition(doc, id, null) : ops.setTransition(doc, id, { type: pick(["crossfade", "dip", "slide", "zoom"] as const), duration: 1 + Math.floor(rand() * 200) }); break;
           case 12: name = `addTrack`; r = ops.addTrack(doc, rand() < 0.5 ? "video" : "audio"); break;
           case 13: name = `removeTrack`; r = ops.removeTrack(doc, pick(doc.tracks).id); break;
-          case 14: name = `picture ${id}`; r = ops.setPicture(doc, id, { scale: rand() * 3, x: rand() * 6 - 3, y: rand() * 6 - 3, opacity: rand() }); break;
+          case 14: name = `picture ${id}`; r = ops.setPicture(doc, id, { scale: rand() * 3, x: rand() * 6 - 3, y: rand() * 6 - 3, opacity: rand(), rotation: rand() * 800 - 400, crop: [rand(), rand(), rand(), rand()] }); break;
           default: name = `lock`; r = ops.setTrackFlag(doc, pick(doc.tracks).id, "locked", rand() < 0.2); break;
         }
         log.push(name);

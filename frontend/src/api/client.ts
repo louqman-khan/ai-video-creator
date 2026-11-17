@@ -94,7 +94,7 @@ export const api = {
   },
   getTimeline: (id: string) => request<TimelineView>(`/api/projects/${encodeURIComponent(id)}/timeline`),
   /** Saves the edited timeline; the server answers 409 when it changed elsewhere, 422 when it is invalid. */
-  saveTimeline: (id: string, body: { base_rev: number; tracks: unknown[]; clips: unknown[]; caption_style: unknown }) =>
+  saveTimeline: (id: string, body: { base_rev: number; aspect?: string; tracks: unknown[]; clips: unknown[]; caption_style: unknown }) =>
     request<TimelineView>(`/api/projects/${encodeURIComponent(id)}/timeline`, {
       method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
     }),

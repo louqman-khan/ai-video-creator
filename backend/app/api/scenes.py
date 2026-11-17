@@ -186,7 +186,7 @@ def build_router(store: ProjectStore, jobs: JobRunner, settings: Settings) -> AP
             raise HTTPException(422, "Type what the scene should show")
         providers: Providers = jobs.factory(settings, info.options)
         used = {p.asset.id for p in picks if p.asset and p.scene_id != sid}
-        orientation = "portrait" if info.aspect == "9:16" else "landscape"
+        orientation = "portrait" if info.aspect in ("9:16", "4:5") else "landscape"
 
         def search() -> list[MediaAsset]:
             found: list[MediaAsset] = []

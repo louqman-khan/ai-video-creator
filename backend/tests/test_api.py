@@ -737,16 +737,17 @@ def test_features_the_renderer_cannot_do_yet_are_reported_and_keep_the_last_prev
         good = (d / "preview.mp4").read_bytes()
         tl = c.get(f"/api/projects/{pid}/timeline").json()
         v1 = next(x for x in tl["clips"] if x["track"] == "V1")
-        v1["transform"] = {**v1["transform"], "rotation": 10}
+        nar = next(x for x in tl["clips"] if x["kind"] == "audio")
+        nar["effects"] = [{"type": "blur", "value": 10}]
         assert put_tl(c, pid, tl).status_code == 200                                # the document may hold it ...
         assert c.put(f"/api/projects/{pid}/captions", json={"style": {"bold": True}}).status_code == 202
         done = wait_done(c, pid)                                                    # ... but the renderer says so, in plain words
         assert done["status"] == "done" and done["video_ready"] is True
-        assert "Not supported yet" in done["error"] and "rotation" in done["error"]
+        assert "Not supported yet" in done["error"] and "audio" in done["error"]
         assert (d / "preview.mp4").read_bytes() == good                             # the last good preview is untouched
         assert c.get(f"/api/projects/{pid}/video").status_code == 200
         tl = c.get(f"/api/projects/{pid}/timeline").json()
-        next(x for x in tl["clips"] if x["id"] == v1["id"])["transform"] = {**v1["transform"], "rotation": 0}
+        next(x for x in tl["clips"] if x["kind"] == "audio")["effects"] = []
         assert put_tl(c, pid, tl).status_code == 200
         assert c.put(f"/api/projects/{pid}/captions", json={"style": {"bold": False}}).status_code == 202
         assert wait_done(c, pid)["error"] is None
@@ -1105,3 +1106,22 @@ def test_openverse_audio_parsing_keeps_only_web_links_and_accepts_streams_withou
         res = OpenverseSearch().search_audio("rain", "music")
     assert [r.id for r in res] == ["openverse:a", "openverse:c"]
     assert res[0].duration == 125.0 and res[0].kind == "audio" and res[0].attribution_required and not res[1].attribution_required
+
+
+def test_changing_the_frame_shape_re_renders_the_preview_at_that_shape(env):
+    import subprocess
+
+    settings, _, tone, _ = env
+    with client(env) as c:
+        pid = finished_project(c, tone)
+        d = Path(settings.projects_dir) / pid
+        tl = c.get(f"/api/projects/{pid}/timeline").json()
+        assert put_tl(c, pid, tl, aspect="3:2").status_code == 422                          # only the four known shapes
+        r = put_tl(c, pid, tl, aspect="1:1")
+        assert r.status_code == 200 and r.json()["aspect"] == "1:1"
+        assert c.get(f"/api/projects/{pid}").json()["aspect"] == "1:1"                     # the project follows its timeline
+        assert c.post(f"/api/projects/{pid}/timeline/render").status_code == 202
+        assert wait_done(c, pid)["status"] == "done"
+        size = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "csv=p=0", str(d / "preview.mp4")],
+                              capture_output=True, text=True).stdout.strip()
+        assert size == "540,540"

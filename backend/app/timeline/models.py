@@ -126,6 +126,7 @@ class Clip(_Strict):
     transform: Transform = Field(default_factory=Transform)
     effects: list[Effect] = Field(default_factory=list, max_length=MAX_EFFECTS)
     transition_in: Transition | None = None
+    fit: Literal["fill", "fit", "blur"] = "fill"  # a picture that does not match the frame: crop to fill / show whole with bars / show whole over a blurred copy
     text: str | None = None  # caption clips
     words: list[Word] = Field(default_factory=list, max_length=MAX_WORDS_PER_CLIP)  # narration clips
     meta: dict = Field(default_factory=dict)  # small free-form data (e.g. scene text); bounded
@@ -204,7 +205,7 @@ class Timeline(_Strict):
     schema_version: Literal[1] = SCHEMA_VERSION
     rev: int = Field(1, ge=1)  # bumped on every accepted write (optimistic concurrency)
     fps: int = Field(30, ge=1, le=120)
-    aspect: Literal["16:9", "9:16"] = "16:9"
+    aspect: Literal["16:9", "9:16", "1:1", "4:5"] = "16:9"
     tracks: list[Track] = Field(default_factory=list, max_length=MAX_TRACKS)
     clips: list[Clip] = Field(default_factory=list, max_length=MAX_CLIPS)
     assets: dict[str, Asset] = Field(default_factory=dict)

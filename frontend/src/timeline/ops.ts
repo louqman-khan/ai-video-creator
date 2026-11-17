@@ -5,10 +5,11 @@
 // (backend/app/timeline/validate.py): no overlaps on a track, clips inside their media, integer frames, and so on.
 // All positions are integer frames.
 
-import type { TimelineAsset, TimelineClip, TimelineTrack } from "../api/types";
+import type { Aspect, TimelineAsset, TimelineClip, TimelineTrack } from "../api/types";
 
 export interface Doc {
   fps: number;
+  aspect?: Aspect;
   tracks: TimelineTrack[];
   clips: TimelineClip[];
   assets: Record<string, TimelineAsset>;
@@ -406,7 +407,7 @@ export function setEffect(doc: Doc, id: string, type: EffectType, value: number)
   return ok(replaceClip(doc, { ...c, effects: v === 0 ? rest : [...rest, { type, value: v }] }), [id]);
 }
 
-export interface Picture { opacity?: number; scale?: number; x?: number; y?: number }
+export interface Picture { opacity?: number; scale?: number; x?: number; y?: number; rotation?: number; crop?: [number, number, number, number] }
 
 /** Opacity, size and position of a picture clip (picture-in-picture). 1 = fills the frame; x/y are fractions of the frame. */
 export function setPicture(doc: Doc, id: string, p: Picture): Result {
@@ -419,7 +420,9 @@ export function setPicture(doc: Doc, id: string, p: Picture): Result {
     opacity: p.opacity === undefined ? t.opacity : clamp(p.opacity, 0, 1),
     scale: p.scale === undefined ? t.scale : clamp(p.scale, 0.05, 4),
     x: p.x === undefined ? t.x : clamp(p.x, -2, 2),
-    y: p.y === undefined ? t.y : clamp(p.y, -2, 2) };
+    y: p.y === undefined ? t.y : clamp(p.y, -2, 2),
+    rotation: p.rotation === undefined ? t.rotation : clamp(((p.rotation + 180) % 360 + 360) % 360 - 180, -360, 360),
+    crop: p.crop === undefined ? t.crop : fixCrop(p.crop) };
   return ok(replaceClip(doc, { ...c, transform }), [id]);
 }
 
@@ -481,6 +484,38 @@ export function insertAsset(doc: Doc, given: TimelineAsset, at: number, title?: 
     text: null, words: [], meta: title ? { text: title } : {},
   };
   return ok({ ...work, clips: [...work.clips, clip] }, [id]);
+}
+
+/** Crop fractions (left, top, right, bottom), each 0..0.9, always leaving at least 10 % of the picture on each axis. */
+export function fixCrop(c: readonly number[]): [number, number, number, number] {
+  const f = (v: number | undefined) => Math.min(0.9, Math.max(0, Math.round((v ?? 0) * 1000) / 1000));
+  let [l, t, r, b] = [f(c[0]), f(c[1]), f(c[2]), f(c[3])];
+  if (l + r > 0.9) { const k = 0.9 / (l + r); l = Math.floor(l * k * 1000) / 1000; r = Math.floor(r * k * 1000) / 1000; }
+  if (t + b > 0.9) { const k = 0.9 / (t + b); t = Math.floor(t * k * 1000) / 1000; b = Math.floor(b * k * 1000) / 1000; }
+  return [l, t, r, b];
+}
+
+export const ASPECTS: readonly Aspect[] = ["16:9", "9:16", "1:1", "4:5"];
+
+/** The frame shape. Pictures keep their settings; how they fill the new shape is decided by their `fit`. */
+export function setAspect(doc: Doc, aspect: Aspect): Result {
+  if (doc.aspect === aspect) return ok(doc);
+  return ok({ ...doc, aspect });
+}
+
+/** How every picture that does not match the frame is shown: crop to fill, whole with bars, whole over a blurred copy. */
+export function setFitAll(doc: Doc, fit: "fill" | "fit" | "blur"): Result {
+  const changed = doc.clips.filter((c) => (c.kind === "video" || c.kind === "image") && !isLocked(doc, c.track) && (c.fit ?? "fill") !== fit);
+  if (changed.length === 0) return ok(doc);
+  const ids = new Set(changed.map((c) => c.id));
+  return ok({ ...doc, clips: doc.clips.map((c) => (ids.has(c.id) ? { ...c, fit } : c)) }, []);
+}
+
+export function setFit(doc: Doc, id: string, fit: "fill" | "fit" | "blur"): Result {
+  const c = findClip(doc, id);
+  if (!c || (c.kind !== "video" && c.kind !== "image")) return refuse(doc, "Only pictures can be reframed.");
+  if (isLocked(doc, c.track)) return refuse(doc, "That track is locked.");
+  return ok(replaceClip(doc, { ...c, fit }), [id]);
 }
 
 export type SaveLike = "saved" | "dirty" | "saving" | "error" | "conflict";

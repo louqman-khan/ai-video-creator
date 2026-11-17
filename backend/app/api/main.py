@@ -30,6 +30,7 @@ from app.config import Settings, get_settings
 from app.media import ffmpeg
 from app.pipeline.caption_style import CaptionStyle
 from app.pipeline.runner import ASPECTS, Providers
+from app.pipeline.sizes import PORTRAIT
 
 log = logging.getLogger("avc.api")
 
@@ -41,7 +42,7 @@ NO_STALE = {"Cache-Control": "no-cache"}
 
 
 class ExportRequest(BaseModel):
-    aspect: Literal["16:9", "9:16"] | None = None  # default: the project's own format
+    aspect: Literal["16:9", "9:16", "1:1", "4:5"] | None = None  # default: the project's own format
 CHUNK = 1024 * 1024
 
 
@@ -60,7 +61,7 @@ def default_providers_factory() -> ProvidersFactory:
             if not shared:
                 shared.update(transcriber=create_transcriber(settings), planner=create_planner(settings),
                               search=create_search(settings))
-        landscape = options.get("aspect", "16:9") != "9:16"
+        landscape = options.get("aspect", "16:9") not in PORTRAIT
         return Providers(shared["transcriber"], shared["planner"], shared["search"],
                          create_ranker(settings, landscape), create_cleaner(settings))
 

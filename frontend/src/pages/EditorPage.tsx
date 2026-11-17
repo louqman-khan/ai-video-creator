@@ -24,6 +24,7 @@ export function EditorPage() {
   const [mode, setMode] = useState<"live" | "rendered">("live");
   const [liveDoc, setLiveDoc] = useState<Doc | null>(null);
   const [engine, setEngine] = useState<LiveEngine | null>(null);
+  const [overlayHost, setOverlayHost] = useState<HTMLElement | null>(null);
   const [mediaState, setMediaState] = useState<Record<string, MediaView>>({});
   const live = mode === "live" && liveDoc !== null;
   // the player keeps its place while an edit re-renders the preview; it reloads when the render has finished
@@ -71,7 +72,7 @@ export function EditorPage() {
             <button type="button" className="btn" aria-pressed={mode === "rendered"} onClick={() => setMode("rendered")}>Rendered preview</button>
           </div>
           {live ? (
-            <LivePreview projectId={project.id} doc={liveDoc} aspect={project.aspect} media={mediaState} onEngine={setEngine} />
+            <div className="live-host" ref={setOverlayHost}><LivePreview projectId={project.id} doc={liveDoc} aspect={liveDoc.aspect ?? project.aspect} media={mediaState} onEngine={setEngine} /></div>
           ) : (
             /* key: reload the player once a re-render has finished (not on every progress update) */
             <video key={playerVersion} ref={setVideo} className="player" controls preload="metadata"
@@ -84,7 +85,7 @@ export function EditorPage() {
         </div>
       )}
       {project.video_ready && (project.status === "done" || opened.current === project.id) && (
-        <Timeline projectId={project.id} version={project.updated_at} video={live ? engine : video} onDoc={setLiveDoc} onMedia={setMediaState} onProject={(p) => { upsert(p); refresh(); }} />
+        <Timeline projectId={project.id} version={project.updated_at} video={live ? engine : video} onDoc={setLiveDoc} onMedia={setMediaState} overlayHost={live ? overlayHost : null} onProject={(p) => { upsert(p); refresh(); }} />
       )}
       {project.video_ready && (
         <ExportPanel project={project} onStarted={(p) => { upsert(p); refresh(); }} />
