@@ -224,9 +224,9 @@ export class LiveEngine extends EventTarget {
       if (!im.complete || !im.naturalWidth) return;
       src = im; w = im.naturalWidth; h = im.naturalHeight;
     }
-    const s = Math.max(W / w, H / h) * l.zoom; // "cover", like the renderer
+    const s = Math.max(W / w, H / h) * l.zoom * l.scale; // "cover", then the picture-in-picture size, like the renderer
     g.globalAlpha = l.opacity;
-    g.drawImage(src, (W - w * s) / 2, (H - h * s) / 2, w * s, h * s);
+    g.drawImage(src, (W - w * s) / 2 + l.x * W, (H - h * s) / 2 + l.y * H, w * s, h * s);
   }
 
   /** An approximation of the burned-in caption (the export uses libass and the caption style): white text, dark outline. */

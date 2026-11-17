@@ -52,6 +52,8 @@ function sample(): Doc {
 function problems(doc: Doc): string[] {
   const out: string[] = [];
   const ids = new Set<string>();
+  if (new Set(doc.tracks.map((t) => t.id)).size !== doc.tracks.length) out.push("duplicate track id");
+  for (const kind of ["video", "audio", "caption"]) if (!doc.tracks.some((t) => t.kind === kind)) out.push(`no ${kind} track`);
   const perTrack = new Map<string, TimelineClip[]>();
   const accepts: Record<string, string[]> = { video: ["video", "image"], audio: ["audio"], caption: ["caption"] };
   for (const c of doc.clips) {
@@ -199,6 +201,38 @@ describe("duplicate, reorder, properties", () => {
   });
 });
 
+describe("tracks and pictures", () => {
+  it("adds tracks with fresh ids (video on top), refuses beyond the limit, removes only empty ones", () => {
+    let d = sample();
+    d = ops.addTrack(d, "video").doc;
+    expect(d.tracks.map((t) => t.id)).toContain("V2");
+    expect(d.tracks[d.tracks.length - 1]!.id).toBe("V2");
+    expect(ops.removeTrack(d, "v1").error).toMatch(/Move or delete/);
+    expect(ops.removeTrack(d, "V2").doc.tracks.some((t) => t.id === "V2")).toBe(false);
+    expect(ops.removeTrack(d, "c1").error).toMatch(/caption/);
+    for (let i = 0; i < 10; i++) d = ops.addTrack(d, "audio").doc;
+    expect(d.tracks.filter((t) => t.kind === "audio")).toHaveLength(6);
+    expect(ops.addTrack(d, "audio").error).toMatch(/At most/);
+  });
+  it("the last track of a kind stays", () => {
+    let d = ops.deleteClips(sample(), ["music", "voice"]).doc;
+    d = ops.removeTrack(d, "a2").doc;
+    expect(d.tracks.some((t) => t.id === "a2")).toBe(false);
+    expect(ops.removeTrack(d, "a1").error).toMatch(/at least one/);
+  });
+  it("picture-in-picture settings are clamped, and only for pictures", () => {
+    const d = sample();
+    const t = ops.setPicture(d, "s1", { scale: 99, x: -9, opacity: 3 }).doc.clips.find((c) => c.id === "s1")!.transform;
+    expect([t.scale, t.x, t.opacity]).toEqual([4, -2, 1]);
+    expect(ops.setPicture(d, "voice", { scale: 0.5 }).error).toBeDefined();
+  });
+  it("only audio tracks can be ducked", () => {
+    const d = sample();
+    expect(ops.setTrackFlag(d, "a2", "duck", true).doc.tracks.find((x) => x.id === "a2")!.duck).toBe(true);
+    expect(ops.setTrackFlag(d, "v1", "duck", true).error).toBeDefined();
+  });
+});
+
 describe("snapping", () => {
   it("snaps to the nearest target within tolerance only", () => {
     expect(ops.snapShift([98], [0, 100, 220], 4)).toEqual({ shift: 2, target: 100 });
@@ -217,7 +251,7 @@ describe("random operation sequences (property test)", () => {
         const ids = doc.clips.map((c) => c.id);
         const id = pick(ids);
         const frame = Math.floor(rand() * (ops.timelineLength(doc) + 40));
-        const which = Math.floor(rand() * 13);
+        const which = Math.floor(rand() * 16);
         let r: ops.Result;
         let name: string;
         switch (which) {
@@ -235,6 +269,9 @@ describe("random operation sequences (property test)", () => {
           case 9: name = `range ${frame}`; r = ops.deleteRange(doc, frame, frame + 1 + Math.floor(rand() * 80)); break;
           case 10: name = `dup ${id}`; r = ops.duplicateClip(doc, id); break;
           case 11: name = `reorder ${id}`; r = ops.reorderClip(doc, id, rand() < 0.5 ? -1 : 1); break;
+          case 12: name = `addTrack`; r = ops.addTrack(doc, rand() < 0.5 ? "video" : "audio"); break;
+          case 13: name = `removeTrack`; r = ops.removeTrack(doc, pick(doc.tracks).id); break;
+          case 14: name = `picture ${id}`; r = ops.setPicture(doc, id, { scale: rand() * 3, x: rand() * 6 - 3, y: rand() * 6 - 3, opacity: rand() }); break;
           default: name = `lock`; r = ops.setTrackFlag(doc, pick(doc.tracks).id, "locked", rand() < 0.2); break;
         }
         log.push(name);

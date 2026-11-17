@@ -3,6 +3,7 @@ import { api } from "../api/client";
 import type { FilmMeta, MediaView, Peaks, Project, TimelineAsset, TimelineClip, TimelineTrack, TimelineView } from "../api/types";
 import { Filmstrip } from "./Filmstrip";
 import { useDerived, useFrame, usePlayhead, useSession, useTimelineData, type PlayheadStore, type Transport } from "./hooks";
+import { Inspector } from "./Inspector";
 import * as ops from "./ops";
 import {
   clampPps, displayOrder, fitPps, formatTimecode, frameToPx, isVisible, MAX_PPS, MIN_PPS, pxToFrame, rulerTicks, zoomScrollLeft,
@@ -269,7 +270,7 @@ function TimelineBody({ projectId, timeline, media, preparing, peaks, film, vide
     if (!selected) return setNotice("Select a clip first.");
     run(ripple ? ops.rippleDelete(doc, [selected]) : ops.deleteClips(doc, [selected]));
   };
-  const toggleTrack = (id: string, flag: "muted" | "locked", value: boolean) => run(ops.setTrackFlag(doc, id, flag, value));
+  const toggleTrack = (id: string, flag: "muted" | "locked" | "duck", value: boolean) => run(ops.setTrackFlag(doc, id, flag, value));
 
   const order = useMemo(() => displayOrder(doc.tracks), [doc.tracks]);
   orderRef.current = order;
@@ -300,6 +301,8 @@ function TimelineBody({ projectId, timeline, media, preparing, peaks, film, vide
           <button className="btn" type="button" onClick={() => removeSelected(false)} disabled={!selected} title="Delete the clip and leave a gap (Delete)">Delete</button>
           <button className="btn" type="button" onClick={() => removeSelected(true)} disabled={!selected} title="Delete and close the gap on every track (Shift+Delete)">Ripple delete</button>
           <button className="btn" type="button" onClick={() => selected && run(ops.duplicateClip(doc, selected))} disabled={!selected} title="Duplicate (Ctrl/⌘+D)">Duplicate</button>
+          <button className="btn" type="button" onClick={() => run(ops.addTrack(doc, "video"))}>+ Video track</button>
+          <button className="btn" type="button" onClick={() => run(ops.addTrack(doc, "audio"))}>+ Audio track</button>
         </span>
         <SaveChip status={snap.status} message={snap.message} onReload={() => void api.getTimeline(projectId).then((v) => session.reset(v), (er) => setNotice(er instanceof Error ? er.message : "Reload failed"))} />
         <span className="tl-spacer" />
@@ -319,6 +322,8 @@ function TimelineBody({ projectId, timeline, media, preparing, peaks, film, vide
               <span className="tl-kind" aria-hidden="true">{t.kind === "video" ? "▣" : t.kind === "audio" ? "♪" : "T"}</span>
               <span className="tl-name">{t.name || t.id}</span>
               <button type="button" className="tl-tbtn" aria-pressed={t.muted} aria-label={`Mute ${t.name || t.id}`} title="Mute" onClick={() => toggleTrack(t.id, "muted", !t.muted)}>{t.muted ? "🔇" : "🔊"}</button>
+              {t.kind === "audio" && <button type="button" className="tl-tbtn" aria-pressed={!!t.duck} aria-label={`Duck ${t.name || t.id}`} title="Lower this track while the other audio tracks speak (for music under narration)" onClick={() => toggleTrack(t.id, "duck", !t.duck)}>{t.duck ? "⤓" : "–"}</button>}
+              {t.kind !== "caption" && !doc.clips.some((c) => c.track === t.id) && <button type="button" className="tl-tbtn" aria-label={`Remove ${t.name || t.id}`} title="Remove this empty track" onClick={() => run(ops.removeTrack(doc, t.id))}>×</button>}
               <button type="button" className="tl-tbtn" aria-pressed={t.locked} aria-label={`Lock ${t.name || t.id}`} title="Lock" onClick={() => toggleTrack(t.id, "locked", !t.locked)}>{t.locked ? "🔒" : "🔓"}</button>
             </div>
           ))}
@@ -362,6 +367,7 @@ function TimelineBody({ projectId, timeline, media, preparing, peaks, film, vide
       </div>
 
       <p className="small tl-notice" role="status">{notice}</p>
+      {chosen && <Inspector clip={chosen} doc={doc} onApply={run} />}
       {chosen ? <ClipInfo clip={chosen} asset={chosen.asset ? doc.assets[chosen.asset] : undefined} fps={fps} /> : (
         <p className="muted small">Click the ruler or a track to move the playhead. Drag a clip to move it, drag its edges to trim, press S to split at the playhead, Delete to remove, Ctrl/⌘+Z to undo.</p>
       )}

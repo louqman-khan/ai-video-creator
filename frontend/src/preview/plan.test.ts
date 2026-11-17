@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { TimelineClip } from "../api/types";
 import type { Doc } from "../timeline/ops";
-import { audioAt, audioGain, captionAt, kenBurnsZoom, layersAt, sourceSeconds } from "./plan";
+import { audioAt, audioGain, captionAt, DUCK_GAIN, duckFactor, kenBurnsZoom, layersAt, sourceSeconds } from "./plan";
 
 const c = (o: Partial<TimelineClip>): TimelineClip => ({
   id: "x", track: "V1", kind: "video", asset: "v", start: 0, duration: 30, in_point: 0, loop: false, volume: 1, fade_in: 0, fade_out: 0,
@@ -46,6 +46,21 @@ describe("live preview plan", () => {
     const d = doc([a]);
     expect(audioAt(d, 50)).toHaveLength(1);
     expect(audioAt(doc([a], ["A1"]), 50)).toHaveLength(0);
+  });
+  it("carries picture-in-picture size and position", () => {
+    const d = doc([c({ id: "p", transform: { x: 0.3, y: -0.2, scale: 0.4, rotation: 0, opacity: 0.8, crop: [0, 0, 0, 0] } })]);
+    const l = layersAt(d, 1)[0]!;
+    expect([l.scale, l.x, l.y, l.opacity]).toEqual([0.4, 0.3, -0.2, 0.8]);
+  });
+  it("lowers a ducked track only while the narration's words are spoken", () => {
+    const words = [{ text: "a", start: 30, end: 50 }];
+    const d = doc([c({ id: "nar", track: "A1", kind: "audio", asset: "a", start: 0, duration: 200, words }), c({ id: "mus", track: "A2", kind: "audio", asset: "a", start: 0, duration: 200 })]);
+    d.tracks.push({ id: "A2", kind: "audio", name: "", muted: false, locked: false, duck: true });
+    const gain = (f: number) => audioAt(d, f).find((x) => x.clip.id === "mus")!.gain;
+    expect(duckFactor(d, 40)).toBe(DUCK_GAIN);
+    expect(gain(40)).toBe(DUCK_GAIN);
+    expect(gain(120)).toBe(1);
+    expect(audioAt(d, 40).find((x) => x.clip.id === "nar")!.gain).toBe(1);   // the narration itself is untouched
   });
   it("finds the caption under the playhead", () => {
     const d = doc([c({ id: "k", track: "C1", kind: "caption", asset: null, start: 10, duration: 20, text: "سلام" })]);

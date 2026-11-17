@@ -136,3 +136,10 @@ input[type="color"] { width: 100%; height: 38px; padding: 2px; border: 1px solid
 .tl-handle:hover { background: rgba(255,255,255,.35); }
 
 .live-canvas { background: #000; max-width: 100%; height: auto; display: block; }
+
+.insp { border: 1px solid var(--line); border-radius: 8px; margin: 8px 0; padding: 6px 10px; }
+.insp legend { font-size: .8rem; color: var(--muted); padding: 0 4px; }
+.insp-row { display: flex; align-items: center; gap: 8px; margin: 4px 0; flex-wrap: wrap; }
+.insp-row > label, .insp-row > span:first-child { width: 70px; font-size: .85rem; }
+.insp-row input[type=range] { flex: 1; min-width: 120px; max-width: 320px; }
+.insp-row output { width: 52px; font-variant-numeric: tabular-nums; font-size: .85rem; }

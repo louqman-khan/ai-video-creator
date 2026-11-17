@@ -104,11 +104,11 @@ def test_unsupported_features_are_named_not_ignored(media):
         vclip("kb", "red", 30, 30, effects=[Effect(type="kenburns", value=5)]),
         vclip("tr", "red", 60, 30, transition_in={"type": "crossfade", "duration": 10}),
         vclip("fd", "red", 90, 30, fade_in=5),
-        vclip("tf", "red", 120, 30, transform=Transform(scale=2)),
+        vclip("tf", "red", 120, 30, transform=Transform(rotation=10)),
         vclip("ps", "red", 150, 30, transform=Transform(crop=(0.1, 0, 0, 0))),
     ])
     msg = " | ".join(unsupported_features(bad))
-    for word in ("blur", "zoom on video", "transitions", "fades on pictures", "crop, position, scale and rotation"):
+    for word in ("blur", "zoom on video", "transitions", "fades on pictures", "crop and rotation"):
         assert word in msg
 
 
@@ -334,3 +334,43 @@ def test_hardware_encoder_profile_works_or_falls_back(media, tmp_path, monkeypat
     out2 = tmp_path / "soft.mp4"
     render_timeline(tl, tmp_path, SETTINGS, quality="final", out=out2, captions=False, normalize=False, profile=assemble.FINAL_FAST)
     assert probe(out2, "stream=codec_name") == "h264" and out2.stat().st_size > 0
+
+
+def test_picture_in_picture_has_the_right_size_and_place(media, tmp_path):
+    # a green half-size window, moved a quarter of the frame to the right, over red
+    tl = make_tl(media, [vclip("bg", "red", 0, 60), vclip("pip", "green", 0, 60, track="V2", transform=Transform(scale=0.5, x=0.25, y=0.0))])
+    out = tmp_path / "pip.mp4"
+    render_timeline(tl, tmp_path, SETTINGS, quality="preview", out=out, captions=False, normalize=False)
+    def rgb_at(x, y):
+        raw = subprocess.run(["ffmpeg", "-v", "error", "-ss", "0.5", "-i", str(out), "-frames:v", "1", "-vf", f"crop=4:4:{x}:{y}", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"],
+                             capture_output=True, check=True).stdout
+        return tuple(sum(raw[i::3]) // (len(raw) // 3) for i in range(3))
+    # the window is 480 wide, centred at 480 + 0.25 * 960 = 720: x 480..960, y 135..405
+    r, g, b = rgb_at(720, 270); assert g > 200 and r < 60                     # inside the window: green
+    r, g, b = rgb_at(100, 270); assert r > 200 and g < 60                     # left of it: the red background
+    r, g, b = rgb_at(720, 40); assert r > 200 and g < 60                      # above it: still red
+    r, g, b = rgb_at(400, 270); assert r > 200 and g < 60                     # just left of its edge (x=480)
+    # a window alone on the bottom layer sits on black
+    solo = make_tl(media, [vclip("pip", "green", 0, 60, transform=Transform(scale=0.5))])
+    out2 = tmp_path / "solo.mp4"
+    render_timeline(solo, tmp_path, SETTINGS, quality="preview", out=out2, captions=False, normalize=False)
+    out = out2
+    assert sum(rgb_at(20, 20)) < 40 and rgb_at(480, 270)[1] > 200
+
+
+def test_music_is_ducked_under_the_narration_only_on_a_ducked_track(media, tmp_path):
+    clips = [vclip("v", "red", 0, 150),
+             Clip(id="nar", track="A1", kind="audio", asset="tone", start=30, duration=60),                      # 440 Hz, 1 s..3 s
+             Clip(id="mus", track="A2", kind="audio", asset="music", start=0, duration=150)]                      # 880 Hz, whole 5 s
+    plain = render.mix_audio(make_tl(media, clips), tmp_path)
+    plain_free, plain_under = band_level(plain, 4.0, 0.8), band_level(plain, 2.0, 0.8)   # measured now: the next mix replaces this file
+    plain_nar = band_level(plain, 2.0, 0.8, hz=440)
+    tracks = [Track(id="V1", kind="video"), Track(id="V2", kind="video"), Track(id="A1", kind="audio"), Track(id="A2", kind="audio", duck=True), Track(id="C1", kind="caption")]
+    ducked = render.mix_audio(make_tl(media, clips, tracks=tracks), tmp_path)
+    assert abs(float(probe(ducked, "format=duration", stream="a:0")) - 5.0) < 0.05
+    free = band_level(ducked, 4.0, 0.8)                                       # after the narration: full music
+    under = band_level(ducked, 2.0, 0.8)                                      # while it speaks
+    assert free - under > 6                                                   # clearly lowered
+    assert abs(plain_under - plain_free) < 1.5   # without ducking the music is steady
+    assert band_level(ducked, 2.0, 0.8, hz=440) > plain_nar - 1.5   # the narration itself is not touched
+    assert band_level(ducked, 4.0, 0.8) > plain_free - 1.5   # and the music comes back to full volume

@@ -52,8 +52,8 @@ def unsupported_features(tl: Timeline) -> list[str]:
                 problems.append(f"clip '{c.id}': transitions")
             if c.fade_in or c.fade_out:
                 problems.append(f"clip '{c.id}': fades on pictures")
-            if t.x or t.y or t.scale != 1 or t.rotation or any(t.crop):
-                problems.append(f"clip '{c.id}': crop, position, scale and rotation")
+            if t.rotation or any(t.crop):
+                problems.append(f"clip '{c.id}': crop and rotation")
             for e in c.effects:
                 if e.type != "kenburns":
                     problems.append(f"clip '{c.id}': the '{e.type}' effect")
@@ -117,7 +117,7 @@ def _layer_spec(tl: Timeline, seg: Segment, c: Clip) -> dict:
     kb = next((e.value for e in c.effects if e.type == "kenburns"), None)
     return {
         "asset": _identity(tl, c), "kind": c.kind, "offset": offset if c.kind == "video" else 0, "loop": c.loop,
-        "opacity": c.transform.opacity,
+        "opacity": c.transform.opacity, "place": [c.transform.x, c.transform.y, c.transform.scale],
         "kb": None if kb is None else [kb, into, c.duration],  # the zoom runs over the whole clip, not the segment
     }
 
@@ -131,6 +131,21 @@ def segment_key(tl: Timeline, seg: Segment, w: int, h: int, profile: assemble.Re
 
 # ------------------------------------------------------------------ one segment
 
+def _even(v: float) -> int:
+    return max(2, 2 * round(v / 2))
+
+
+def _placed(c: Clip) -> bool:
+    """True when the layer does not simply cover the whole frame (so something must lie underneath it)."""
+    t = c.transform
+    return t.opacity < 1 or t.scale < 1 or bool(t.x or t.y)
+
+
+def _overlay(c: Clip, w: int, h: int) -> str:
+    t = c.transform
+    return f"overlay=x='(main_w-overlay_w)/2+{t.x * w:.2f}':y='(main_h-overlay_h)/2+{t.y * h:.2f}':format=auto:shortest=0"
+
+
 def _layer_chain(tl: Timeline, seg: Segment, c: Clip, idx: int, w: int, h: int) -> str:
     cover = f"scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h},setsar=1"
     spec = _layer_spec(tl, seg, c)
@@ -143,6 +158,8 @@ def _layer_chain(tl: Timeline, seg: Segment, c: Clip, idx: int, w: int, h: int) 
         # the zoom is a function of the clip-relative frame: `on` counts from the start of the segment
         chain = (f"[{idx}:v]scale={2 * w}:{2 * h}:force_original_aspect_ratio=increase,crop={2 * w}:{2 * h},"
                  f"zoompan=z='1+{pct / 100:.6f}*(on+{into})/{total}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s={w}x{h}:fps={tl.fps},setsar=1")
+    if c.transform.scale != 1:  # picture-in-picture / zoom: the covered picture is resized, `_overlay` positions it
+        chain += f",scale={_even(w * c.transform.scale)}:{_even(h * c.transform.scale)}"
     if c.transform.opacity < 1:
         chain += f",format=yuva420p,colorchannelmixer=aa={c.transform.opacity:.4f}"
     return chain + f"[l{idx}]"
@@ -165,13 +182,13 @@ def _segment_args(tl: Timeline, seg: Segment, w: int, h: int, profile: assemble.
             args += ["-loop", "1", "-framerate", str(tl.fps), "-i", a.path]
         chains.append(_layer_chain(tl, seg, c, i, w, h))
     base = "[l0]"
-    if seg.layers[0].transform.opacity < 1:  # a see-through bottom layer needs something to be see-through onto
+    if _placed(seg.layers[0]) or seg.layers[0].transform.scale > 1:  # a see-through/smaller/moved bottom layer needs a black frame under it
         args += ["-f", "lavfi", "-i", f"color=c=black:s={w}x{h}:r={tl.fps}"]
         chains.append(f"[{len(seg.layers)}:v]null[black]")
-        chains.append(f"[black][l0]overlay=format=auto:shortest=0[o0]")
+        chains.append(f"[black][l0]{_overlay(seg.layers[0], w, h)}[o0]")
         base = "[o0]"
     for i in range(1, len(seg.layers)):
-        chains.append(f"{base}[l{i}]overlay=format=auto:shortest=0[o{i}]")
+        chains.append(f"{base}[l{i}]{_overlay(seg.layers[i], w, h)}[o{i}]")
         base = f"[o{i}]"
     return [*args, "-filter_complex", ";".join(chains), "-map", base, "-frames:v", str(seg.frames), *enc, str(dst)]
 
@@ -240,6 +257,9 @@ def _audio_clips(tl: Timeline) -> list[Clip]:
     return [c for c in tl.clips if c.kind == "audio" and c.track not in hidden]
 
 
+DUCK = "sidechaincompress=threshold=0.02:ratio=8:attack=40:release=600:makeup=1"  # music drops ~12 dB while the narration speaks
+
+
 def mix_audio(tl: Timeline, work: Path) -> Path:
     """One lossless file with every audio clip placed, trimmed, faded and mixed. Cached by content."""
     out_dir = work / "audio_mix"
@@ -247,7 +267,8 @@ def mix_audio(tl: Timeline, work: Path) -> Path:
     total_s = tl.duration / tl.fps
     clips = sorted(_audio_clips(tl), key=lambda c: (c.start, c.id))
     spec = {"v": RENDER_VERSION, "fps": tl.fps, "total": tl.duration,
-            "clips": [[_identity(tl, c), c.start, c.duration, c.in_point, c.volume, c.fade_in, c.fade_out] for c in clips]}
+            "duck": sorted(t.id for t in tl.tracks if t.duck and not t.muted),
+            "clips": [[_identity(tl, c), c.start, c.duration, c.in_point, c.volume, c.fade_in, c.fade_out, c.track] for c in clips]}
     dst = out_dir / f"mix_{hashlib.sha1(json.dumps(spec).encode()).hexdigest()[:20]}.flac"
     if dst.is_file() and dst.stat().st_size > 0:
         return dst
@@ -269,9 +290,23 @@ def mix_audio(tl: Timeline, work: Path) -> Path:
                 chain += f",afade=t=out:st={max(0.0, dur - c.fade_out / tl.fps):.4f}:d={c.fade_out / tl.fps:.4f}"
             delay = round(c.start / tl.fps * 1000)
             chains.append(chain + (f",adelay=delays={delay}:all=1" if delay else "") + f"[a{i}]")
-        mix = "".join(f"[a{i}]" for i in range(len(clips)))
-        chains.append((f"{mix}amix=inputs={len(clips)}:duration=longest:normalize=0" if len(clips) > 1 else "[a0]anull")
-                      + f",apad=whole_dur={total_s:.4f},atrim=end={total_s:.4f}[out]")
+        ducked_tracks = {t.id for t in tl.tracks if t.duck}
+        quiet = [i for i, c in enumerate(clips) if c.track in ducked_tracks]
+        loud = [i for i in range(len(clips)) if i not in quiet]
+        tail = f",apad=whole_dur={total_s:.4f},atrim=end={total_s:.4f}"
+
+        def group(idx: list[int], name: str) -> None:
+            mix = "".join(f"[a{i}]" for i in idx)
+            chains.append((f"{mix}amix=inputs={len(idx)}:duration=longest:normalize=0" if len(idx) > 1 else f"{mix}anull") + tail + f"[{name}]")
+
+        if quiet and loud:
+            group(loud, "loud")
+            group(quiet, "quiet")
+            chains.append("[loud]asplit=2[loud1][loud2]")
+            chains.append(f"[quiet][loud1]{DUCK}[ducked]")
+            chains.append("[loud2][ducked]amix=inputs=2:duration=longest:normalize=0[out]")
+        else:
+            group(list(range(len(clips))), "out")
         ffmpeg.run([*args, "-filter_complex", ";".join(chains), "-map", "[out]", "-c:a", "flac", str(part)], timeout=120 + 4 * total_s)
     os.replace(part, dst)
     for old in out_dir.glob("mix*.flac"):  # keep only the current mix

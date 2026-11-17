@@ -106,6 +106,7 @@ class Track(_Strict):
     name: str = Field("", max_length=60)
     muted: bool = False
     locked: bool = False
+    duck: bool = False  # audio tracks: lower this track's volume while the other (non-ducked) audio tracks are speaking
 
     _id = field_validator("id")(_check_id)
 

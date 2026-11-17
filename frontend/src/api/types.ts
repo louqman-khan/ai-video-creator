@@ -94,6 +94,7 @@ export interface TimelineTrack {
   name: string;
   muted: boolean;
   locked: boolean;
+  duck?: boolean; // audio tracks: lowered while the other audio tracks speak
 }
 
 export interface TimelineTransform {

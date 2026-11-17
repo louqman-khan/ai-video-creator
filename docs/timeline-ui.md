@@ -67,3 +67,12 @@ Rules to keep: operations never mutate and never return a half-done document (a 
 dragging is previewed by running the real operation on every pointer move, so what is shown is what will be saved;
 one gesture = one undo step; the session saves after 0.8 s of quiet, then asks the server for a new preview; a 409
 stops saving (local edits stay) until the user chooses to reload.
+
+## Several tracks, picture-in-picture, ducking (task 4.7)
+
+- `+ Video track` / `+ Audio track` (video tracks stack above existing ones; up to 6 each). `×` on a track label removes
+  it when it is empty (the last track of a kind and the caption track stay).
+- Select a picture clip: **Opacity**, **Size** and position presets (full frame, four corners at 35 %). Put it on a
+  higher video track than the picture it sits over. Select an audio clip: **Volume**, **Fade in/out**.
+- The speaker button on an audio track's label (`⤓`) marks it as *ducked*: its volume drops about 12 dB while the other
+  audio tracks speak (music under narration). The export uses a side-chain compressor; the live preview approximates it.

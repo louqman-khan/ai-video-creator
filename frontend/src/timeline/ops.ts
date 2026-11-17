@@ -360,9 +360,51 @@ export function setCaptionText(doc: Doc, id: string, text: string): Result {
   return ok(replaceClip(doc, { ...c, text: clean }), [id]);
 }
 
-export function setTrackFlag(doc: Doc, trackId: string, flag: "muted" | "locked", value: boolean): Result {
-  if (!trackOf(doc, trackId)) return refuse(doc, "That track does not exist.");
-  return ok({ ...doc, tracks: doc.tracks.map((t) => (t.id === trackId ? { ...t, [flag]: value } : t)) });
+const MAX_TRACKS_PER_KIND = 6;
+
+/** A new empty track; video tracks go on top of the existing ones. */
+export function addTrack(doc: Doc, kind: "video" | "audio"): Result {
+  const same = doc.tracks.filter((t) => t.kind === kind);
+  if (same.length >= MAX_TRACKS_PER_KIND) return refuse(doc, `At most ${MAX_TRACKS_PER_KIND} ${kind} tracks.`);
+  const letter = kind === "video" ? "V" : "A";
+  const used = new Set(doc.tracks.map((t) => t.id));
+  let n = same.length + 1;
+  while (used.has(`${letter}${n}`)) n++;
+  const track: TimelineTrack = { id: `${letter}${n}`, kind, name: `${kind === "video" ? "Video" : "Audio"} ${n}`, muted: false, locked: false, duck: false };
+  return ok({ ...doc, tracks: [...doc.tracks, track] });
+}
+
+export function removeTrack(doc: Doc, trackId: string): Result {
+  const t = trackOf(doc, trackId);
+  if (!t) return refuse(doc, "That track does not exist.");
+  if (t.kind === "caption") return refuse(doc, "The caption track cannot be removed.");
+  if (doc.clips.some((c) => c.track === trackId)) return refuse(doc, "Move or delete the clips on this track first.");
+  if (doc.tracks.filter((x) => x.kind === t.kind).length <= 1) return refuse(doc, `There must be at least one ${t.kind} track.`);
+  return ok({ ...doc, tracks: doc.tracks.filter((x) => x.id !== trackId) });
+}
+
+export interface Picture { opacity?: number; scale?: number; x?: number; y?: number }
+
+/** Opacity, size and position of a picture clip (picture-in-picture). 1 = fills the frame; x/y are fractions of the frame. */
+export function setPicture(doc: Doc, id: string, p: Picture): Result {
+  const c = findClip(doc, id);
+  if (!c || (c.kind !== "video" && c.kind !== "image")) return refuse(doc, "Only pictures have a size and position.");
+  if (isLocked(doc, c.track)) return refuse(doc, "That track is locked.");
+  const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, Math.round(v * 1000) / 1000));
+  const t = c.transform;
+  const transform = { ...t,
+    opacity: p.opacity === undefined ? t.opacity : clamp(p.opacity, 0, 1),
+    scale: p.scale === undefined ? t.scale : clamp(p.scale, 0.05, 4),
+    x: p.x === undefined ? t.x : clamp(p.x, -2, 2),
+    y: p.y === undefined ? t.y : clamp(p.y, -2, 2) };
+  return ok(replaceClip(doc, { ...c, transform }), [id]);
+}
+
+export function setTrackFlag(doc: Doc, trackId: string, flag: "muted" | "locked" | "duck", value: boolean): Result {
+  const t = trackOf(doc, trackId);
+  if (!t) return refuse(doc, "That track does not exist.");
+  if (flag === "duck" && t.kind !== "audio") return refuse(doc, "Only audio tracks can be ducked.");
+  return ok({ ...doc, tracks: doc.tracks.map((x) => (x.id === trackId ? { ...x, [flag]: value } : x)) });
 }
 
 // ------------------------------------------------------------------ snapping
