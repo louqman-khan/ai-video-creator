@@ -87,6 +87,11 @@ describe("live preview plan", () => {
     const d = doc([c({ id: "v", start: 0, duration: 200, in_point: 0 })]);          // asset "v" is 45 frames long, not looping
     expect(sourceSeconds(d, d.clips[0]!, 150)).toBeCloseTo(44 / 30);
   });
+  it("carries the green screen settings", () => {
+    const key = { color: "#00ff00", similarity: 0.2, blend: 0.1, despill: true };
+    expect(layersAt(doc([c({ id: "k", key })]), 1)[0]!.key).toEqual(key);
+    expect(layersAt(doc([c({ id: "n" })]), 1)[0]!.key).toBeNull();
+  });
   it("carries effects", () => {
     const d = doc([c({ id: "e", effects: [{ type: "blur", value: 40 }, { type: "brightness", value: -20 }] })]);
     expect(layersAt(d, 1)[0]!.fx).toEqual({ brightness: -20, contrast: 0, saturation: 0, blur: 40 });

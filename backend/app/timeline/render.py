@@ -30,7 +30,7 @@ from app.pipeline.sizes import base_video_name, render_size
 from app.timeline.models import Clip, Timeline
 
 log = logging.getLogger("avc.render")
-RENDER_VERSION = "r3"
+RENDER_VERSION = "r4"
 BLUR_ZOOM = 1.15  # the blurred copy behind a "fit" picture is enlarged a little so its blurred edges stay out of the frame
 BLUR_SIGMA = 0.03  # blur strength of that copy, in frame widths  # bump when the pictures a segment produces change: invalidates every cached segment
 Progress = Callable[[str, float, str], None]
@@ -169,6 +169,19 @@ def _timing(c: Clip) -> Timing:
     return Timing("*".join(parts) or None, dx, zoom)
 
 
+def _key_args(c: Clip) -> list[str]:
+    """Chroma key as ffmpeg filters. The live preview does the same maths (preview/chromakey.ts): the colour distance is measured on the
+    chroma (BT.709, limited range) and scaled like ffmpeg's `chromakey`; despill limits the key's own channel by the mean of the other two."""
+    k = c.key
+    if k is None:
+        return []
+    out = ["format=yuva420p", f"chromakey=color=0x{k.color[1:].lower()}:similarity={k.similarity:.4f}:blend={k.blend:.4f}"]
+    r, g, b = (int(k.color[i:i + 2], 16) for i in (1, 3, 5))
+    if k.despill and max(r, g, b) in (g, b) and (g >= r or b >= r):
+        out.append(f"despill=type={'green' if g >= b else 'blue'}")
+    return out
+
+
 def _fx_args(c: Clip, w: int) -> list[str]:
     """Colour and blur effects as ffmpeg filters, written to give the same result as the CSS filters the live preview
     uses: brightness b (-100..100) multiplies every channel by 1 + 0.8 b/100, contrast c scales around mid grey by
@@ -183,7 +196,7 @@ def _fx_args(c: Clip, w: int) -> list[str]:
         k = max(0.0, 1 + v["contrast"] / 100)
         rgb.append("lutrgb=r='clip((val-128)*{k}+128,0,255)':g='clip((val-128)*{k}+128,0,255)':b='clip((val-128)*{k}+128,0,255)'".format(k=f"{k:.4f}"))
     if rgb:
-        out += ["format=rgb24", *rgb, "format=yuv420p"]
+        out += (["format=rgba", *rgb, "format=yuva420p"] if c.key else ["format=rgb24", *rgb, "format=yuv420p"])  # keep the key's transparency
     if v.get("saturation"):
         out.append(f"eq=saturation={max(0.0, 1 + v['saturation'] / 100):.4f}")
     if v.get("blur", 0) > 0:
@@ -200,6 +213,7 @@ def _layer_spec(tl: Timeline, seg: Segment, c: Clip) -> dict:
         offset %= a.duration
     kb = next((e.value for e in c.effects if e.type == "kenburns"), None)
     spec = {
+        "key": c.key.model_dump() if c.key else None,
         "asset": _identity(tl, c), "kind": c.kind, "offset": offset if c.kind == "video" else 0, "loop": c.loop,
         "opacity": c.transform.opacity, "place": [c.transform.x, c.transform.y, c.transform.scale],
         "shape": [c.transform.rotation, list(c.transform.crop), c.fit],
@@ -231,7 +245,7 @@ def _placed(c: Clip) -> bool:
     """True when the layer does not simply cover the whole frame (so something must lie underneath it)."""
     t = c.transform
     timing = _timing(c)
-    return (t.opacity < 1 or t.scale < 1 or bool(t.x or t.y or t.rotation or any(t.crop)) or c.fit == "fit"
+    return (c.key is not None or t.opacity < 1 or t.scale < 1 or bool(t.x or t.y or t.rotation or any(t.crop)) or c.fit == "fit"
             or bool(timing.alpha or timing.dx or timing.zoom))
 
 
@@ -302,7 +316,7 @@ def _layer_chain(tl: Timeline, seg: Segment, c: Clip, idx: int, w: int, h: int) 
         chain = f"[bg{idx}][fg{idx}]overlay=x=(main_w-overlay_w)/2:y=(main_h-overlay_h)/2,setsar=1"
     else:
         chain = f"[{idx}:v]{cover},fps={tl.fps}{hold}"
-    for f in _fx_args(c, w):
+    for f in [*_key_args(c), *_fx_args(c, w)]:
         chain += "," + f
     g = _geometry(c, w, h)
     t = c.transform
@@ -318,7 +332,11 @@ def _layer_chain(tl: Timeline, seg: Segment, c: Clip, idx: int, w: int, h: int) 
     if timing.alpha:
         # a moving opacity: a tiny animated grey picture (its brightness is the opacity of that frame), enlarged and used as the alpha channel
         mask = f"color=c=white:s=2x2:r={tl.fps},format=gray,geq=lum='255*{t.opacity:.4f}*{_frames_expr(timing.alpha, 'N', into)}',scale={g.ow}:{g.oh}"
-        pieces += [chain + f",format=yuva420p[r{idx}]", mask + f"[m{idx}]", f"[r{idx}][m{idx}]alphamerge{zoom}[l{idx}]"]
+        if c.key:  # the key made some pixels transparent already: multiply that with the moving opacity instead of replacing it
+            pieces += [chain + f",format=yuva420p,split[r{idx}][k{idx}]", f"[k{idx}]alphaextract,format=gray[ka{idx}]", mask + f",format=gray[m{idx}]",
+                       f"[ka{idx}][m{idx}]blend=all_mode=multiply[am{idx}]", f"[r{idx}][am{idx}]alphamerge{zoom}[l{idx}]"]
+        else:
+            pieces += [chain + f",format=yuva420p[r{idx}]", mask + f"[m{idx}]", f"[r{idx}][m{idx}]alphamerge{zoom}[l{idx}]"]
     else:
         if t.opacity < 1:
             chain += f",format=yuva420p,colorchannelmixer=aa={t.opacity:.4f}"

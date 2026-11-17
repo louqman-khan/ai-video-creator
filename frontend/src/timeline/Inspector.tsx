@@ -28,8 +28,10 @@ const PRESETS: { name: string; x: number; y: number; scale: number }[] = [
   { name: "Bottom right", x: 0.3, y: 0.3, scale: 0.35 },
 ];
 
-export function Inspector({ clip: c, doc, onApply, cropMode = false, onCropMode }: {
+export function Inspector({ clip: c, doc, onApply, cropMode = false, onCropMode, picking = false, onPick }: {
   clip: TimelineClip; doc: ops.Doc; onApply: (r: ops.Result) => void; cropMode?: boolean; onCropMode?: (on: boolean) => void;
+  /** the eyedropper: waiting for a click on the preview / start waiting (only offered while the live preview is showing) */
+  picking?: boolean; onPick?: (on: boolean) => void;
 }) {
   const fps = doc.fps;
   const pct = (v: number) => `${Math.round(v * 100)}%`;
@@ -62,6 +64,28 @@ export function Inspector({ clip: c, doc, onApply, cropMode = false, onCropMode 
         </div>
         <Slider label="Fade in" value={c.fade_in} min={0} max={Math.min(c.duration, fps * 5)} step={1} show={sec} onCommit={(v) => onApply(ops.setFades(doc, c.id, { fade_in: v }))} />
         <Slider label="Fade out" value={c.fade_out} min={0} max={Math.min(c.duration, fps * 5)} step={1} show={sec} onCommit={(v) => onApply(ops.setFades(doc, c.id, { fade_out: v }))} />
+        <div className="insp-row" role="group" aria-label="Green screen">
+          <input id={`${c.id}-key`} type="checkbox" checked={!!c.key} onChange={(e) => onApply(ops.setKey(doc, c.id, e.target.checked ? {} : null))} />
+          <label htmlFor={`${c.id}-key`} style={{ width: "auto" }}>Green screen (remove a background colour)</label>
+          {c.key && (
+            <>
+              <input type="color" aria-label="Colour to remove" value={c.key.color} onChange={(e) => onApply(ops.setKey(doc, c.id, { color: e.target.value }))} />
+              <button type="button" className="btn" onClick={() => onApply(ops.setKey(doc, c.id, { color: "#00ff00" }))}>Green</button>
+              <button type="button" className="btn" onClick={() => onApply(ops.setKey(doc, c.id, { color: "#0000ff" }))}>Blue</button>
+              {onPick && <button type="button" className="btn" aria-pressed={picking} onClick={() => onPick(!picking)}>{picking ? "Click the preview…" : "Pick from the preview"}</button>}
+            </>
+          )}
+        </div>
+        {c.key && (
+          <>
+            <Slider label="Match" value={c.key.similarity} min={0} max={0.4} step={0.01} show={(v) => v.toFixed(2)} onCommit={(v) => onApply(ops.setKey(doc, c.id, { similarity: v }))} />
+            <Slider label="Soft edge" value={c.key.blend} min={0} max={0.3} step={0.01} show={(v) => v.toFixed(2)} onCommit={(v) => onApply(ops.setKey(doc, c.id, { blend: v }))} />
+            <div className="insp-row">
+              <input id={`${c.id}-spill`} type="checkbox" checked={c.key.despill} onChange={(e) => onApply(ops.setKey(doc, c.id, { despill: e.target.checked }))} />
+              <label htmlFor={`${c.id}-spill`} style={{ width: "auto" }}>Remove colour spill from the edges</label>
+            </div>
+          </>
+        )}
         <div className="insp-row">
           <label htmlFor={`${c.id}-tr`}>Transition</label>
           <select id={`${c.id}-tr`} value={tr?.type ?? ""} onChange={(e) => onApply(ops.setTransition(doc, c.id, e.target.value ? { type: e.target.value as ops.TransitionType, duration: tr?.duration ?? Math.round(fps * 1) } : null))}>

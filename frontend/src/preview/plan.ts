@@ -3,6 +3,7 @@
 // zoom, muted tracks hidden, volume and linear fades.
 
 import type { Doc } from "../timeline/ops";
+import type { Key } from "./chromakey";
 import { clipEnd } from "../timeline/ops";
 import type { TimelineClip } from "../api/types";
 
@@ -14,6 +15,7 @@ export interface Layer {
   rotation: number;
   crop: [number, number, number, number];
   fit: "fill" | "fit" | "blur";
+  key: Key | null;
   /** seconds into the source file */
   time: number;
   opacity: number;
@@ -109,7 +111,7 @@ export function layersAt(doc: Doc, frame: number): Layer[] {
       return {
         clip, ghost: !!clip.meta["ghost"], time: sourceSeconds(doc, clip, frame), opacity: clip.transform.opacity * look.alpha, zoom: kenBurnsZoom(clip, frame),
         scale: clip.transform.scale, x: clip.transform.x, y: clip.transform.y, dx: look.dx, zoomMul: look.zoomMul,
-        rotation: clip.transform.rotation, crop: clip.transform.crop, fit: clip.fit ?? "fill",
+        rotation: clip.transform.rotation, crop: clip.transform.crop, fit: clip.fit ?? "fill", key: clip.key ?? null,
         fx: { brightness: effectValue(clip, "brightness"), contrast: effectValue(clip, "contrast"), saturation: effectValue(clip, "saturation"), blur: effectValue(clip, "blur") },
       };
     });

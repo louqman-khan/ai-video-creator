@@ -268,6 +268,24 @@ describe("transitions and effects", () => {
   });
 });
 
+describe("green screen", () => {
+  const s = (d: Doc, id: string) => d.clips.find((c) => c.id === id)!;
+  it("turns on with defaults, changes one thing at a time, clamps, and turns off", () => {
+    let d = ops.setKey(sample(), "s1", {}).doc;
+    expect(s(d, "s1").key).toEqual({ color: "#00ff00", similarity: 0.15, blend: 0.1, despill: true });
+    d = ops.setKey(d, "s1", { color: "#0000FF", similarity: 9, despill: false }).doc;
+    expect(s(d, "s1").key).toEqual({ color: "#0000ff", similarity: 0.5, blend: 0.1, despill: false });
+    expect(s(ops.setKey(d, "s1", { color: "not a colour" }).doc, "s1").key!.color).toBe("#0000ff");
+    expect(s(ops.setKey(d, "s1", null).doc, "s1").key).toBeNull();
+    expect(ops.setKey(sample(), "voice", {}).error).toBeDefined();
+  });
+  it("is kept when a clip is split", () => {
+    const d = ops.setKey(sample(), "s1", { color: "#00ff00" }).doc;
+    const sp = ops.splitClip(d, "s1", 50);
+    expect(s(sp.doc, sp.ids![1]!).key).toEqual(s(d, "s1").key);
+  });
+});
+
 describe("insertAsset", () => {
   const song = { ...asset("song", "audio", 450), title: "Calm" };
   const photo = asset("photo", "image", null);

@@ -92,6 +92,15 @@ class Transition(_Strict):
     duration: int = Field(..., ge=1, le=30 * 10)
 
 
+class ChromaKey(_Strict):
+    """Make one colour transparent (green screen). `similarity` and `blend` are ffmpeg's chromakey units (about 0.1 - 0.3)."""
+
+    color: str = Field("#00ff00", pattern=r"^#[0-9a-fA-F]{6}$")
+    similarity: float = Field(0.15, ge=0.0, le=0.5)
+    blend: float = Field(0.1, ge=0.0, le=0.5)
+    despill: bool = True  # remove the key colour's reflection from the edges of the subject
+
+
 class Word(_Strict):
     """A recognised word in *source* frames of its audio asset (so moving/trimming never changes it)."""
 
@@ -126,6 +135,7 @@ class Clip(_Strict):
     transform: Transform = Field(default_factory=Transform)
     effects: list[Effect] = Field(default_factory=list, max_length=MAX_EFFECTS)
     transition_in: Transition | None = None
+    key: ChromaKey | None = None
     fit: Literal["fill", "fit", "blur"] = "fill"  # a picture that does not match the frame: crop to fill / show whole with bars / show whole over a blurred copy
     text: str | None = None  # caption clips
     words: list[Word] = Field(default_factory=list, max_length=MAX_WORDS_PER_CLIP)  # narration clips

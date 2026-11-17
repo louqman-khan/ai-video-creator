@@ -97,3 +97,8 @@ Details and formulas: `docs/transitions-effects.md`.
 Toolbar: **Frame** (16:9, 9:16, 1:1, 4:5) and **Pictures** (fill / fit with bars / fit over a blurred copy). With the live preview
 showing, the selected picture has handles: drag it, drag a corner to resize, drag the round handle to turn it; **Crop on the preview**
 (in the inspector) switches to edge handles. Everything is also available as sliders in the inspector. Details: `docs/reframing.md`.
+
+## Green screen (task 4.11)
+
+Select a picture clip > **Green screen**: tick it, choose the colour (or **Pick from the preview** and click the background), adjust
+**Match** and **Soft edge**. Put the clip on a higher video track than the picture that should show through. Details: `docs/chroma-key.md`.

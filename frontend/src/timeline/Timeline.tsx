@@ -29,6 +29,8 @@ interface Props {
   onDoc?: (doc: ops.Doc) => void;
   /** where to draw the picture handles (the element around the live preview); null when the live preview is not shown */
   overlayHost?: HTMLElement | null;
+  /** the eyedropper: the colour of a clip's own picture at a point of the canvas (canvas pixels), "#rrggbb" or null */
+  sampler?: ((clipId: string, x: number, y: number) => string | null) | null;
   /** the preparation state of every asset, whenever it changes */
   onMedia?: (media: Record<string, MediaView>) => void;
   /** called with the project whenever an edit makes the server start (or queue) a new preview render */
@@ -42,13 +44,13 @@ const labelOf = (c: TimelineClip, a: TimelineAsset | undefined): string => {
   return a?.title || c.id;
 };
 
-export function Timeline({ projectId, version, video, onProject, onDoc, onMedia, overlayHost }: Props) {
+export function Timeline({ projectId, version, video, onProject, onDoc, onMedia, overlayHost, sampler }: Props) {
   const { timeline, media, error, preparing, refreshMedia } = useTimelineData(projectId, version, true);
   const { peaks, film } = useDerived(projectId, media);
   useEffect(() => { onMedia?.(media); }, [media, onMedia]);
   if (error) return <p className="alert" role="alert">{error}</p>;
   if (!timeline) return <p className="muted">Loading the timeline…</p>;
-  return <TimelineBody projectId={projectId} timeline={timeline} media={media} preparing={preparing} peaks={peaks} film={film} video={video} onProject={onProject} onDoc={onDoc} overlayHost={overlayHost} refreshMedia={refreshMedia} />;
+  return <TimelineBody projectId={projectId} timeline={timeline} media={media} preparing={preparing} peaks={peaks} film={film} video={video} onProject={onProject} onDoc={onDoc} overlayHost={overlayHost} sampler={sampler} refreshMedia={refreshMedia} />;
 }
 
 interface BodyProps {
@@ -62,15 +64,17 @@ interface BodyProps {
   onDoc?: (doc: ops.Doc) => void;
   onProject?: (p: Project) => void;
   overlayHost?: HTMLElement | null;
+  sampler?: ((clipId: string, x: number, y: number) => string | null) | null;
   refreshMedia: () => void;
 }
 
-function TimelineBody({ projectId, timeline, media, preparing, peaks, film, video, onProject, onDoc, overlayHost, refreshMedia }: BodyProps) {
+function TimelineBody({ projectId, timeline, media, preparing, peaks, film, video, onProject, onDoc, overlayHost, sampler, refreshMedia }: BodyProps) {
   const { session, snap } = useSession(timeline, (body) => api.saveTimeline(projectId, body));
   const doc = snap.doc;
   const fps = doc.fps;
   const [draft, setDraft] = useState<{ id: string; patch: ops.Picture } | null>(null);   // a handle is being dragged
   const [cropMode, setCropMode] = useState(false);
+  const [picking, setPicking] = useState(false);   // the eyedropper waits for a click on the preview
   const shownDoc = useMemo(() => (draft ? ops.setPicture(doc, draft.id, draft.patch).doc : doc), [doc, draft]);
   useEffect(() => { onDoc?.(shownDoc); }, [shownDoc, onDoc]);
   const duration = Math.max(1, ops.timelineLength(doc));
@@ -389,8 +393,21 @@ function TimelineBody({ projectId, timeline, media, preparing, peaks, film, vide
       <p className="small tl-notice" role="status">{notice}</p>
       <MediaBin projectId={projectId} doc={doc} media={media} onInsert={(a, title) => run(ops.insertAsset(doc, a, head.get(), title))}
         onAdded={refreshMedia} onNotice={setNotice} />
-      {chosen && <Inspector clip={chosen} doc={doc} onApply={run} cropMode={cropMode} onCropMode={overlayHost ? setCropMode : undefined} />}
-      {overlayHost && chosen && (chosen.kind === "video" || chosen.kind === "image") && createPortal(
+      {chosen && <Inspector clip={chosen} doc={doc} onApply={run} cropMode={cropMode} onCropMode={overlayHost ? setCropMode : undefined}
+        picking={picking} onPick={overlayHost && sampler ? setPicking : undefined} />}
+      {overlayHost && sampler && picking && chosen && createPortal(
+        <div className="pick-layer" role="button" aria-label="Click the colour to remove" tabIndex={0}
+          onClick={(e) => {
+            const r = e.currentTarget.getBoundingClientRect();
+            const [W, H] = CANVAS_SIZES[doc.aspect ?? "16:9"] ?? CANVAS_SIZES["16:9"]!;
+            const hex = sampler(chosen.id, ((e.clientX - r.left) / r.width) * W, ((e.clientY - r.top) / r.height) * H);
+            setPicking(false);
+            if (hex) run(ops.setKey(doc, chosen.id, { color: hex }));
+            else setNotice("There is no picture of this clip at that point.");
+          }} onKeyDown={(e) => e.key === "Escape" && setPicking(false)} />,
+        overlayHost,
+      )}
+      {overlayHost && !picking && chosen && (chosen.kind === "video" || chosen.kind === "image") && createPortal(
         <CanvasHandles clip={chosen} width={(CANVAS_SIZES[doc.aspect ?? "16:9"] ?? CANVAS_SIZES["16:9"]!)[0]} height={(CANVAS_SIZES[doc.aspect ?? "16:9"] ?? CANVAS_SIZES["16:9"]!)[1]}
           cropMode={cropMode} onDraft={(patch) => setDraft(patch ? { id: chosen.id, patch } : null)} onCommit={(patch) => run(ops.setPicture(doc, chosen.id, patch))} />,
         overlayHost,

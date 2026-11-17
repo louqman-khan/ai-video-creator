@@ -10,7 +10,7 @@ from app.config import Settings
 from app.media import loudness
 from app.pipeline import assemble
 from app.timeline import render
-from app.timeline.models import Asset, Clip, Effect, Timeline, Track, Transform
+from app.timeline.models import Asset, ChromaKey, Clip, Effect, Timeline, Track, Transform
 from app.timeline.render import RenderUnsupported, plan_segments, render_timeline, segment_key, unsupported_features
 
 pytestmark = pytest.mark.skipif(not shutil.which("ffmpeg"), reason="ffmpeg not available")
@@ -535,3 +535,46 @@ def test_every_aspect_ratio_renders_at_its_size(media, tmp_path, aspect, size):
     out = render_to(tl, tmp_path, f"{aspect.replace(':', 'x')}.mp4")
     assert probe(out, "stream=width,height") == size
     assert px(out, 0.5, 100, 100)[0] > 200                                      # the picture fills the frame
+
+
+# ------------------------------------------------------------------ chroma key
+
+def green_screen(tmp_path):
+    p = tmp_path / "screen.mp4"
+    sh("-f", "lavfi", "-i", "color=c=0x00ff00:s=320x180:r=30:d=4,drawbox=x=20:y=40:w=100:h=100:color=red:t=fill,drawbox=x=240:y=60:w=60:h=60:color=0xc8e696:t=fill",
+       "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "12", str(p))
+    return p
+
+
+def keyed_tl(media, tmp_path, key, **kw):
+    green_screen(tmp_path)
+    extra = asset(tmp_path, "screen", "video", 120)
+    return make_tl(media, [vclip("bg", "blue", 0, 60), vclip("fg", "screen", 0, 60, track="V2", key=key, **kw)], extra_assets=[extra])
+
+
+def test_chroma_key_replaces_the_green_with_what_is_underneath(media, tmp_path):
+    out = render_to(keyed_tl(media, tmp_path, ChromaKey(despill=False)), tmp_path, "keyed.mp4")
+    assert px(out, 0.5, 500, 100)[2] > 200 and px(out, 0.5, 500, 100)[1] < 40       # the green is gone: the blue picture shows through
+    r, g, b = px(out, 0.5, 200, 270); assert r > 200 and g < 60 and b < 60          # the subject stays
+    off = render_to(keyed_tl(media, tmp_path, None), tmp_path, "unkeyed.mp4")
+    assert px(off, 0.5, 500, 100)[1] > 200                                           # without the key it is green
+    # a key colour that is not in the picture keys nothing out
+    other = render_to(keyed_tl(media, tmp_path, ChromaKey(color="#ff00ff", despill=False)), tmp_path, "other.mp4")
+    assert px(other, 0.5, 500, 100)[1] > 200
+
+
+def test_despill_pulls_green_reflections_back_to_the_mean_of_red_and_blue(media, tmp_path):
+    spill_on = render_to(keyed_tl(media, tmp_path, ChromaKey(despill=True)), tmp_path, "d_on.mp4")
+    spill_off = render_to(keyed_tl(media, tmp_path, ChromaKey(despill=False)), tmp_path, "d_off.mp4")
+    r1, g1, b1 = px(spill_off, 0.5, 810, 270)                                       # pale green-tinted patch (200, 230, 150): kept by the key, tint left
+    r2, g2, b2 = px(spill_on, 0.5, 810, 270)
+    assert g1 > 200 and abs(g2 - (r2 + b2) / 2) < 25 and g2 < g1 - 25               # green limited to the mean of red and blue (about 175)
+
+
+def test_key_works_together_with_fades_transitions_and_effects(media, tmp_path):
+    tl = keyed_tl(media, tmp_path, ChromaKey(despill=False), fade_in=30, effects=[Effect(type="contrast", value=10)])
+    out = render_to(tl, tmp_path, "kf.mp4")
+    assert px(out, 0.0, 200, 270)[2] > 200                                           # the first frame: the subject is still invisible (blue only)
+    r, g, b = px(out, 0.5, 200, 270); assert 90 < r < 170 and b > 60               # half way in: subject and blue mixed, the green still keyed
+    assert px(out, 0.5, 500, 100)[1] < 40
+    r, g, b = px(out, 1.5, 200, 270); assert r > 200

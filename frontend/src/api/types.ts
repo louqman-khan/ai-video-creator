@@ -120,6 +120,7 @@ export interface TimelineClip {
   transform: TimelineTransform;
   effects: TimelineEffect[];
   transition_in: TimelineTransition | null;
+  key?: { color: string; similarity: number; blend: number; despill: boolean } | null; // chroma key (green screen)
   fit?: "fill" | "fit" | "blur"; // a picture that does not match the frame: crop to fill / whole with bars / whole over a blurred copy
   text: string | null;
   words: { text: string; start: number; end: number }[];

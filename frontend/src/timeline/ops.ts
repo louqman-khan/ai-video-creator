@@ -384,6 +384,20 @@ export function removeTrack(doc: Doc, trackId: string): Result {
   return ok({ ...doc, tracks: doc.tracks.filter((x) => x.id !== trackId) });
 }
 
+export interface KeyPatch { color?: string; similarity?: number; blend?: number; despill?: boolean }
+
+/** Turn the green screen on (with defaults), change it, or remove it (null). */
+export function setKey(doc: Doc, id: string, patch: KeyPatch | null): Result {
+  const c = findClip(doc, id);
+  if (!c || (c.kind !== "video" && c.kind !== "image")) return refuse(doc, "Only pictures can have a green screen.");
+  if (isLocked(doc, c.track)) return refuse(doc, "That track is locked.");
+  if (patch === null) return ok(replaceClip(doc, { ...c, key: null }), [id]);
+  const was = c.key ?? { color: "#00ff00", similarity: 0.15, blend: 0.1, despill: true };
+  const clamp = (v: number, hi: number) => Math.min(hi, Math.max(0, Math.round(v * 100) / 100));
+  const color = patch.color && /^#[0-9a-fA-F]{6}$/.test(patch.color) ? patch.color.toLowerCase() : was.color;
+  return ok(replaceClip(doc, { ...c, key: { color, similarity: clamp(patch.similarity ?? was.similarity, 0.5), blend: clamp(patch.blend ?? was.blend, 0.5), despill: patch.despill ?? was.despill } }), [id]);
+}
+
 export type TransitionType = "crossfade" | "dip" | "slide" | "zoom";
 export type EffectType = "brightness" | "contrast" | "saturation" | "blur";
 

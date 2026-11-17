@@ -5,6 +5,7 @@
 
 import type { Doc } from "../timeline/ops";
 import { timelineLength } from "../timeline/ops";
+import { GlKeyer, keyImageData, rgbToHex, type Key } from "./chromakey";
 import { audioAt, captionAt, layersAt, type Layer } from "./plan";
 
 /** Addresses of the prepared files; null while a file is not ready yet (nothing is requested until it is). */
@@ -256,24 +257,21 @@ export class LiveEngine extends EventTarget {
    * One picture, the same steps in the same order as the renderer's `_layer_chain`: show it in the frame (fill, fit or
    * blurred background; a still with Ken Burns zooms), effects, crop, resize, rotate, opacity, transition shift and zoom.
    */
-  private drawLayer(g: CanvasRenderingContext2D, l: Layer, W: number, H: number) {
-    if (!l.clip.asset) return;
+  /** Step 1 of a layer: the picture in a frame-sized image (fill / fit / blurred background), without key or effects. */
+  private drawBase(l: Layer, W: number, H: number, a: CanvasRenderingContext2D): boolean {
+    if (!l.clip.asset) return false;
     let src: CanvasImageSource;
     let w: number;
     let h: number;
     if (l.clip.kind === "video") {
       const v = this.videoFor(l.clip.id, l.clip.asset);
-      if (!v || v.readyState < 2 || !v.videoWidth) return;
+      if (!v || v.readyState < 2 || !v.videoWidth) return false;
       src = v; w = v.videoWidth; h = v.videoHeight;
     } else {
       const im = this.imageFor(l.clip.asset);
-      if (!im || !im.complete || !im.naturalWidth) return;
+      if (!im || !im.complete || !im.naturalWidth) return false;
       src = im; w = im.naturalWidth; h = im.naturalHeight;
     }
-    // 1. the picture in a frame-sized image
-    const a = this.offscreen(0, W, H);
-    const b = this.offscreen(1, W, H);
-    if (!a || !b) return;
     const place = (ctx: CanvasRenderingContext2D, scale: number) => ctx.drawImage(src, (W - w * scale) / 2, (H - h * scale) / 2, w * scale, h * scale);
     const cover = Math.max(W / w, H / h);
     const contain = Math.min(W / w, H / h);
@@ -284,22 +282,71 @@ export class LiveEngine extends EventTarget {
       a.filter = "none";
       place(a, contain);
     } else place(a, cover * l.zoom); // fill (and Ken Burns, which is always "fill")
-    // 2. effects
+    return true;
+  }
+
+  /** The green screen: make the key colour transparent (on the graphics card when there is one). */
+  private applyKey(a: CanvasRenderingContext2D, key: Key, W: number, H: number) {
+    this.keyer ??= new GlKeyer();
+    const out = this.keyer.apply(a.canvas, key);
+    if (out) {
+      a.clearRect(0, 0, W, H);
+      a.drawImage(out, 0, 0);
+      return;
+    }
+    const img = a.getImageData(0, 0, W, H);
+    keyImageData(img.data, key);
+    a.putImageData(img, 0, 0);
+  }
+  private keyer: GlKeyer | null = null;
+
+  /** Where the picture's frame-sized image ended up on the canvas: centre, crop rectangle, size factor. */
+  private placement(l: Layer, W: number, H: number) {
+    const [cl, ct, cr, cb] = l.crop;
+    return {
+      sx: cl * W, sy: ct * H, sw: W * (1 - cl - cr), sh: H * (1 - ct - cb),
+      cx: W / 2 + (l.x + l.dx) * W + ((cl - cr) / 2) * W * l.scale,
+      cy: H / 2 + l.y * H + ((ct - cb) / 2) * H * l.scale,
+      k: l.scale * l.zoomMul,
+    };
+  }
+
+  /**
+   * One picture, the same steps in the same order as the renderer's `_layer_chain`: show it in the frame (fill, fit or
+   * blurred background; a still with Ken Burns zooms), green screen, effects, crop, resize, rotate, opacity, transition shift and zoom.
+   */
+  private drawLayer(g: CanvasRenderingContext2D, l: Layer, W: number, H: number) {
+    const a = this.offscreen(0, W, H);
+    const b = this.offscreen(1, W, H);
+    if (!a || !b || !this.drawBase(l, W, H, a)) return;
+    if (l.key) this.applyKey(a, l.key, W, H);
     b.filter = cssFilter(l, W);
     b.drawImage(a.canvas, 0, 0);
     b.filter = "none";
-    // 3. crop, resize, rotate, opacity, shift, transition zoom
-    const [cl, ct, cr, cb] = l.crop;
-    const sx = cl * W, sy = ct * H, sw = W * (1 - cl - cr), sh = H * (1 - ct - cb);
-    const cx = W / 2 + (l.x + l.dx) * W + ((cl - cr) / 2) * W * l.scale;
-    const cy = H / 2 + l.y * H + ((ct - cb) / 2) * H * l.scale;
-    const k = l.scale * l.zoomMul;
+    const { sx, sy, sw, sh, cx, cy, k } = this.placement(l, W, H);
     g.save();
     g.globalAlpha = l.opacity;
     g.translate(cx, cy);
     g.rotate((l.rotation * Math.PI) / 180);
     g.drawImage(b.canvas, sx, sy, sw, sh, (-sw * k) / 2, (-sh * k) / 2, sw * k, sh * k);
     g.restore();
+  }
+
+  /** The colour of the clip's own picture (before any key or effect) under a point of the canvas, as "#rrggbb"; null if there is none. */
+  pickColor(clipId: string, x: number, y: number): string | null {
+    const l = layersAt(this.doc, this.frame).find((v) => v.clip.id === clipId);
+    const { width: W, height: H } = this.canvas;
+    const a = this.offscreen(0, W, H);
+    if (!l || !a || !this.drawBase(l, W, H, a)) return null;
+    const { sx, sy, sw, sh, cx, cy, k } = this.placement(l, W, H);
+    const t = (-l.rotation * Math.PI) / 180;
+    const dx = x - cx;
+    const dy = y - cy;
+    const bx = Math.floor(sx + sw / 2 + (dx * Math.cos(t) - dy * Math.sin(t)) / k);
+    const by = Math.floor(sy + sh / 2 + (dx * Math.sin(t) + dy * Math.cos(t)) / k);
+    if (bx < 0 || by < 0 || bx >= W || by >= H) return null;
+    const [r, gg, bl, al] = a.getImageData(bx, by, 1, 1).data;
+    return al === 0 ? null : rgbToHex(r!, gg!, bl!);
   }
 
   /** An approximation of the burned-in caption (the export uses libass and the caption style): white text, dark outline. */
