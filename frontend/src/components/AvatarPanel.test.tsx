@@ -44,3 +44,18 @@ describe("AvatarPanel", () => {
     await waitFor(() => expect(container).toBeEmptyDOMElement());
   });
 });
+
+describe("AvatarPanel with a paid service", () => {
+  it("asks the user to confirm before spending money", async () => {
+    vi.spyOn(api, "avatars").mockResolvedValue([{ id: "a1", name: "Anna", paid: true }]);
+    const add = vi.spyOn(api, "addAvatar").mockResolvedValue(project({ status: "queued" }));
+    render(<AvatarPanel project={project()} onStarted={vi.fn()} />);
+    await userEvent.click(await screen.findByText("Talking avatar"));
+    const button = screen.getByRole("button", { name: "Add avatar to the video" });
+    expect(button).toBeDisabled();
+    await userEvent.click(screen.getByLabelText(/outside paid service/));
+    expect(button).toBeEnabled();
+    await userEvent.click(button);
+    await waitFor(() => expect(add).toHaveBeenCalled());
+  });
+});

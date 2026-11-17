@@ -12,11 +12,12 @@ interface Props {
 
 /** Pick a character; it speaks the narration and appears on the timeline as a small clip you can move, resize, trim or delete. */
 export function AvatarPanel({ project, onStarted }: Props) {
-  const [avatars, setAvatars] = useState<{ id: string; name: string }[] | null>(null);
+  const [avatars, setAvatars] = useState<{ id: string; name: string; paid?: boolean }[] | null>(null);
   const [chosen, setChosen] = useState<string>("");
   const [corner, setCorner] = useState<AvatarCorner>("bottom-right");
   const [size, setSize] = useState(0.3);
   const [busy, setBusy] = useState(false);
+  const [agreed, setAgreed] = useState(false);   // for paid services: the user has understood that it costs money
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -27,6 +28,7 @@ export function AvatarPanel({ project, onStarted }: Props) {
 
   if (!avatars || avatars.length === 0) return null;
   const working = busy || isActive(project);
+  const paid = !!avatars.find((a) => a.id === chosen)?.paid;
 
   const start = async () => {
     setBusy(true);
@@ -64,8 +66,14 @@ export function AvatarPanel({ project, onStarted }: Props) {
           <span className="label">Size ({Math.round(size * 100)}%)</span>
           <input type="range" min={0.15} max={0.7} step={0.05} value={size} disabled={working} onChange={(e) => setSize(Number(e.target.value))} />
         </label>
-        <button className="btn btn-primary" type="button" disabled={working || !chosen} onClick={() => void start()}>{busy ? "Starting…" : "Add avatar to the video"}</button>
+        <button className="btn btn-primary" type="button" disabled={working || !chosen || (paid && !agreed)} onClick={() => void start()}>{busy ? "Starting…" : "Add avatar to the video"}</button>
       </div>
+      {paid && (
+        <label className="check">
+          <input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} />
+          This avatar is made by an outside paid service: your narration is sent to it and the video uses credits from your account there.
+        </label>
+      )}
       {error && <p className="alert small" role="alert">{error}</p>}
     </details>
   );

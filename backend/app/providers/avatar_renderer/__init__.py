@@ -5,6 +5,7 @@
   with the green screen key already on.
 - `remote`: a GPU service (MuseTalk, LatentSync, ...) over a small HTTP protocol, see docs/avatars.md. It can run on a rented GPU or Colab and is
   NOT verified here (no GPU); `backend/tools/avatar_service.py` is the reference server for the protocol.
+- `heygen`: HeyGen's cloud avatars, PAID (docs/paid-providers.md), only when chosen explicitly and keyed.
 - `none`: off."""
 
 from __future__ import annotations
@@ -73,6 +74,13 @@ def _remote(settings: Settings) -> AvatarRenderer:
     from app.providers.avatar_renderer.remote import RemoteAvatars
 
     return RemoteAvatars(settings.avatar_url, settings.avatar_token)
+
+
+@registry.register("heygen")
+def _heygen(settings: Settings) -> AvatarRenderer:
+    from app.providers.avatar_renderer.heygen import HeygenAvatars
+
+    return HeygenAvatars(settings.heygen_api_key)  # paid: only when chosen explicitly
 
 
 def create_avatar_renderer(settings: Settings) -> AvatarRenderer:

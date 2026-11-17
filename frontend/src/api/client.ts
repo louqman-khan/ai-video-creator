@@ -76,7 +76,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
-  health: () => request<{ ok: boolean; ffmpeg: boolean; hardware_encoder?: boolean; speech?: string[]; limits: Limits }>("/api/health"),
+  health: () => request<{ ok: boolean; ffmpeg: boolean; hardware_encoder?: boolean; speech?: string[]; speech_paid?: boolean; limits: Limits }>("/api/health"),
   listProjects: () => request<Project[]>("/api/projects"),
   getProject: (id: string) => request<Project>(`/api/projects/${encodeURIComponent(id)}`),
   deleteProject: (id: string) => request<void>(`/api/projects/${encodeURIComponent(id)}`, { method: "DELETE" }),
@@ -185,7 +185,7 @@ export const api = {
   /** Removes unused downloads, orphaned proxies and old render caches (never uploads, exports or timelines). */
   cleanStorage: () => request<{ freed: number; removed: number }>("/api/storage/clean?days=7&segments=true", { method: "POST" }),
   /** Characters that can speak the narration. */
-  avatars: () => request<{ id: string; name: string }[]>("/api/avatars"),
+  avatars: () => request<{ id: string; name: string; paid?: boolean }[]>("/api/avatars"),
   avatarThumbUrl: (avatarId: string) => `/api/avatars/${encodeURIComponent(avatarId)}/thumb`,
   /** Makes the avatar speak the project's narration and puts it on the timeline (a render follows). */
   addAvatar: (id: string, body: { avatar: string; corner: AvatarCorner; size: number }) =>

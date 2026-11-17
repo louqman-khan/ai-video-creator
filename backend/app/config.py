@@ -17,6 +17,12 @@ class Settings(BaseSettings):
     # media sources
     pixabay_api_key: str = ""
     pexels_api_key: str = ""
+    # --- optional PAID providers (docs/paid-providers.md): off unless TTS=elevenlabs / AVATAR_RENDERER=heygen is chosen AND the key is set
+    elevenlabs_api_key: str = ""
+    elevenlabs_model: str = "eleven_multilingual_v2"  # for Urdu choose a model that supports it (see the ElevenLabs docs)
+    elevenlabs_voice_en: str = "21m00Tcm4TlvDq8ikWAM"
+    elevenlabs_voice_ur: str = ""
+    heygen_api_key: str = ""
     media_sources: str = "pixabay,pexels,openverse,wikimedia"
     local_media_dir: str = ""
 

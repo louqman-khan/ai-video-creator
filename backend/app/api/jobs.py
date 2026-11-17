@@ -24,7 +24,7 @@ ProvidersFactory = Callable[[Settings, dict], Providers]
 
 def redact(text: str, settings: Settings) -> str:
     """Error messages go to the browser: never let a configured secret through."""
-    for secret in (settings.pixabay_api_key, settings.pexels_api_key, settings.gemini_api_key):
+    for secret in (settings.pixabay_api_key, settings.pexels_api_key, settings.gemini_api_key, settings.elevenlabs_api_key, settings.heygen_api_key, settings.avatar_token):
         if secret and len(secret) > 6:
             text = text.replace(secret, "***")
     return text

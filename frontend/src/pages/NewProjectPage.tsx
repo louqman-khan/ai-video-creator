@@ -15,6 +15,8 @@ export function NewProjectPage() {
   const [file, setFile] = useState<File | null>(null);
   const [mode, setMode] = useState<"record" | "speak">("record");   // a recording, or a typed script spoken by a synthetic voice
   const [speech, setSpeech] = useState<string[]>([]);
+  const [speechPaid, setSpeechPaid] = useState(false);   // the voice is an outside paid service
+  const [paidOk, setPaidOk] = useState(false);
   const [fileError, setFileError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -23,7 +25,7 @@ export function NewProjectPage() {
 
   useEffect(() => {
     let live = true;
-    api.health().then((h) => { if (live) { setLimits(h.limits); setSpeech(h.speech ?? []); } }).catch(() => undefined); // keep defaults
+    api.health().then((h) => { if (live) { setLimits(h.limits); setSpeech(h.speech ?? []); setSpeechPaid(!!h.speech_paid); } }).catch(() => undefined); // keep defaults
     return () => {
       live = false;
       abortRef.current?.(); // leaving the page cancels a running upload
@@ -43,7 +45,7 @@ export function NewProjectPage() {
 
   const scriptError = validateScript(values.script, limits);
   const speakError = mode === "speak" ? validateSpeak(values, speech) : null;
-  const ready = mode === "speak" ? !speakError : !!file;
+  const ready = mode === "speak" ? !speakError && (!speechPaid || paidOk) : !!file;
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
@@ -150,6 +152,12 @@ export function NewProjectPage() {
               ? `The voice reads this text and the video is built from it. Voices installed: ${speech.length ? speech.map((l) => (l === "ur" ? "Urdu" : "English")).join(", ") : "none"}. Choose the language below.`
               : "A script is matched to the audio you upload, so captions use your exact words."}
           </p>
+          {mode === "speak" && speechPaid && (
+            <label className="check">
+              <input type="checkbox" checked={paidOk} disabled={uploading} onChange={(e) => setPaidOk(e.target.checked)} />
+              The voice is an outside paid service: your script is sent to it and uses your quota there.
+            </label>
+          )}
           {speakError && (
             <p className="alert small" role="alert">
               {speakError}

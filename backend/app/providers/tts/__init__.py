@@ -4,6 +4,7 @@ Engines (all run on the CPU through onnxruntime; models are files in `assets/mod
 - `mms`   Meta MMS-TTS (VITS) converted to ONNX. Urdu. Licence CC-BY-NC 4.0 (not for commercial use).
 - `piper` Piper voices (ONNX + bundled espeak-ng phonemes). English.
 - `auto`  (default) mms for Urdu, piper for English, whichever has its model installed.
+- `elevenlabs` a PAID cloud voice, only when chosen explicitly and keyed (docs/paid-providers.md); never part of `auto`.
 - `none`  no speech: asking for it explains how to set it up."""
 
 from __future__ import annotations
@@ -57,6 +58,13 @@ def _piper(settings: Settings) -> TTS:
     from app.providers.tts.piper import PiperTTS
 
     return PiperTTS(Path(settings.tts_dir))
+
+
+@registry.register("elevenlabs")
+def _elevenlabs(settings: Settings) -> TTS:
+    from app.providers.tts.elevenlabs import ElevenLabsTTS
+
+    return ElevenLabsTTS(settings)  # paid: never part of "auto"
 
 
 @registry.register("auto")

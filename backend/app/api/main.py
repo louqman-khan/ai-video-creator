@@ -111,6 +111,7 @@ def create_app(settings: Settings | None = None, providers_factory: ProvidersFac
             "ok": True,
             "ffmpeg": ffmpeg.has_tools(),
             "speech": jobs.tts.languages(),  # languages a typed script can be spoken in
+            "speech_paid": bool(getattr(jobs.tts, "paid", False)),  # the voice is a paid outside service
             "hardware_encoder": ffmpeg.has_tools() and ffmpeg.has_encoder("h264_videotoolbox"),
             # the UI validates against the same limits the server enforces
             "limits": {

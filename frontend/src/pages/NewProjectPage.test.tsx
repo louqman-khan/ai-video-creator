@@ -131,4 +131,17 @@ describe("NewProjectPage", () => {
     expect(form.get("language")).toBe("en");
     expect(await screen.findByText("EDITOR PAGE")).toBeInTheDocument();
   });
+
+  it("a paid voice needs the user's confirmation first", async () => {
+    vi.spyOn(client.api, "health").mockResolvedValue({ ok: true, ffmpeg: true, speech: ["en"], speech_paid: true, limits: DEFAULT_LIMITS });
+    renderPage();
+    await userEvent.click(screen.getByLabelText("Speak my script with a computer voice"));
+    await userEvent.type(screen.getByLabelText("Script to speak"), "Hello.");
+    await userEvent.selectOptions(screen.getByLabelText("Language"), "en");
+    const button = screen.getByRole("button", { name: "Create video" });
+    expect(await screen.findByLabelText(/outside paid service/)).toBeInTheDocument();
+    expect(button).toBeDisabled();
+    await userEvent.click(screen.getByLabelText(/outside paid service/));
+    expect(button).toBeEnabled();
+  });
 });

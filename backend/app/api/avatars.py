@@ -30,6 +30,7 @@ Corner = Literal["bottom-right", "bottom-left", "top-right", "top-left"]
 class AvatarOut(BaseModel):
     id: str
     name: str
+    paid: bool = False  # using it costs money at an outside service
 
 
 class AvatarRequest(BaseModel):
@@ -81,7 +82,8 @@ def build_router(store: ProjectStore, settings: Settings, jobs: JobRunner, worke
 
     @router.get("/avatars", response_model=list[AvatarOut])
     def avatars() -> list[AvatarOut]:
-        return [AvatarOut(id=a.id, name=a.name) for a in renderer.avatars()]
+        paid = bool(getattr(renderer, "paid", False))
+        return [AvatarOut(id=a.id, name=a.name, paid=paid) for a in renderer.avatars()]
 
     @router.get("/avatars/{avatar_id}/thumb")
     def thumb(avatar_id: str) -> Response:
