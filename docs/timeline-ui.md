@@ -76,3 +76,11 @@ stops saving (local edits stay) until the user chooses to reload.
   higher video track than the picture it sits over. Select an audio clip: **Volume**, **Fade in/out**.
 - The speaker button on an audio track's label (`⤓`) marks it as *ducked*: its volume drops about 12 dB while the other
   audio tracks speak (music under narration). The export uses a side-chain compressor; the live preview approximates it.
+
+## Media bin (task 4.8)
+
+**Add media…** opens three tabs. *In this project*: every file the timeline knows. *Stock media*: videos, photos, music and
+sound effects from free-to-reuse sources; **Add at playhead** downloads the item (the server does this, the browser never
+sees the address) and puts it on the timeline. *Upload*: your own file; the rights checkbox is required. Credits for stock
+items are collected automatically (`GET /credits`, the credits panel, `CREDITS.txt`); your own uploads are not listed.
+Placement rule (`ops.insertAsset`): lowest track of the right kind that is free at the playhead, otherwise a new track on top.

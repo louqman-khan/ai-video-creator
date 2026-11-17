@@ -27,7 +27,7 @@ export const isActive = (p: Pick<Project, "status">): boolean =>
 export interface Asset {
   id: string;
   source: string;
-  kind: "video" | "image";
+  kind: "video" | "image" | "audio";
   thumb_url: string;
   page_url: string;
   title: string;

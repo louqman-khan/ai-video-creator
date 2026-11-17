@@ -428,4 +428,36 @@ export function snapShift(edges: readonly number[], targets: readonly number[], 
   return best;
 }
 
+const PICTURE_SECONDS = 5;
+const MAX_CLIP_SECONDS = 600;
+
+/**
+ * Put a media file on the timeline at `at`: a clip of its natural length (stills last 5 s) on the lowest track of the
+ * right kind that is free there; when every such track is busy a new one is added on top, so the new clip lands over
+ * what is already there. The asset joins the document's asset list in the same step.
+ */
+export function insertAsset(doc: Doc, given: TimelineAsset, at: number, title?: string): Result {
+  const asset = doc.assets[given.id] ?? given; // a known asset is never replaced: other clips depend on its length
+  const kind = asset.kind;
+  const length = Math.max(1, Math.min(MAX_CLIP_SECONDS * doc.fps, kind === "image" ? PICTURE_SECONDS * doc.fps : asset.duration ?? PICTURE_SECONDS * doc.fps));
+  const start = Math.max(0, Math.round(at));
+  const accepts = kind === "audio" ? "audio" : "video";
+  let work: Doc = { ...doc, assets: { ...doc.assets, [asset.id]: asset } };
+  const free = (t: TimelineTrack) => !t.locked && clipsOn(work, t.id).every((c) => clipEnd(c) <= start || c.start >= start + length);
+  let track = work.tracks.find((t) => t.kind === accepts && free(t));
+  if (!track) {
+    const added = addTrack(work, accepts);
+    if (added.error) return refuse(doc, added.error);
+    work = added.doc;
+    track = work.tracks[work.tracks.length - 1]!;
+  }
+  const id = newId(work, kind === "audio" ? "audio-1" : kind === "image" ? "image-1" : "video-1");
+  const clip: TimelineClip = {
+    id, track: track.id, kind, asset: asset.id, start, duration: length, in_point: 0, loop: false, volume: 1, fade_in: 0, fade_out: 0,
+    transform: { x: 0, y: 0, scale: 1, rotation: 0, opacity: 1, crop: [0, 0, 0, 0] }, effects: [], transition_in: null,
+    text: null, words: [], meta: title ? { text: title } : {},
+  };
+  return ok({ ...work, clips: [...work.clips, clip] }, [id]);
+}
+
 export type SaveLike = "saved" | "dirty" | "saving" | "error" | "conflict";

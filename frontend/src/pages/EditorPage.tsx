@@ -8,6 +8,7 @@ import { CreditsPanel } from "../components/CreditsPanel";
 import { ExportPanel } from "../components/ExportPanel";
 import { SceneList } from "../components/SceneList";
 import { StatusBadge } from "../components/StatusBadge";
+import type { MediaView } from "../api/types";
 import type { Doc } from "../timeline/ops";
 import { Timeline } from "../timeline/Timeline";
 import { LivePreview } from "../preview/LivePreview";
@@ -23,6 +24,7 @@ export function EditorPage() {
   const [mode, setMode] = useState<"live" | "rendered">("live");
   const [liveDoc, setLiveDoc] = useState<Doc | null>(null);
   const [engine, setEngine] = useState<LiveEngine | null>(null);
+  const [mediaState, setMediaState] = useState<Record<string, MediaView>>({});
   const live = mode === "live" && liveDoc !== null;
   // the player keeps its place while an edit re-renders the preview; it reloads when the render has finished
   const settled = useRef<string>("");
@@ -69,7 +71,7 @@ export function EditorPage() {
             <button type="button" className="btn" aria-pressed={mode === "rendered"} onClick={() => setMode("rendered")}>Rendered preview</button>
           </div>
           {live ? (
-            <LivePreview projectId={project.id} doc={liveDoc} aspect={project.aspect} onEngine={setEngine} />
+            <LivePreview projectId={project.id} doc={liveDoc} aspect={project.aspect} media={mediaState} onEngine={setEngine} />
           ) : (
             /* key: reload the player once a re-render has finished (not on every progress update) */
             <video key={playerVersion} ref={setVideo} className="player" controls preload="metadata"
@@ -82,7 +84,7 @@ export function EditorPage() {
         </div>
       )}
       {project.video_ready && (project.status === "done" || opened.current === project.id) && (
-        <Timeline projectId={project.id} version={project.updated_at} video={live ? engine : video} onDoc={setLiveDoc} onProject={(p) => { upsert(p); refresh(); }} />
+        <Timeline projectId={project.id} version={project.updated_at} video={live ? engine : video} onDoc={setLiveDoc} onMedia={setMediaState} onProject={(p) => { upsert(p); refresh(); }} />
       )}
       {project.video_ready && (
         <ExportPanel project={project} onStarted={(p) => { upsert(p); refresh(); }} />

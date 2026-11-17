@@ -4,7 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-MediaKind = Literal["video", "image"]
+MediaKind = Literal["video", "image", "audio"]
 
 
 class Word(BaseModel):
@@ -56,7 +56,7 @@ class MediaAsset(BaseModel):
     thumb_url: str = ""
     width: int = 0
     height: int = 0
-    duration: float | None = None  # seconds, videos only
+    duration: float | None = None  # seconds, videos and audio only
     title: str = ""
     tags: list[str] = Field(default_factory=list)
     license_url: str = ""

@@ -159,6 +159,29 @@ def scenes_from_timeline(tl: Timeline) -> tuple[list[Scene], list[ScenePick]]:
     return [s for _, s, _ in items], [p for _, _, p in items]
 
 
+def used_media(tl: Timeline) -> list[tuple[MediaAsset, list[int]]]:
+    """Every third-party asset a clip uses (video, picture, music), once, with the scenes it appears in. Files the user
+    supplied themselves need no credit and are left out."""
+    found: dict[str, tuple[MediaAsset, list[int]]] = {}
+    for c in sorted(tl.clips, key=lambda x: x.start):
+        a = tl.assets.get(c.asset) if c.asset else None
+        if a is None or a.license == "User-provided":
+            continue
+        if a.id not in found:
+            found[a.id] = (MediaAsset(id=a.id, source=a.source, kind=a.kind, url=a.url or "-", license=a.license, license_url=a.license_url,
+                                      page_url=a.page_url, thumb_url=a.thumb_url, width=a.width, height=a.height, duration=None,
+                                      title=a.title, author=a.author, author_url=a.author_url, attribution=a.attribution,
+                                      attribution_required=a.attribution_required), [])
+        if isinstance(c.meta.get("scene_id"), int):
+            found[a.id][1].append(c.meta["scene_id"])
+    return list(found.values())
+
+
+def credits_from_timeline(tl: Timeline) -> str:
+    lines = [f"- {a.attribution or a.title or a.id} | License: {a.license} {a.license_url}".rstrip() for a, _ in used_media(tl)]
+    return "Media credits\n=============\n" + "\n".join(lines) + "\n"
+
+
 # ---- storage ---------------------------------------------------------------------------------
 
 def timeline_path(d: Path) -> Path:

@@ -233,6 +233,36 @@ describe("tracks and pictures", () => {
   });
 });
 
+describe("insertAsset", () => {
+  const song = { ...asset("song", "audio", 450), title: "Calm" };
+  const photo = asset("photo", "image", null);
+  const clip = (d: Doc, id: string) => d.clips.find((c) => c.id === id)!;
+  it("puts audio on the first free audio track, or a new one when the narration is in the way", () => {
+    const r = ops.insertAsset(sample(), song, 100, "Calm");
+    expect(problems(r.doc)).toEqual([]);
+    expect(clip(r.doc, r.ids![0]!).track).not.toBe("a1");
+    const d = ops.deleteClips(sample(), ["music"]).doc;      // a2 is free now
+    const again = ops.insertAsset(d, song, 0);
+    expect(clip(again.doc, again.ids![0]!).track).toBe("a2");
+    expect(r.doc.assets["song"]).toBeDefined();
+    expect(clip(r.doc, r.ids![0]!).duration).toBe(450);
+  });
+  it("a picture over a busy video track lands on a new track above it; stills last five seconds", () => {
+    const r = ops.insertAsset(sample(), photo, 10);
+    expect(problems(r.doc)).toEqual([]);
+    const c = clip(r.doc, r.ids![0]!);
+    expect([c.duration, c.start, c.kind]).toEqual([150, 10, "image"]);
+    expect(r.doc.tracks.filter((t) => t.kind === "video")).toHaveLength(2);
+    expect(c.track).toBe(r.doc.tracks[r.doc.tracks.length - 1]!.id);
+  });
+  it("uses a free gap on an existing track", () => {
+    const d = ops.deleteClips(sample(), ["s2"]).doc;          // 100..220 is free
+    const r = ops.insertAsset(d, { ...asset("p2", "video", 100) }, 100);
+    expect(clip(r.doc, r.ids![0]!).track).toBe("v1");
+    expect(r.doc.tracks.filter((t) => t.kind === "video")).toHaveLength(1);
+  });
+});
+
 describe("snapping", () => {
   it("snaps to the nearest target within tolerance only", () => {
     expect(ops.snapShift([98], [0, 100, 220], 4)).toEqual({ shift: 2, target: 100 });
@@ -251,7 +281,7 @@ describe("random operation sequences (property test)", () => {
         const ids = doc.clips.map((c) => c.id);
         const id = pick(ids);
         const frame = Math.floor(rand() * (ops.timelineLength(doc) + 40));
-        const which = Math.floor(rand() * 16);
+        const which = Math.floor(rand() * 17);
         let r: ops.Result;
         let name: string;
         switch (which) {
@@ -269,6 +299,7 @@ describe("random operation sequences (property test)", () => {
           case 9: name = `range ${frame}`; r = ops.deleteRange(doc, frame, frame + 1 + Math.floor(rand() * 80)); break;
           case 10: name = `dup ${id}`; r = ops.duplicateClip(doc, id); break;
           case 11: name = `reorder ${id}`; r = ops.reorderClip(doc, id, rand() < 0.5 ? -1 : 1); break;
+          case 11 + 5: name = `insert`; r = ops.insertAsset(doc, asset("v", rand() < 0.5 ? "video" : "audio", 200 + Math.floor(rand() * 300)), frame); break;
           case 12: name = `addTrack`; r = ops.addTrack(doc, rand() < 0.5 ? "video" : "audio"); break;
           case 13: name = `removeTrack`; r = ops.removeTrack(doc, pick(doc.tracks).id); break;
           case 14: name = `picture ${id}`; r = ops.setPicture(doc, id, { scale: rand() * 3, x: rand() * 6 - 3, y: rand() * 6 - 3, opacity: rand() }); break;

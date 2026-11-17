@@ -10,7 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 from app.api.store import ProjectStore
 from app.config import Settings
 from app.pipeline.caption_style import CaptionStyle
-from app.pipeline.runner import Pipeline, Providers, credits_text
+from app.pipeline.runner import Pipeline, Providers
 from app.timeline import convert
 from app.timeline.render import RenderUnsupported, render_timeline
 
@@ -88,7 +88,7 @@ class JobRunner:
                 tl = convert.load(d)
                 if tl is None:
                     raise ValueError("The timeline is missing")
-                (d / "CREDITS.txt").write_text(credits_text(convert.scenes_from_timeline(tl)[1]), "utf-8")
+                (d / "CREDITS.txt").write_text(convert.credits_from_timeline(tl), "utf-8")
                 render_timeline(tl, d, settings, quality="final" if export else "preview", aspect=export_aspect or info.aspect, out=out,
                                 captions=opts.get("captions", True), normalize=opts.get("normalize", True),
                                 lufs=opts.get("lufs") if opts.get("lufs") is not None else settings.target_lufs, progress=progress)

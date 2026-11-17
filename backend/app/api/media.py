@@ -18,15 +18,22 @@ from pathlib import Path
 from fastapi import APIRouter, FastAPI, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse
-from pydantic import BaseModel
+from typing import Literal
+
+from pydantic import BaseModel, Field
 
 from app.api.store import ProjectInfo, ProjectNotFound, ProjectStore
 from app.api.timeline import load_or_build
 from app.config import Settings
-from app.media import derive, ingest
+from app.media import derive, ffmpeg, ingest
 from app.media.ingest import Limits, MediaInfo, MediaRejected
 from app.timeline import convert
-from app.timeline.models import Asset, Timeline
+from app.api.scenes import AssetView
+from app.media.cache import MediaCache
+from app.models import MediaAsset
+from app.providers.media_search import create_search
+from app.providers.media_search.openverse import OpenverseSearch
+from app.timeline.models import Asset, AssetOut, Timeline
 
 log = logging.getLogger("avc.media")
 CHUNK = 1024 * 1024
@@ -165,6 +172,10 @@ def _title(filename: str) -> str:
     return (re.sub(r"[^\w\- .()]+", "", Path(filename or "media").stem).strip()[:80]) or "media"
 
 
+class BinAdd(BaseModel):
+    asset_id: str = Field(..., max_length=200)
+
+
 def build_router(store: ProjectStore, settings: Settings, worker: MediaWorker) -> APIRouter:
     router = APIRouter(prefix="/api/projects/{pid}")
     limits = Limits(settings.max_media_minutes, settings.max_image_megapixels, settings.max_media_fps)
@@ -266,6 +277,76 @@ def build_router(store: ProjectStore, settings: Settings, worker: MediaWorker) -
             raise
         worker.ensure(final)
         return view(asset)
+
+    # ---- stock media for the bin (search, then add to the project); the browser only ever names an id this server offered
+
+    candidates_file = lambda pid: store.path(pid) / "bin_candidates.json"  # noqa: E731
+
+    @router.get("/bin/search", response_model=list[AssetView])
+    async def bin_search(pid: str, q: str = Query(..., min_length=1, max_length=100),
+                         kind: Literal["video", "image", "music", "sound"] = "video") -> list[AssetView]:
+        info = project(pid)
+        query = " ".join(q.split())
+        if not query:
+            raise HTTPException(422, "Type what to look for")
+        orientation = "portrait" if info.aspect == "9:16" else "landscape"
+
+        def search() -> list[MediaAsset]:
+            if kind in ("music", "sound"):
+                return OpenverseSearch().search_audio(query, "music" if kind == "music" else "sound_effect", limit=12)
+            return create_search(settings).search(query, kind, orientation=orientation, limit=12)
+
+        try:
+            found = await run_in_threadpool(search)
+        except Exception as e:  # noqa: BLE001 - the user needs a sentence, the log has the detail
+            log.warning("bin search failed: %s", type(e).__name__)
+            raise HTTPException(502, "The stock media source could not be reached. Try again in a moment.") from None
+        f = candidates_file(pid)
+        try:
+            stored = json.loads(f.read_text("utf-8")) if f.is_file() else {}
+        except ValueError:
+            stored = {}
+        stored.update({a.id: a.model_dump() for a in found})
+        if len(stored) > 400:  # keep the newest
+            stored = dict(list(stored.items())[-400:])
+        f.write_text(json.dumps(stored), "utf-8")
+        return [AssetView.of(a) for a in found]
+
+    @router.post("/bin/add", status_code=201, response_model=AssetOut)
+    async def bin_add(pid: str, body: BinAdd) -> AssetOut:
+        info = project(pid)
+        f = candidates_file(pid)
+        try:
+            stored = json.loads(f.read_text("utf-8")) if f.is_file() else {}
+        except ValueError:
+            stored = {}
+        raw = stored.get(body.asset_id)
+        if raw is None:
+            raise HTTPException(400, "That item was not offered by a search. Search again and pick one from the results.")
+        media = MediaAsset.model_validate(raw)
+        with store.lock:
+            existing = timeline_of(pid, info).assets.get(media.id)
+        if existing is not None:
+            return AssetOut.of(existing)
+
+        def fetch() -> tuple[Path, float | None]:
+            local = MediaCache(Path(settings.work_dir) / "cache" / "media").get(media)
+            return local, (ffmpeg.probe_duration(local) if media.kind != "image" else None)
+
+        try:
+            local, seconds = await run_in_threadpool(fetch)
+        except Exception as e:  # noqa: BLE001
+            log.warning("bin add failed: %s", type(e).__name__)
+            raise HTTPException(502, "That file could not be downloaded. Pick another one.") from None
+        with store.lock:
+            tl = timeline_of(pid, info)
+            if media.id not in tl.assets:
+                frames = None if seconds is None else max(1, round(seconds * tl.fps))
+                tl.assets[media.id] = convert.asset_from_media(media, str(local), tl.fps, frames)  # append-only: no new revision
+                convert.save(store.path(pid), tl)
+            asset = tl.assets[media.id]
+        worker.ensure(local)
+        return AssetOut.of(asset)
 
     @router.delete("/media", status_code=204)
     def delete_media(pid: str, asset: str = Query(..., max_length=200)) -> None:

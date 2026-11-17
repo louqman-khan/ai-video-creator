@@ -7,10 +7,11 @@ import type { Doc } from "../timeline/ops";
 import { timelineLength } from "../timeline/ops";
 import { audioAt, captionAt, layersAt, type Layer } from "./plan";
 
+/** Addresses of the prepared files; null while a file is not ready yet (nothing is requested until it is). */
 export interface Urls {
-  video(assetId: string): string;
-  image(assetId: string): string;
-  audio(assetId: string): string;
+  video(assetId: string): string | null;
+  image(assetId: string): string | null;
+  audio(assetId: string): string | null;
 }
 
 const DRIFT = 0.15;     // seconds a playing video or audio may be off before it is corrected
@@ -73,6 +74,12 @@ export class LiveEngine extends EventTarget {
     this.emit("pause");
   }
 
+  /** Files became ready (or not): look again at what can be shown and heard. */
+  refresh(): void {
+    this.draw();
+    this.syncMedia(true);
+  }
+
   /** The document changed (an edit, undo, a track muted): show it. */
   setDoc(doc: Doc): void {
     this.doc = doc;
@@ -113,14 +120,16 @@ export class LiveEngine extends EventTarget {
   };
 
   // ---- media elements
-  private videoFor(clipId: string, assetId: string): HTMLVideoElement {
+  private videoFor(clipId: string, assetId: string): HTMLVideoElement | null {
     let v = this.videos.get(clipId);
     if (!v) {
+      const url = this.urls.video(assetId);
+      if (!url) return null;
       v = document.createElement("video");
       v.muted = true;
       v.playsInline = true;
       v.preload = "auto";
-      v.src = this.urls.video(assetId);
+      v.src = url;
       v.addEventListener("seeked", () => !this.disposed && this.draw());
       v.addEventListener("loadeddata", () => !this.disposed && this.draw());
       this.videos.set(clipId, v);
@@ -128,12 +137,14 @@ export class LiveEngine extends EventTarget {
     }
     return v;
   }
-  private imageFor(assetId: string): HTMLImageElement {
+  private imageFor(assetId: string): HTMLImageElement | null {
     let im = this.images.get(assetId);
     if (!im) {
+      const url = this.urls.image(assetId);
+      if (!url) return null;
       im = new Image();
       im.addEventListener("load", () => !this.disposed && this.draw());
-      im.src = this.urls.image(assetId);
+      im.src = url;
       this.images.set(assetId, im);
     }
     return im;
@@ -148,12 +159,14 @@ export class LiveEngine extends EventTarget {
     if (this.audioCtx || typeof AudioContext === "undefined") return;
     this.audioCtx = new AudioContext();
   }
-  private voiceFor(clipId: string, assetId: string): AudioVoice {
+  private voiceFor(clipId: string, assetId: string): AudioVoice | null {
     let v = this.voices.get(clipId);
     if (!v) {
+      const url = this.urls.audio(assetId);
+      if (!url) return null;
       const el = new Audio();
       el.preload = "auto";
-      el.src = this.urls.audio(assetId);
+      el.src = url;
       v = { el, gain: null };
       if (this.audioCtx) {
         const node = this.audioCtx.createMediaElementSource(el);
@@ -171,6 +184,7 @@ export class LiveEngine extends EventTarget {
     for (const l of layers) {
       if (l.clip.kind !== "video" || !l.clip.asset) continue;
       const v = this.videoFor(l.clip.id, l.clip.asset);
+      if (!v) continue;
       if (force || Math.abs(v.currentTime - l.time) > (this.playing ? DRIFT : 0.5 / this.doc.fps)) {
         try { v.currentTime = l.time; } catch { /* not loaded yet: loadeddata draws it */ }
       }
@@ -184,6 +198,7 @@ export class LiveEngine extends EventTarget {
     for (const a of sounding) {
       if (!a.clip.asset) continue;
       const voice = this.voiceFor(a.clip.id, a.clip.asset);
+      if (!voice) continue;
       if (voice.gain) voice.gain.gain.value = a.gain;
       else voice.el.volume = Math.min(1, a.gain);
       if (force || Math.abs(voice.el.currentTime - a.time) > DRIFT) {
@@ -217,11 +232,11 @@ export class LiveEngine extends EventTarget {
     let h: number;
     if (l.clip.kind === "video") {
       const v = this.videoFor(l.clip.id, l.clip.asset);
-      if (v.readyState < 2 || !v.videoWidth) return;
+      if (!v || v.readyState < 2 || !v.videoWidth) return;
       src = v; w = v.videoWidth; h = v.videoHeight;
     } else {
       const im = this.imageFor(l.clip.asset);
-      if (!im.complete || !im.naturalWidth) return;
+      if (!im || !im.complete || !im.naturalWidth) return;
       src = im; w = im.naturalWidth; h = im.naturalHeight;
     }
     const s = Math.max(W / w, H / h) * l.zoom * l.scale; // "cover", then the picture-in-picture size, like the renderer

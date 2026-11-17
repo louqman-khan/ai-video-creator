@@ -17,7 +17,7 @@ def _ext(asset: MediaAsset) -> str:
     suffix = Path(urlparse(asset.url).path).suffix.lower()
     if re.fullmatch(r"\.[a-z0-9]{2,5}", suffix):
         return suffix
-    return ".mp4" if asset.kind == "video" else ".jpg"
+    return {"video": ".mp4", "audio": ".mp3"}.get(asset.kind, ".jpg")
 
 
 class MediaCache:

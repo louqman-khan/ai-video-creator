@@ -1,4 +1,4 @@
-import type { Asset, Attribution, CaptionsView, CaptionStyle, FilmMeta, MediaView, Peaks, Project, Scene, TimelineView } from "./types";
+import type { Asset, Attribution, CaptionsView, CaptionStyle, FilmMeta, MediaView, Peaks, Project, Scene, TimelineAsset, TimelineView } from "./types";
 
 export class ApiError extends Error {
   constructor(
@@ -100,6 +100,21 @@ export const api = {
     }),
   /** Re-render the preview from the saved timeline (several requests while one runs are merged into one). */
   renderTimeline: (id: string) => request<Project>(`/api/projects/${encodeURIComponent(id)}/timeline/render`, { method: "POST" }),
+  /** Stock media for the bin. The server keeps the download addresses; the browser only gets what it may show. */
+  binSearch: (id: string, q: string, kind: "video" | "image" | "music" | "sound") =>
+    request<Asset[]>(`/api/projects/${encodeURIComponent(id)}/bin/search?q=${encodeURIComponent(q)}&kind=${kind}`),
+  /** Downloads an item the server offered into the project; answers with the asset as the timeline knows it. */
+  binAdd: (id: string, assetId: string) =>
+    request<TimelineAsset>(`/api/projects/${encodeURIComponent(id)}/bin/add`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ asset_id: assetId }),
+    }),
+  uploadMedia: (id: string, file: File, title: string) => {
+    const form = new FormData();
+    form.append("file", file);
+    form.append("rights_confirmed", "true");
+    form.append("title", title);
+    return request<MediaView>(`/api/projects/${encodeURIComponent(id)}/media`, { method: "POST", body: form });
+  },
   getMedia: (id: string) => request<MediaView[]>(`/api/projects/${encodeURIComponent(id)}/media`),
   getPeaks: (id: string, asset: string) =>
     request<Peaks>(`/api/projects/${encodeURIComponent(id)}/media/peaks?asset=${encodeURIComponent(asset)}`),

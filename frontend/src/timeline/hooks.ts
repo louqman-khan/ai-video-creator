@@ -101,6 +101,8 @@ export function useTimelineData(projectId: string, version: string, enabled: boo
   const [timeline, setTimeline] = useState<TimelineView | null>(null);
   const [media, setMedia] = useState<Record<string, MediaView>>({});
   const [error, setError] = useState<string | null>(null);
+  const [mediaTick, setMediaTick] = useState(0);
+  const refreshMedia = useCallback(() => setMediaTick((n) => n + 1), []);
 
   useEffect(() => {
     if (!enabled) return;
@@ -134,10 +136,10 @@ export function useTimelineData(projectId: string, version: string, enabled: boo
       live = false;
       if (timer) clearTimeout(timer);
     };
-  }, [projectId, version, enabled, loaded, pollMs]);
+  }, [projectId, version, enabled, loaded, pollMs, mediaTick]);
 
   const preparing = Object.values(media).filter((m) => m.status === "pending" || m.status === "processing").length;
-  return { timeline, media, error, preparing };
+  return { timeline, media, error, preparing, refreshMedia };
 }
 
 /** Lazily fetches waveform peaks / filmstrip metadata for every asset once it is prepared (each at most once). */

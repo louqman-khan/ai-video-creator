@@ -292,6 +292,48 @@ describe("Timeline editing", () => {
   });
 });
 
+describe("Media bin", () => {
+  const song = { id: "openverse:s1", source: "openverse", kind: "audio" as const, thumb_url: "", page_url: "", title: "Calm piano", width: 0, height: 0, duration: 4, license: "CC BY 4.0", license_url: "", author: "Zed", attribution: "", attribution_required: true };
+  const asAsset = { ...song, license_url: "" };
+
+  it("searches stock music, adds it at the playhead on a new audio track, and shows the required credit", async () => {
+    const search = vi.spyOn(api, "binSearch").mockResolvedValue([song]);
+    const add = vi.spyOn(api, "binAdd").mockResolvedValue(asAsset as never);
+    vi.spyOn(api, "saveTimeline").mockResolvedValue(timeline({ rev: 2 }));
+    vi.spyOn(api, "renderTimeline").mockResolvedValue({ id: "p1" } as never);
+    const { container } = await open();
+    await userEvent.click(screen.getByRole("button", { name: "Add media…" }));
+    await userEvent.click(screen.getByRole("tab", { name: "Stock media" }));
+    await userEvent.type(screen.getByLabelText("Search"), "calm piano");
+    await userEvent.selectOptions(screen.getByLabelText("Media type"), "music");
+    await userEvent.click(screen.getByRole("button", { name: "Search" }));
+    expect(search).toHaveBeenCalledWith("p1", "calm piano", "music");
+    expect(await screen.findByText(/by Zed/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Add at playhead" }));
+    await waitFor(() => expect(add).toHaveBeenCalledWith("p1", "openverse:s1"));
+    await waitFor(() => expect(container.querySelectorAll('[data-track="A2"] [data-clip]').length).toBe(1));
+  });
+
+  it("an upload needs the rights confirmation", async () => {
+    const upload = vi.spyOn(api, "uploadMedia").mockResolvedValue({ asset_id: "upload:1" } as never);
+    await open();
+    await userEvent.click(screen.getByRole("button", { name: "Add media…" }));
+    await userEvent.click(screen.getByRole("tab", { name: "Upload" }));
+    await userEvent.upload(screen.getByLabelText("File to upload"), new File(["x"], "a.mp3", { type: "audio/mpeg" }));
+    const go = screen.getByRole("button", { name: /Upload and add/ });
+    expect(go).toBeDisabled();
+    await userEvent.click(screen.getByLabelText(/I have the right/));
+    expect(go).toBeEnabled();
+    expect(upload).not.toHaveBeenCalled();
+  });
+
+  it("lists the project's own files", async () => {
+    await open();
+    await userEvent.click(screen.getByRole("button", { name: "Add media…" }));
+    expect(within(screen.getByRole("list", { name: "Files in this project" })).getAllByRole("listitem")).toHaveLength(3);
+  });
+});
+
 describe("useTimelineData", () => {
   it("polls the media until everything is prepared, then stops", async () => {
     const get = vi.spyOn(api, "getMedia")

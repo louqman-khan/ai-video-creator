@@ -143,3 +143,12 @@ input[type="color"] { width: 100%; height: 38px; padding: 2px; border: 1px solid
 .insp-row > label, .insp-row > span:first-child { width: 70px; font-size: .85rem; }
 .insp-row input[type=range] { flex: 1; min-width: 120px; max-width: 320px; }
 .insp-row output { width: 52px; font-variant-numeric: tabular-nums; font-size: .85rem; }
+.bin { margin: 8px 0; }
+.bin-tabs { display: flex; gap: 4px; margin: 8px 0; }
+.bin-tabs [aria-selected="true"] { outline: 2px solid var(--accent); }
+.bin-search { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 6px 0; }
+.bin-search input[type=text], .bin-search input:not([type]) { min-width: 220px; }
+.bin-list { list-style: none; margin: 6px 0; padding: 0; max-height: 280px; overflow: auto; }
+.bin-list li { display: flex; gap: 8px; align-items: center; padding: 4px 0; border-top: 1px solid var(--line); }
+.bin-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bin-thumb { width: 64px; height: 36px; object-fit: cover; border-radius: 4px; background: #000; }

@@ -4,6 +4,7 @@ import type { FilmMeta, MediaView, Peaks, Project, TimelineAsset, TimelineClip, 
 import { Filmstrip } from "./Filmstrip";
 import { useDerived, useFrame, usePlayhead, useSession, useTimelineData, type PlayheadStore, type Transport } from "./hooks";
 import { Inspector } from "./Inspector";
+import { MediaBin } from "./MediaBin";
 import * as ops from "./ops";
 import {
   clampPps, displayOrder, fitPps, formatTimecode, frameToPx, isVisible, MAX_PPS, MIN_PPS, pxToFrame, rulerTicks, zoomScrollLeft,
@@ -23,6 +24,8 @@ interface Props {
   video: Transport | null;
   /** the document being edited, reported whenever it changes (the live preview draws it) */
   onDoc?: (doc: ops.Doc) => void;
+  /** the preparation state of every asset, whenever it changes */
+  onMedia?: (media: Record<string, MediaView>) => void;
   /** called with the project whenever an edit makes the server start (or queue) a new preview render */
   onProject?: (p: Project) => void;
 }
@@ -34,12 +37,13 @@ const labelOf = (c: TimelineClip, a: TimelineAsset | undefined): string => {
   return a?.title || c.id;
 };
 
-export function Timeline({ projectId, version, video, onProject, onDoc }: Props) {
-  const { timeline, media, error, preparing } = useTimelineData(projectId, version, true);
+export function Timeline({ projectId, version, video, onProject, onDoc, onMedia }: Props) {
+  const { timeline, media, error, preparing, refreshMedia } = useTimelineData(projectId, version, true);
   const { peaks, film } = useDerived(projectId, media);
+  useEffect(() => { onMedia?.(media); }, [media, onMedia]);
   if (error) return <p className="alert" role="alert">{error}</p>;
   if (!timeline) return <p className="muted">Loading the timeline…</p>;
-  return <TimelineBody projectId={projectId} timeline={timeline} media={media} preparing={preparing} peaks={peaks} film={film} video={video} onProject={onProject} onDoc={onDoc} />;
+  return <TimelineBody projectId={projectId} timeline={timeline} media={media} preparing={preparing} peaks={peaks} film={film} video={video} onProject={onProject} onDoc={onDoc} refreshMedia={refreshMedia} />;
 }
 
 interface BodyProps {
@@ -52,9 +56,10 @@ interface BodyProps {
   video: Transport | null;
   onDoc?: (doc: ops.Doc) => void;
   onProject?: (p: Project) => void;
+  refreshMedia: () => void;
 }
 
-function TimelineBody({ projectId, timeline, media, preparing, peaks, film, video, onProject, onDoc }: BodyProps) {
+function TimelineBody({ projectId, timeline, media, preparing, peaks, film, video, onProject, onDoc, refreshMedia }: BodyProps) {
   const { session, snap } = useSession(timeline, (body) => api.saveTimeline(projectId, body));
   const doc = snap.doc;
   const fps = doc.fps;
@@ -367,6 +372,8 @@ function TimelineBody({ projectId, timeline, media, preparing, peaks, film, vide
       </div>
 
       <p className="small tl-notice" role="status">{notice}</p>
+      <MediaBin projectId={projectId} doc={doc} media={media} onInsert={(a, title) => run(ops.insertAsset(doc, a, head.get(), title))}
+        onAdded={refreshMedia} onNotice={setNotice} />
       {chosen && <Inspector clip={chosen} doc={doc} onApply={run} />}
       {chosen ? <ClipInfo clip={chosen} asset={chosen.asset ? doc.assets[chosen.asset] : undefined} fps={fps} /> : (
         <p className="muted small">Click the ruler or a track to move the playhead. Drag a clip to move it, drag its edges to trim, press S to split at the playhead, Delete to remove, Ctrl/⌘+Z to undo.</p>

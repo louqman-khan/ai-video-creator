@@ -143,6 +143,10 @@ def build_router(store: ProjectStore, jobs: JobRunner, settings: Settings) -> AP
     def attributions(pid: str) -> list[AttributionView]:
         """Unique visuals of the project with license and attribution (source of the credits panel)."""
         project(pid)
+        tl = convert.load(store.path(pid)) if convert.has_edits(store.path(pid)) else None
+        if tl is not None:  # an edited timeline: what its clips really use, music included
+            used = [AttributionView(asset=AssetView.of(a), scenes=sorted(set(s))) for a, s in convert.used_media(tl)]
+            return sorted(used, key=lambda v: (not v.asset.attribution_required, v.scenes[0] if v.scenes else 10**6))
         _, picks = load_scenes(store.path(pid))
         seen: dict[str, AttributionView] = {}
         for p in picks:

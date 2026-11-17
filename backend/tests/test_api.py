@@ -1052,3 +1052,56 @@ def test_a_never_edited_timeline_is_not_touchable_during_a_render(env, monkeypat
         assert c.post(f"/api/projects/{p['id']}/timeline/render").status_code == 409
         release.set()
         wait_done(c, p["id"])
+
+
+def test_stock_music_is_searched_added_credited_and_never_trusted_from_the_browser(env, monkeypatch):
+    from urllib.parse import quote
+
+    from app.models import MediaAsset
+    from app.providers.media_search.openverse import OpenverseSearch
+
+    settings, _, tone, _ = env
+    song = MediaAsset(id="openverse:song-1", source="openverse", kind="audio", url=tone.resolve().as_uri(), duration=2.0, title="Calm song",
+                      license="CC BY 4.0", license_url="https://cc/by", author="Zed", attribution='"Calm song" by Zed is licensed under CC BY 4.0',
+                      attribution_required=True)
+    monkeypatch.setattr(OpenverseSearch, "search_audio", lambda self, q, category="music", limit=12: [song])
+    with client(env) as c:
+        pid = finished_project(c, tone)
+        r = c.get(f"/api/projects/{pid}/bin/search", params={"q": "calm", "kind": "music"})
+        assert r.status_code == 200 and r.json()[0]["id"] == "openverse:song-1"
+        assert "url" not in r.json()[0] and tone.name not in r.text                         # no download address for the browser
+        assert c.post(f"/api/projects/{pid}/bin/add", json={"asset_id": "openverse:never-offered"}).status_code == 400
+        assert c.post(f"/api/projects/{pid}/bin/add", json={"asset_id": "file:///etc/passwd"}).status_code == 400
+        a = c.post(f"/api/projects/{pid}/bin/add", json={"asset_id": "openverse:song-1"})
+        assert a.status_code == 201 and a.json()["kind"] == "audio" and a.json()["duration"] > 0
+        assert "path" not in a.json() and "url" not in a.json()
+        assert c.post(f"/api/projects/{pid}/bin/add", json={"asset_id": "openverse:song-1"}).json() == a.json()   # adding twice is harmless
+        tl = c.get(f"/api/projects/{pid}/timeline").json()
+        assert tl["rev"] == 1 and "openverse:song-1" in tl["assets"]                        # append-only: nobody's edit conflicts
+        # use it on a new audio track, then it is credited
+        tl["tracks"].append({"id": "A2", "kind": "audio", "name": "Music", "muted": False, "locked": False, "duck": True})
+        tl["clips"].append({**tl["clips"][0], "id": "music", "track": "A2", "kind": "audio", "asset": "openverse:song-1", "start": 0, "duration": 30,
+                            "in_point": 0, "loop": False, "volume": 0.3, "fade_in": 0, "fade_out": 0, "text": None, "words": [], "meta": {}, "effects": []})
+        assert put_tl(c, pid, tl).status_code == 200, put_tl(c, pid, tl).text
+        att = c.get(f"/api/projects/{pid}/attributions").json()
+        assert [x["asset"]["id"] for x in att if x["asset"]["kind"] == "audio"] == ["openverse:song-1"]
+        assert c.post(f"/api/projects/{pid}/timeline/render").status_code == 202
+        assert wait_done(c, pid)["status"] == "done"
+        text = c.get(f"/api/projects/{pid}/credits").text
+        assert "Calm song" in text and "CC BY 4.0" in text
+
+
+def test_openverse_audio_parsing_keeps_only_web_links_and_accepts_streams_without_extension():
+    import httpx
+    import respx
+
+    from app.providers.media_search.openverse import OpenverseSearch
+
+    with respx.mock:
+        respx.get("https://api.openverse.org/v1/audio/").mock(return_value=httpx.Response(200, json={"results": [
+            {"id": "a", "url": "https://x/a.mp3", "duration": 125000, "license": "by", "license_version": "4.0", "creator": "Zed", "title": "A"},
+            {"id": "b", "url": "ftp://x/b", "license": "cc0", "license_version": "1.0"},
+            {"id": "c", "url": "https://x/c?trackid=3&format=mp32", "license": "cc0", "license_version": "1.0", "duration": None}]}))
+        res = OpenverseSearch().search_audio("rain", "music")
+    assert [r.id for r in res] == ["openverse:a", "openverse:c"]
+    assert res[0].duration == 125.0 and res[0].kind == "audio" and res[0].attribution_required and not res[1].attribution_required
