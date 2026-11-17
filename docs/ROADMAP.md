@@ -107,7 +107,7 @@ Approved plan: `docs/STEP4_PLAN.md` (decisions D1–D7, phases, tests, risks). O
 
 - [~] Tauri desktop app (run processing locally on the user's machine) — built and verified on macOS; Windows/Linux written but never run (docs/desktop.md, docs/windows.md)
 - [ ] Windows: run the GitHub Actions matrix or a Windows PC and fix what fails (docs/windows.md)
-- [ ] User accounts, cloud storage (Cloudflare R2), deployment
+- [ ] User accounts, cloud storage (Cloudflare R2), deployment — **planned as Step 6 in `docs/STEP6_PLAN.md` (hosted website + desktop app); waiting for approval**
 - [ ] AI-generated images/clips provider
 
 ---
