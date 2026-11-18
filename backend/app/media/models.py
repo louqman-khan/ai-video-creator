@@ -14,6 +14,8 @@ RNNOISE_URL = "https://raw.githubusercontent.com/GregorR/rnnoise-models/master/c
 CLIP_BASE = "https://huggingface.co/Xenova/clip-vit-base-patch32/resolve/main/"
 CLIP_FILES = (("onnx/vision_model_quantized.onnx", "vision_model_quantized.onnx"), ("onnx/text_model_quantized.onnx", "text_model_quantized.onnx"),
               ("tokenizer.json", "tokenizer.json"), ("preprocessor_config.json", "preprocessor_config.json"))
+FACE_URL = "https://github.com/Linzaer/Ultra-Light-Fast-Generic-Face-Detector-1MB/raw/master/models/onnx/version-RFB-320.onnx"  # MIT licence
+FACE_SHA256 = "34cd7e60aeff28744c657de7a3dc64e872d506741de66987f3426f2b79f88017"
 WHISPER_SIZES_MB = {"tiny": 75, "base": 145, "small": 465, "medium": 1500, "large-v3": 3000}
 
 Progress = Callable[[str], None]
@@ -39,6 +41,30 @@ def rnnoise_ready(s: Settings) -> bool:
 
 def clip_ready(s: Settings) -> bool:
     return all((Path(s.clip_dir) / name).is_file() for _, name in CLIP_FILES[:3])
+
+
+def face_path(s: Settings) -> Path:
+    return Path(s.models_dir) / "face" / "version-RFB-320.onnx"
+
+
+def face_ready(s: Settings) -> bool:
+    return face_path(s).is_file()
+
+
+def fetch_face(s: Settings, say: Progress = lambda m: None) -> Path:
+    import hashlib
+
+    dst = face_path(s)
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    say("Downloading the face-finding model (1 MB) ...")
+    with make_client() as c:
+        r = c.get(FACE_URL, follow_redirects=True)
+        if r.is_error:
+            raise ModelError(f"Download failed: HTTP {r.status_code}")
+    if hashlib.sha256(r.content).hexdigest() != FACE_SHA256:
+        raise ModelError("The downloaded face model is not the expected file. Not using it.")
+    dst.write_bytes(r.content)
+    return dst
 
 
 def fetch_rnnoise(s: Settings, say: Progress = lambda m: None) -> Path:

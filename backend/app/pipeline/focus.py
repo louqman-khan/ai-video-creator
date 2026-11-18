@@ -19,8 +19,25 @@ from app.media import ffmpeg  # noqa: F401  (puts the bundled ffmpeg on PATH)
 SMALL = 96
 
 
-def focus_of_image(img: Image.Image) -> tuple[float, float]:
-    """(x, y) as fractions of the picture (0..1)."""
+def focus_of_image(img: Image.Image, face_model: Path | None = None) -> tuple[float, float]:
+    """(x, y) as fractions of the picture (0..1). Faces win when the face model is installed and one is found; otherwise saliency."""
+    return focus_and_method(img, face_model)[0]
+
+
+def focus_and_method(img: Image.Image, face_model: Path | None = None) -> tuple[tuple[float, float], str]:
+    if face_model is not None and face_model.is_file():
+        try:
+            from app.pipeline import faces
+
+            found = faces.focus_from_faces(faces.detect(img, face_model))
+            if found is not None:
+                return found, "faces"
+        except Exception:  # noqa: BLE001  a broken model file must not break the suggestion
+            pass
+    return _saliency(img), "saliency"
+
+
+def _saliency(img: Image.Image) -> tuple[float, float]:
     w, h = img.size
     gray = img.convert("L").resize((SMALL, max(8, round(SMALL * h / w))), Image.BILINEAR)
     a = np.asarray(gray, dtype=np.float64) / 255.0
@@ -44,17 +61,17 @@ def focus_of_image(img: Image.Image) -> tuple[float, float]:
     return round(min(0.95, max(0.05, fx)), 3), round(min(0.95, max(0.05, fy)), 3)
 
 
-def focus_of_file(path: Path, kind: str, seconds: float | None = None) -> tuple[float, float] | None:
-    """The focus of an image file, or of a video (looked at a quarter of the way in). None when the file cannot be read."""
+def focus_of_file(path: Path, kind: str, seconds: float | None = None, face_model: Path | None = None) -> tuple[tuple[float, float], str] | None:
+    """((x, y), method) for an image file, or for a video (looked at a quarter of the way in). None when the file cannot be read."""
     try:
         if kind == "image":
             with Image.open(path) as im:
-                return focus_of_image(im.convert("RGB"))
+                return focus_and_method(im.convert("RGB"), face_model)
         at = max(0.0, (seconds or 0.0) * 0.25)
         p = subprocess.run(["ffmpeg", "-v", "error", "-ss", f"{at:.2f}", "-i", str(path), "-frames:v", "1", "-vf", "scale=320:-2", "-f", "image2pipe", "-vcodec", "png", "-"],
                            capture_output=True, timeout=60)
         if p.returncode != 0 or not p.stdout:
             return None
-        return focus_of_image(Image.open(io.BytesIO(p.stdout)).convert("RGB"))
+        return focus_and_method(Image.open(io.BytesIO(p.stdout)).convert("RGB"), face_model)
     except Exception:  # noqa: BLE001  an unreadable picture just has no focus (it stays centred)
         return None

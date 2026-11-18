@@ -29,4 +29,4 @@ While dragging, the live preview shows the draft; releasing is one undo step.
 ## Focus (smart crop, task 1.9)
 `Clip.focus` (x, y as 0..1 on the picture) centres the crop of a picture that fills the frame on that point instead of the middle (window kept inside the picture). It is ignored by
 the Fit modes and by Ken Burns zoom. Set it in the inspector: **Pick on the preview** (click what must stay in view), **Suggest** (spectral-residual saliency, `pipeline/focus.py`;
-a suggestion only: it finds the most conspicuous thing, not faces, and was a weak helper on real stock footage) or **Centre**. Never applied automatically.
+a suggestion only. When the small face model is installed (`avc fetch-models --faces`, or Setup) the suggestion centres on the faces found (RFB-320 ONNX, MIT, 1.2 MB; threshold 0.95, bigger faces weigh more) and otherwise on the most conspicuous thing, which was a weak helper on real stock footage) or **Centre**. Never applied automatically.

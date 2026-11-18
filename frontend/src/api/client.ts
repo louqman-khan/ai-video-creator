@@ -91,7 +91,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 export interface SetupStatus {
   ffmpeg: boolean;
   keys: { gemini_api_key: boolean; pixabay_api_key: boolean };
-  models: { whisper: boolean; whisper_model: string; rnnoise: boolean; clip: boolean };
+  models: { whisper: boolean; whisper_model: string; rnnoise: boolean; clip: boolean; face?: boolean };
   whisper_sizes_mb: Record<string, number>;
   download: { running: boolean; message: string; error: string | null };
   data_dir: string | null;
@@ -159,7 +159,7 @@ export const api = {
   },
   /** A suggestion for where the crop of a picture to the frame should be centred (looks at the picture; changes nothing). */
   suggestFocus: (id: string, asset: string) =>
-    request<{ x: number; y: number }>(`/api/projects/${encodeURIComponent(id)}/media/focus?asset=${encodeURIComponent(asset)}`),
+    request<{ x: number; y: number; method?: "faces" | "saliency" }>(`/api/projects/${encodeURIComponent(id)}/media/focus?asset=${encodeURIComponent(asset)}`),
   getMedia: (id: string) => request<MediaView[]>(`/api/projects/${encodeURIComponent(id)}/media`),
   getPeaks: (id: string, asset: string) =>
     request<Peaks>(`/api/projects/${encodeURIComponent(id)}/media/peaks?asset=${encodeURIComponent(asset)}`),

@@ -70,7 +70,7 @@ def build_router(settings: Settings) -> APIRouter:
             "ffmpeg": ff,
             "keys": {k: bool(getattr(settings, k)) for k in KEYS},
             "models": {"whisper": models.whisper_ready(settings.whisper_model), "whisper_model": settings.whisper_model,
-                       "rnnoise": models.rnnoise_ready(settings), "clip": models.clip_ready(settings)},
+                       "rnnoise": models.rnnoise_ready(settings), "clip": models.clip_ready(settings), "face": models.face_ready(settings)},
             "whisper_sizes_mb": models.WHISPER_SIZES_MB,
             "download": dict(state),
             "data_dir": str(config.DATA) if config.DATA else None,
@@ -112,6 +112,7 @@ def build_router(settings: Settings) -> APIRouter:
             say = lambda m: state.update(message=m)  # noqa: E731
             try:
                 models.fetch_rnnoise(settings, say)
+                models.fetch_face(settings, say)
                 if body.clip:
                     models.fetch_clip(settings, say)
                 if not models.whisper_ready(size):

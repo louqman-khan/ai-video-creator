@@ -216,3 +216,37 @@ def test_focus_finds_the_conspicuous_thing_and_survives_unreadable_files(tmp_pat
     bad = tmp_path / "bad.png"
     bad.write_bytes(b"not a picture")
     assert focus_of_file(bad, "image") is None and focus_of_file(tmp_path / "missing.mp4", "video", 3) is None
+
+
+def test_face_focus_uses_detected_faces_and_falls_back_to_saliency(tmp_path, monkeypatch):
+    import numpy as np
+    from PIL import Image
+
+    from app.pipeline import faces, focus
+
+    # decode: low scores are dropped, overlapping boxes merged, the best one kept
+    scores = np.array([[[0.0, 0.99], [0.0, 0.97], [0.0, 0.50], [0.0, 0.99]]])
+    boxes = np.array([[[0.10, 0.10, 0.30, 0.40], [0.11, 0.10, 0.31, 0.41], [0.5, 0.5, 0.6, 0.6], [0.70, 0.20, 0.90, 0.50]]])
+    found = faces.decode(scores, boxes)
+    assert len(found) == 2 and found[0][4] == pytest_approx(0.99)
+    # a big face outweighs a small one; no faces -> None
+    fx, fy = faces.focus_from_faces([(0.1, 0.1, 0.5, 0.7, 0.99), (0.8, 0.1, 0.85, 0.2, 0.99)])
+    assert fx < 0.4 and 0.3 < fy < 0.5
+    assert faces.focus_from_faces([]) is None
+    # focus_of_image: faces win when the model finds one, saliency otherwise (also when the model file is broken)
+    model = tmp_path / "m.onnx"
+    model.write_bytes(b"x")
+    img = Image.new("RGB", (640, 360), (50, 50, 50))
+    monkeypatch.setattr(faces, "detect", lambda im, m, threshold=0.95: [(0.0, 0.0, 0.2, 0.4, 0.99)])
+    assert focus.focus_and_method(img, model) == ((0.1, 0.2), "faces")
+    monkeypatch.setattr(faces, "detect", lambda im, m, threshold=0.95: [])
+    assert focus.focus_and_method(img, model)[1] == "saliency"
+    monkeypatch.setattr(faces, "detect", lambda im, m, threshold=0.95: (_ for _ in ()).throw(RuntimeError("bad model")))
+    assert focus.focus_and_method(img, model)[1] == "saliency"
+    assert focus.focus_and_method(img, None)[1] == "saliency"
+
+
+def pytest_approx(v):
+    import pytest
+
+    return pytest.approx(v)

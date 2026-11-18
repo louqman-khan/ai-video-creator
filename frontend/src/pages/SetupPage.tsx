@@ -59,6 +59,7 @@ export function SetupPage() {
         <li><Tick ok={m.whisper} /> Speech recognition ({m.whisper_model})</li>
         <li><Tick ok={m.rnnoise} /> Noise removal</li>
         <li><Tick ok={m.clip} /> Picture ranking</li>
+        <li><Tick ok={!!m.face} /> Face finding (smart crop)</li>
       </ul>
       <label>Speech model size{" "}
         <select value={size} onChange={(e) => setSize(e.target.value)} disabled={running}>

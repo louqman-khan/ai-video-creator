@@ -29,6 +29,7 @@ from app.api.timeline import load_or_build
 from app.config import Settings
 from app.media import derive, ffmpeg, ingest
 from app.media.ingest import Limits, MediaInfo, MediaRejected
+from app.media import models
 from app.pipeline.focus import focus_of_file
 from app.timeline import convert
 from app.api.scenes import AssetView
@@ -394,10 +395,11 @@ def build_router(store: ProjectStore, settings: Settings, worker: MediaWorker) -
             a = asset_of(tl, asset)
         if a.kind == "audio":
             raise HTTPException(400, "Only pictures have a focus.")
-        found = await run_in_threadpool(focus_of_file, Path(a.path), a.kind, (a.duration or 0) / tl.fps)
+        found = await run_in_threadpool(focus_of_file, Path(a.path), a.kind, (a.duration or 0) / tl.fps, models.face_path(settings))
         if found is None:
             raise HTTPException(404, "This picture could not be looked at.")
-        return {"x": found[0], "y": found[1]}
+        (x, y), method = found
+        return {"x": x, "y": y, "method": method}
 
     @router.get("/media/proxy")
     def media_proxy(pid: str, asset: str = Query(..., max_length=200)) -> FileResponse:

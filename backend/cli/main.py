@@ -253,6 +253,7 @@ def fetch_ffmpeg() -> None:
 @app.command("fetch-models")
 def fetch_models(
     clip: Annotated[bool, typer.Option("--clip", help="Also download the CLIP picture-ranking model (about 155 MB)")] = False,
+    faces: Annotated[bool, typer.Option("--faces", help="Also download the small face-finding model (1 MB) used by smart crop")] = False,
     whisper: Annotated[bool, typer.Option("--whisper", help="Also download the speech-recognition model chosen by WHISPER_MODEL")] = False,
 ) -> None:
     """Download the RNNoise speech-denoise model (used by the audio cleaner); with --clip the picture ranker, with --whisper the speech recognition model."""
@@ -267,6 +268,9 @@ def fetch_models(
             for f in models.fetch_clip(s, say):
                 console.print(f"[green]Saved[/green] {f}")
             console.print("[dim]CLIP ViT-B/32 (OpenAI, MIT licence), ONNX int8 files by Xenova (Hugging Face).[/dim]")
+        if faces:
+            console.print(f"[green]Saved[/green] {models.fetch_face(s, say)}")
+            console.print("[dim]Ultra-Light-Fast-Generic-Face-Detector RFB-320 (MIT licence).[/dim]")
         if whisper:
             models.fetch_whisper(s.whisper_model, say)
             console.print(f"[green]Ready[/green] speech model '{s.whisper_model}'")
