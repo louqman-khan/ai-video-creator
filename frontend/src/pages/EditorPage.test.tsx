@@ -58,8 +58,9 @@ describe("EditorPage", () => {
   it("shows the export panel and hides the caption editor for projects made without captions", async () => {
     vi.spyOn(api, "getProject").mockResolvedValue(project({ options: { captions: false } }));
     renderPage();
+    await userEvent.click(await screen.findByRole("tab", { name: "Export" }));
     expect(await screen.findByRole("button", { name: "Export full quality" })).toBeInTheDocument();
-    expect(screen.queryByRole("region", { name: "Captions" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "Captions" })).not.toBeInTheDocument();       // no captions were burned in: no caption editor
   });
 
   it("shows an error banner for a failed export without hiding the project", async () => {

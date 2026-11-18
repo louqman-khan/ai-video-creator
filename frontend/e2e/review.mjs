@@ -1,0 +1,24 @@
+// usage: node e2e/review.mjs <base-url> <out-dir>   — screenshots of the main screens for a design review
+import { chromium } from "playwright-core";
+const [base, out] = process.argv.slice(2);
+const browser = await chromium.launch({ executablePath: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", headless: true });
+const page = await (await browser.newContext({ viewport: { width: 1440, height: 900 } })).newPage();
+const problems = [];
+page.on("console", (m) => m.type() === "error" && problems.push(m.text()));
+page.on("pageerror", (e) => problems.push(e.message));
+const shot = async (name, full = false) => { await page.waitForTimeout(700); await page.screenshot({ path: `${out}/${name}.png`, fullPage: full }); console.log("shot", name); };
+await page.goto(base);
+await page.getByRole("heading", { name: "Projects" }).waitFor();
+await shot("1-projects");
+await page.goto(`${base}/new`);
+await shot("2-new", true);
+await page.goto(`${base}/setup`);
+await shot("3-setup", true);
+await page.goto(base);
+const first = page.locator("a[href^='/projects/']").first();
+await first.click();
+await page.waitForTimeout(2500);
+await shot("4-editor-top");
+await shot("5-editor-full", true);
+console.log("console problems:", problems.length ? problems : "none");
+await browser.close();

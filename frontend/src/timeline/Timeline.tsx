@@ -29,6 +29,8 @@ interface Props {
   onDoc?: (doc: ops.Doc) => void;
   /** where to draw the picture handles (the element around the live preview); null when the live preview is not shown */
   overlayHost?: HTMLElement | null;
+  /** where to show the selected clip's settings (a side panel); when absent they are shown under the timeline */
+  inspectorHost?: HTMLElement | null;
   /** the eyedropper: the colour of a clip's own picture at a point of the canvas (canvas pixels), "#rrggbb" or null */
   sampler?: ((clipId: string, x: number, y: number) => string | null) | null;
   /** the focus picker: the point of a clip's own picture (0..1) under a point of the canvas */
@@ -46,13 +48,13 @@ const labelOf = (c: TimelineClip, a: TimelineAsset | undefined): string => {
   return a?.title || c.id;
 };
 
-export function Timeline({ projectId, version, video, onProject, onDoc, onMedia, overlayHost, sampler, focusSampler }: Props) {
+export function Timeline({ projectId, version, video, onProject, onDoc, onMedia, overlayHost, inspectorHost, sampler, focusSampler }: Props) {
   const { timeline, media, error, preparing, refreshMedia } = useTimelineData(projectId, version, true);
   const { peaks, film } = useDerived(projectId, media);
   useEffect(() => { onMedia?.(media); }, [media, onMedia]);
   if (error && !timeline) return <p className="alert" role="alert">{error}</p>;   // once it is loaded, a failed refresh must not replace the editor
   if (!timeline) return <p className="muted">Loading the timeline…</p>;
-  return <TimelineBody projectId={projectId} timeline={timeline} media={media} preparing={preparing} peaks={peaks} film={film} video={video} onProject={onProject} onDoc={onDoc} overlayHost={overlayHost} sampler={sampler} focusSampler={focusSampler} refreshMedia={refreshMedia} />;
+  return <TimelineBody projectId={projectId} timeline={timeline} media={media} preparing={preparing} peaks={peaks} film={film} video={video} onProject={onProject} onDoc={onDoc} overlayHost={overlayHost} inspectorHost={inspectorHost} sampler={sampler} focusSampler={focusSampler} refreshMedia={refreshMedia} />;
 }
 
 interface BodyProps {
@@ -66,12 +68,13 @@ interface BodyProps {
   onDoc?: (doc: ops.Doc) => void;
   onProject?: (p: Project) => void;
   overlayHost?: HTMLElement | null;
+  inspectorHost?: HTMLElement | null;
   sampler?: ((clipId: string, x: number, y: number) => string | null) | null;
   focusSampler?: ((clipId: string, x: number, y: number) => { x: number; y: number } | null) | null;
   refreshMedia: () => void;
 }
 
-function TimelineBody({ projectId, timeline, media, preparing, peaks, film, video, onProject, onDoc, overlayHost, sampler, focusSampler, refreshMedia }: BodyProps) {
+function TimelineBody({ projectId, timeline, media, preparing, peaks, film, video, onProject, onDoc, overlayHost, inspectorHost, sampler, focusSampler, refreshMedia }: BodyProps) {
   const { session, snap } = useSession(timeline, (body) => api.saveTimeline(projectId, body));
   const doc = snap.doc;
   const fps = doc.fps;
@@ -451,10 +454,15 @@ function TimelineBody({ projectId, timeline, media, preparing, peaks, film, vide
       <p className="small tl-notice" role="status">{notice}</p>
       <MediaBin projectId={projectId} doc={doc} media={media} onInsert={(a, title) => run(ops.insertAsset(doc, a, head.get(), title))}
         onAdded={refreshMedia} onNotice={setNotice} />
-      {chosen && <Inspector clip={chosen} doc={doc} onApply={run} cropMode={cropMode} onCropMode={overlayHost ? setCropMode : undefined}
+      {chosen && (inspectorHost ? createPortal(
+        <Inspector clip={chosen} doc={doc} onApply={run} cropMode={cropMode} onCropMode={overlayHost ? setCropMode : undefined}
         picking={picking} onPick={overlayHost && sampler ? (on) => { setPicking(on); if (on) setPickingFocus(false); } : undefined}
         pickingFocus={pickingFocus} onPickFocus={overlayHost && focusSampler ? (on) => { setPickingFocus(on); if (on) setPicking(false); } : undefined}
-        onSuggestFocus={chosen && chosen.asset && (chosen.kind === "video" || chosen.kind === "image") ? () => void api.suggestFocus(projectId, chosen.asset!).then((f) => run(ops.setFocus(doc, chosen.id, f)), (er) => setNotice(er instanceof Error ? er.message : "No suggestion")) : undefined} />}
+        onSuggestFocus={chosen && chosen.asset && (chosen.kind === "video" || chosen.kind === "image") ? () => void api.suggestFocus(projectId, chosen.asset!).then((f) => run(ops.setFocus(doc, chosen.id, f)), (er) => setNotice(er instanceof Error ? er.message : "No suggestion")) : undefined} />,
+        inspectorHost) : <Inspector clip={chosen} doc={doc} onApply={run} cropMode={cropMode} onCropMode={overlayHost ? setCropMode : undefined}
+        picking={picking} onPick={overlayHost && sampler ? (on) => { setPicking(on); if (on) setPickingFocus(false); } : undefined}
+        pickingFocus={pickingFocus} onPickFocus={overlayHost && focusSampler ? (on) => { setPickingFocus(on); if (on) setPicking(false); } : undefined}
+        onSuggestFocus={chosen && chosen.asset && (chosen.kind === "video" || chosen.kind === "image") ? () => void api.suggestFocus(projectId, chosen.asset!).then((f) => run(ops.setFocus(doc, chosen.id, f)), (er) => setNotice(er instanceof Error ? er.message : "No suggestion")) : undefined} />)}
       {overlayHost && focusSampler && pickingFocus && chosen && createPortal(
         <div className="pick-layer" role="button" aria-label="Click the part of the picture that must stay in view" tabIndex={0}
           onClick={(e) => {

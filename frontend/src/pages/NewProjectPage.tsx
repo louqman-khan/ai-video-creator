@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api, DEFAULT_LIMITS, uploadProject, type Limits } from "../api/client";
+import { Icon } from "../components/Icon";
 import { ProgressBar } from "../components/ProgressBar";
 import { useProjects } from "../store/projects";
 import {
@@ -21,6 +22,7 @@ export function NewProjectPage() {
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [dragging, setDragging] = useState(false);
   const abortRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
@@ -71,22 +73,32 @@ export function NewProjectPage() {
   return (
     <section>
       <div className="page-head">
-        <h1>New project</h1>
+        <div>
+          <h1>New project</h1>
+          <p className="page-sub">Start from your own recording, or type a script and let a voice read it. We find the pictures, time them and add captions.</p>
+        </div>
       </div>
 
-      <form className="form" onSubmit={submit} noValidate>
-        <div className="panel" role="radiogroup" aria-label="Where does the narration come from?">
-          <label className="check">
-            <input type="radio" name="source" checked={mode === "record"} disabled={uploading} onChange={() => setMode("record")} />
-            I have a recording
+      <form className="form narrow" onSubmit={submit} noValidate>
+        <div className="choices" role="radiogroup" aria-label="Where does the narration come from?">
+          <label className={`choice${mode === "record" ? " choice-on" : ""}`}>
+            <input type="radio" name="source" aria-label="I have a recording" checked={mode === "record"} disabled={uploading} onChange={() => setMode("record")} />
+            <Icon name="upload" size={22} />
+            <strong>I have a recording</strong>
+            <span>Upload narration audio (Urdu or English).</span>
           </label>
-          <label className="check">
-            <input type="radio" name="source" checked={mode === "speak"} disabled={uploading} onChange={() => setMode("speak")} />
-            Speak my script with a computer voice
+          <label className={`choice${mode === "speak" ? " choice-on" : ""}`}>
+            <input type="radio" name="source" aria-label="Speak my script with a computer voice" checked={mode === "speak"} disabled={uploading} onChange={() => setMode("speak")} />
+            <Icon name="text" size={22} />
+            <strong>Type a script</strong>
+            <span>A computer voice reads it for you.</span>
           </label>
         </div>
 
-        {mode === "record" && <div className="panel">
+        {mode === "record" && <div className={`panel dropzone${dragging ? " dropzone-on" : ""}`}
+          onDragOver={(e) => { e.preventDefault(); if (!uploading) setDragging(true); }}
+          onDragLeave={() => setDragging(false)}
+          onDrop={(e) => { e.preventDefault(); setDragging(false); if (!uploading) pick(e.dataTransfer.files?.[0]); }}>
           <label className="field">
             <span className="label">Narration audio</span>
             <input
@@ -98,7 +110,7 @@ export function NewProjectPage() {
             />
           </label>
           <p id="audio-help" className="muted small">
-            {limits.extensions.join(" ")} · up to {limits.max_upload_mb} MB and {limits.max_audio_minutes} minutes.
+            Drop a file here or choose one. {limits.extensions.join(" ")} · up to {limits.max_upload_mb} MB and {limits.max_audio_minutes} minutes.
           </p>
           {file && (
             <p className="small">
