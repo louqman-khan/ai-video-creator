@@ -46,3 +46,9 @@ The installed app carries its own Python, so nobody needs Python, Node or a term
 - The bundled FFmpeg is a GPL build; shipping it means you must offer its source and licence text. Check this before distributing publicly.
 - Only the macOS build has been run. Windows/Linux installers come from the CI matrix or a Windows PC.
 - Auto-update is not set up.
+
+## Getting the installers (built on GitHub)
+Push to the branch `build-installers` (`git push origin main:build-installers`), tag `v*`, or use Actions > installers > Run workflow. Each run builds, from the same code:
+a `.dmg` for Apple-chip Macs, a `.dmg` for Intel Macs, and a setup `.exe` for Windows (about 230-270 MB each as downloaded). They are at the bottom of the run page under **Artifacts** (a GitHub login is needed to download).
+First successful run: run 44292890076 (all three built first time). Not yet run by a person on a Windows PC or a second Mac.
+Opening an unsigned app: macOS - right-click the app > Open (first time only); Windows - "More info" > "Run anyway" on the SmartScreen warning.
