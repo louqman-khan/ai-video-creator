@@ -28,3 +28,4 @@ desktop/src-tauri/target/
 desktop/src-tauri/gen/
 desktop/src-tauri/resources/
 backend/build/
+samples/footage/
