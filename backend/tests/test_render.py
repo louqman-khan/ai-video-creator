@@ -175,7 +175,10 @@ def test_cuts_gaps_and_stacked_layers_have_the_right_pixels(media, tmp_path):
 
 
 def frame_ssim(a, b, log):
-    subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-i", str(a), "-i", str(b), "-lavfi", f"ssim=stats_file={Path(log).as_posix().replace(chr(58), chr(92) + chr(58))}", "-f", "null", "-"], check=True)
+    log = Path(log)
+    # relative file name + working directory: a drive letter (C:) inside a filter option is a quoting trap on Windows
+    subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-i", str(a), "-i", str(b), "-lavfi", f"ssim=stats_file={log.name}", "-f", "null", "-"],
+                   check=True, cwd=log.parent)
     return [float(re.search(r"All:([0-9.]+)", line).group(1)) for line in open(log)]
 
 

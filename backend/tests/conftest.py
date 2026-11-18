@@ -12,5 +12,5 @@ def pytest_runtest_logreport(report):
     global _reported
     if os.environ.get("GITHUB_ACTIONS") and report.failed and _reported < 10:
         _reported += 1
-        text = (report.longreprtext or "")[-900:].replace("%", "%25").replace("\r", "").replace("\n", "%0A")
+        text = ((report.longreprtext or "")[-700:] + "\nSTDOUT: " + (report.capstdout or "")[-700:]).replace("%", "%25").replace("\r", "").replace("\n", "%0A")
         print(f"\n::error title={report.nodeid.replace(',', ' ').replace(':', ' ')[:120]}::{text}")
