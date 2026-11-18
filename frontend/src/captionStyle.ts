@@ -26,4 +26,4 @@ export function sameStyle(a: CaptionStyle, b: CaptionStyle): boolean {
   return JSON.stringify(toPayload(a)) === JSON.stringify(toPayload(b));
 }
 
-export const FONT_SUGGESTIONS = ["Noto Nastaliq Urdu", "Jameel Noori Nastaleeq", "Arial", "Helvetica", "Georgia", "Verdana"];
+export const FONT_SUGGESTIONS = ["Noto Nastaliq Urdu", "Gulzar", "Jameel Noori Nastaleeq", "Arial", "Helvetica", "Georgia", "Verdana"];
