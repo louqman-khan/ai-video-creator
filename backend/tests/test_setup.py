@@ -1,3 +1,4 @@
+import os
 import time
 
 from fastapi.testclient import TestClient
@@ -27,7 +28,8 @@ def test_keys_are_saved_to_the_data_dir_and_never_echoed(tmp_path, monkeypatch):
     assert s.gemini_api_key == "AIzaSECRETSECRET123"  # live, no restart needed
     f = tmp_path / "data" / ".env"
     assert "GEMINI_API_KEY=AIzaSECRETSECRET123" in f.read_text()
-    assert oct(f.stat().st_mode & 0o777) == "0o600"
+    if os.name != "nt":                                              # Windows has no owner-only file mode
+        assert oct(f.stat().st_mode & 0o777) == "0o600"
     c.put("/api/setup/keys", json={"gemini_api_key": "AIzaOTHEROTHER456"})
     text = f.read_text()
     assert text.count("GEMINI_API_KEY") == 1 and "PIXABAY_API_KEY=12345678-abcdef" in text

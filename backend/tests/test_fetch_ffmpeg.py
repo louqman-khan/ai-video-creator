@@ -1,3 +1,4 @@
+import os
 import tarfile
 import zipfile
 from pathlib import Path
@@ -35,7 +36,9 @@ def test_a_linux_tarball_is_unpacked_and_made_executable(tmp_path):
     with tarfile.open(t, "w:xz") as f:
         f.add(src / "ffmpeg-x", arcname="ffmpeg-x")
     out = extract(t, tmp_path / "bin")
-    assert sorted(p.name for p in out) == ["ffmpeg", "ffprobe"] and (tmp_path / "bin" / "ffmpeg").stat().st_mode & 0o100
+    assert sorted(p.name for p in out) == ["ffmpeg", "ffprobe"]
+    if os.name != "nt":                                              # Windows has no executable bit
+        assert (tmp_path / "bin" / "ffmpeg").stat().st_mode & 0o100
 
 
 def test_an_archive_without_the_tools_is_refused(tmp_path):

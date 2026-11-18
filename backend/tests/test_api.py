@@ -76,6 +76,8 @@ def wait_done(c, pid, timeout=90):
     while time.time() < end:
         p = c.get(f"/api/projects/{pid}").json()
         if p["status"] in ("done", "failed"):
+            if p["status"] == "failed":
+                print("PROJECT FAILED:", p.get("error"))   # shows in the test report (CI annotations)
             return p
         time.sleep(0.3)
     raise AssertionError("job did not finish")
