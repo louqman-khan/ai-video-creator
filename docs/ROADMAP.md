@@ -35,7 +35,7 @@ The human only needs to say **"continue"** (or "next task") to move forward.
 - [ ] Rotate the Pixabay key again: a test script printed it into a session log on 2026-11-16 (httpx INFO logging; now silenced in `app/http.py`). Gemini key was never printed.
 - [ ] Optional, to finish 5.4: an ElevenLabs and/or HeyGen API key (paid) so the two providers can be tried against the live services (so far mocked HTTP only)
 - [ ] To go public: a server + domain, an SMTP provider for the verification e-mails, your decision on sign-ups (invite-only first), reviewed terms/privacy texts, a licence-clean voice or a paid voice provider, and an independent security review (`docs/security.md`)
-- [ ] A Windows PC (or a GitHub push so the Actions run) to verify the Windows work: nothing has ever run on Windows
+- [x] A Windows PC (or a GitHub push so the Actions run) — done 2026-11-18 via GitHub Actions (repo is public)
 - [ ] Pexels key — new key issuance is paused by Pexels; the pipeline must work without it
 
 ---
@@ -107,7 +107,7 @@ Approved plan: `docs/STEP4_PLAN.md` (decisions D1–D7, phases, tests, risks). O
 ## Later
 
 - [~] Tauri desktop app (run processing locally on the user's machine) — built and verified on macOS; Windows/Linux written but never run (docs/desktop.md, docs/windows.md)
-- [ ] Windows: run the GitHub Actions matrix or a Windows PC and fix what fails (docs/windows.md)
+- [x] Windows: GitHub Actions matrix is green on Windows, macOS and Linux (backend tests, frontend, desktop shell build). Not yet done: building and clicking through the Windows installer itself (docs/windows.md)
 - [~] **DEFERRED by the owner (2026-11-17): hosting/going public is handled after the whole project is complete.** User accounts, cloud storage (Cloudflare R2), deployment — **Step 6 (`docs/STEP6_PLAN.md`): accounts, ownership, limits, hosted UI, Docker deployment built and tested locally (`docs/hosting.md`, `docs/security.md`); NOT on a real server/domain, no object storage (one-machine design, D8), no Google sign-in, no independent security review**
 - [ ] AI-generated images/clips provider
 
@@ -118,6 +118,7 @@ Approved plan: `docs/STEP4_PLAN.md` (decisions D1–D7, phases, tests, risks). O
 <!-- Agent: add one line per completed task, newest first. Format: YYYY-MM-DD — task id — what changed — how verified -->
 
 - 2026-11-18 — Step 4 test media made by me (no real clips available): `samples/footage/synthetic/` = phone clip with rotation metadata (720x1280 displayed), variable-frame-rate clip (avg 16 fps in a 60 fps container), HDR PQ/BT.2020 10-bit HEVC clip, 20 s music bed. All three video clips ingest correctly (rotation=90, vfr=True, hdr=True) and render through the app renderer to 960x540 yuv420p 30 fps. These are synthetic: real phone/HDR footage is still the better test.
+- 2026-11-18 — CI green on all 7 jobs (run 44285123472): backend on Ubuntu/Windows/macOS, frontend, desktop shell on 3 OSes. Fixes made from the first real Windows/macOS run: test-only Windows issues (no owner-only file mode, no exec bit, `C:` in an ffmpeg filter path), macOS runner's plain `brew ffmpeg` has no libass -> CI uses `ffmpeg-full`; desktop: committed placeholder in `src-tauri/resources`. CI now reports failing tests as annotations readable via the public API. No app bug was found on Windows. Windows installer (NSIS/MSI) still unbuilt/untried.
 - 2026-11-18 — 2.8 English: `small` on `samples/english.wav` (406 s) = 1.3 % WER (13 errors in 1005 words), 181 s. Reference is a medium draft that may or may not have been proofread. Glossary in Whisper's prompt gave no gain on Urdu (28.1 % vs 27.4 %).
 - 2026-11-18 — 2.8 Urdu benchmark (`docs/benchmarks.md`): small 38.5 %, medium 27.4 % (1385 s), small+LLM 21.6 %, medium+LLM 22.2 % — the LLM clean-up matters more than the bigger model. English not measured (no exact text yet). large-v3 not run (3 GB, about an hour; expected small gain once the clean-up is on).
 - 2026-11-18 — LLM clean-up of recognised text (`pipeline/correct.py`, `GeminiCorrector`; `Pipeline.cleanup`; setting `CLEANUP=auto|on|off`, auto = on when GEMINI_API_KEY is set and no script is given): fixes mis-heard words in ~70-word chunks, a chunk whose answer changes the length by >15 % or most of its words is rejected, any failure keeps the recognised text; corrected words are put back on the audio's timing with `align_script`, and words the LLM changed get confidence 0.5 so the editor marks them "please check". Measured on `samples/urdu.wav` with the `small` model: **38.5 % -> 21.6 % WER** (20.4 % with a 10-term glossary). Caveats: reference text is not an exact transcript (speaker says things the text lacks, spelling variants), and Gemini may know this famous text, so gains on unfamiliar content may be smaller. Tests tests/conftest.py forces CLEANUP=off; backend 260 passed.
