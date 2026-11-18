@@ -371,32 +371,39 @@ function TimelineBody({ projectId, timeline, media, preparing, peaks, film, vide
         <button className="btn" type="button" onClick={togglePlay} disabled={!video} aria-label={playing ? "Pause" : "Play"}>{playing ? "❚❚" : "▶"}</button>
         {/* role=timer is not a live region: an <output> would make screen readers announce every frame */}
         <Timecode head={head} fps={fps} duration={duration} />
-        <span className="tl-group" role="group" aria-label="Edit">
+        <span className="tl-seg" role="group" aria-label="History">
           <button className="btn" type="button" onClick={() => session.undo()} disabled={!snap.canUndo} aria-label="Undo" title="Undo (Ctrl/⌘+Z)">↶</button>
           <button className="btn" type="button" onClick={() => session.redo()} disabled={!snap.canRedo} aria-label="Redo" title="Redo (Ctrl/⌘+Shift+Z)">↷</button>
+        </span>
+        <span className="tl-seg" role="group" aria-label="Edit">
           <button className="btn" type="button" onClick={splitAtPlayhead} title="Split at the playhead (S)">Split</button>
           <button className="btn" type="button" onClick={() => removeSelected(false)} disabled={!selected} title="Delete the clip and leave a gap (Delete)">Delete</button>
           <button className="btn" type="button" onClick={() => removeSelected(true)} disabled={!selected} title="Delete and close the gap on every track (Shift+Delete)">Ripple delete</button>
           <button className="btn" type="button" onClick={() => selected && run(ops.duplicateClip(doc, selected))} disabled={!selected} title="Duplicate (Ctrl/⌘+D)">Duplicate</button>
+        </span>
+        <span className="tl-seg" role="group" aria-label="Frame and pictures">
           <label className="tl-fmt">Frame <select aria-label="Frame shape" value={doc.aspect ?? "16:9"} onChange={(e) => run(ops.setAspect(doc, e.target.value as Aspect))}>
             {ops.ASPECTS.map((a) => <option key={a} value={a}>{a}</option>)}
           </select></label>
           <label className="tl-fmt">Pictures <select aria-label="Pictures that do not match the frame" value={fitOfAll(doc)} onChange={(e) => e.target.value && run(ops.setFitAll(doc, e.target.value as "fill" | "fit" | "blur"))}>
             <option value="">(mixed)</option><option value="fill">Fill</option><option value="fit">Fit with bars</option><option value="blur">Fit over blur</option>
           </select></label>
+        </span>
+        <span className="tl-seg" role="group" aria-label="Tracks">
           <button className="btn" type="button" onClick={() => run(ops.addTrack(doc, "video"))}>+ Video track</button>
           <button className="btn" type="button" onClick={() => run(ops.addTrack(doc, "audio"))}>+ Audio track</button>
         </span>
         <SaveChip status={snap.status} message={snap.message}
           onReload={() => void api.getTimeline(projectId).then((v) => session.reset(v), (er) => setNotice(er instanceof Error ? er.message : "Reload failed"))}
           onKeepMine={() => void api.getTimeline(projectId).then((v) => session.keepMine(v.rev), (er) => setNotice(er instanceof Error ? er.message : "Could not check the other version"))} />
-        <span className="tl-spacer" />
         {preparing > 0 && <span className="tl-chip" role="status">Preparing previews ({preparing} left)…</span>}
+        <span className="tl-seg tl-zoomseg" role="group" aria-label="Timeline zoom">
         <button className="btn" type="button" onClick={() => zoomTo(pps / 1.25)} aria-label="Zoom out">−</button>
         <input type="range" className="tl-zoom" aria-label="Zoom" min={Math.log(MIN_PPS)} max={Math.log(MAX_PPS)} step={0.01} value={Math.log(pps)}
           aria-valuetext={`${Math.round(pps)} pixels per second`} onChange={(e) => zoomTo(Math.exp(Number(e.target.value)))} />
         <button className="btn" type="button" onClick={() => zoomTo(pps * 1.25)} aria-label="Zoom in">+</button>
         <button className="btn" type="button" onClick={() => zoomTo(fitPps(duration, fps, (scrollRef.current?.clientWidth ?? viewport) - PAD_RIGHT))}>Fit</button>
+        </span>
       </div>
 
       <div className="tl-body" style={{ height: totalH }}>
