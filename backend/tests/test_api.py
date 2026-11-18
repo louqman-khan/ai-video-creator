@@ -445,8 +445,19 @@ def test_edits_make_the_export_stale_and_rerender_only_the_preview(env):
         assert ",-1,0,0,0," in style_line  # bold made it into the full-quality file
 
 
-def test_export_validation_and_busy_rules(env):
+def test_export_validation_and_busy_rules(env, monkeypatch):
+    import threading
+
+    from app.pipeline import assemble
+
     _, _, tone, gate = env
+    hold = threading.Event()                      # keeps the export "running" until the test has checked the busy rule (no race with a fast machine)
+    real = assemble.concat_and_finish
+
+    def slow(*args, **kwargs):
+        hold.wait(30)
+        return real(*args, **kwargs)
+
     gate.clear()
     with client(env) as c:
         p = upload(c, tone).json()
@@ -454,8 +465,10 @@ def test_export_validation_and_busy_rules(env):
         gate.set()
         wait_done(c, p["id"])
         assert c.post(f"/api/projects/{p['id']}/export", json={"aspect": "4:3"}).status_code == 422
+        monkeypatch.setattr(assemble, "concat_and_finish", slow)
         assert c.post(f"/api/projects/{p['id']}/export", json={"aspect": "9:16"}).status_code == 202
         assert c.post(f"/api/projects/{p['id']}/export").status_code == 409        # already exporting
+        hold.set()
         wait_done(c, p["id"])
         assert c.post(f"/api/projects/{'0' * 32}/export").status_code == 404
         assert c.get(f"/api/projects/{'0' * 32}/export").status_code == 404
