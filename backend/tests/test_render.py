@@ -563,6 +563,21 @@ def test_chroma_key_replaces_the_green_with_what_is_underneath(media, tmp_path):
     assert px(other, 0.5, 500, 100)[1] > 200
 
 
+def test_shrink_and_feather_clean_up_the_edge_without_touching_the_middle(media, tmp_path):
+    plain = render_to(keyed_tl(media, tmp_path, ChromaKey(despill=False)), tmp_path, "e0.mp4")
+    shrunk = render_to(keyed_tl(media, tmp_path, ChromaKey(despill=False, shrink=8)), tmp_path, "e1.mp4")
+    # the left edge of the red subject is at x = 20/320 of the frame; a few pixels inside it the plain key still shows red, the shrunk one shows what is underneath
+    x_edge = round(20 / 320 * 960)                                                   # previews are 960 px wide
+    r, g, b = px(plain, 0.5, x_edge + 3, 270); assert r > 200 and b < 80
+    r, g, b = px(shrunk, 0.5, x_edge + 3, 270); assert b > 150 and r < 100
+    r, g, b = px(shrunk, 0.5, 200, 270); assert r > 200 and g < 60                  # the middle of the subject is untouched
+    soft = render_to(keyed_tl(media, tmp_path, ChromaKey(despill=False, feather=6)), tmp_path, "e2.mp4")
+    mixed = [px(soft, 0.5, x, 270) for x in range(x_edge - 12, x_edge + 14, 3)]
+    assert sum(1 for r, g, b in mixed if 10 < r < 245 and 10 < b < 245) >= 3           # a soft ramp of blends instead of a hard step
+    hard = [px(plain, 0.5, x, 270) for x in range(x_edge - 12, x_edge + 14, 3)]
+    assert sum(1 for r, g, b in hard if 10 < r < 245 and 10 < b < 245) < 2
+
+
 def test_despill_pulls_green_reflections_back_to_the_mean_of_red_and_blue(media, tmp_path):
     spill_on = render_to(keyed_tl(media, tmp_path, ChromaKey(despill=True)), tmp_path, "d_on.mp4")
     spill_off = render_to(keyed_tl(media, tmp_path, ChromaKey(despill=False)), tmp_path, "d_off.mp4")

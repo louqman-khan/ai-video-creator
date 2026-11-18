@@ -284,9 +284,10 @@ describe("green screen", () => {
   const s = (d: Doc, id: string) => d.clips.find((c) => c.id === id)!;
   it("turns on with defaults, changes one thing at a time, clamps, and turns off", () => {
     let d = ops.setKey(sample(), "s1", {}).doc;
-    expect(s(d, "s1").key).toEqual({ color: "#00ff00", similarity: 0.15, blend: 0.1, despill: true });
+    expect(s(d, "s1").key).toEqual({ color: "#00ff00", similarity: 0.15, blend: 0.1, despill: true, shrink: 0, feather: 0 });
     d = ops.setKey(d, "s1", { color: "#0000FF", similarity: 9, despill: false }).doc;
-    expect(s(d, "s1").key).toEqual({ color: "#0000ff", similarity: 0.5, blend: 0.1, despill: false });
+    expect(s(d, "s1").key).toEqual({ color: "#0000ff", similarity: 0.5, blend: 0.1, despill: false, shrink: 0, feather: 0 });
+    expect(s(ops.setKey(d, "s1", { shrink: 99, feather: 2.26 }).doc, "s1").key).toMatchObject({ shrink: 8, feather: 2.3 });
     expect(s(ops.setKey(d, "s1", { color: "not a colour" }).doc, "s1").key!.color).toBe("#0000ff");
     expect(s(ops.setKey(d, "s1", null).doc, "s1").key).toBeNull();
     expect(ops.setKey(sample(), "voice", {}).error).toBeDefined();

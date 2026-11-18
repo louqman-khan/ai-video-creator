@@ -384,7 +384,7 @@ export function removeTrack(doc: Doc, trackId: string): Result {
   return ok({ ...doc, tracks: doc.tracks.filter((x) => x.id !== trackId) });
 }
 
-export interface KeyPatch { color?: string; similarity?: number; blend?: number; despill?: boolean }
+export interface KeyPatch { color?: string; similarity?: number; blend?: number; despill?: boolean; shrink?: number; feather?: number }
 
 /** Turn the green screen on (with defaults), change it, or remove it (null). */
 export function setKey(doc: Doc, id: string, patch: KeyPatch | null): Result {
@@ -395,7 +395,8 @@ export function setKey(doc: Doc, id: string, patch: KeyPatch | null): Result {
   const was = c.key ?? { color: "#00ff00", similarity: 0.15, blend: 0.1, despill: true };
   const clamp = (v: number, hi: number) => Math.min(hi, Math.max(0, Math.round(v * 100) / 100));
   const color = patch.color && /^#[0-9a-fA-F]{6}$/.test(patch.color) ? patch.color.toLowerCase() : was.color;
-  return ok(replaceClip(doc, { ...c, key: { color, similarity: clamp(patch.similarity ?? was.similarity, 0.5), blend: clamp(patch.blend ?? was.blend, 0.5), despill: patch.despill ?? was.despill } }), [id]);
+  return ok(replaceClip(doc, { ...c, key: { color, similarity: clamp(patch.similarity ?? was.similarity, 0.5), blend: clamp(patch.blend ?? was.blend, 0.5), despill: patch.despill ?? was.despill,
+    shrink: Math.min(8, Math.max(0, Math.round(patch.shrink ?? was.shrink ?? 0))), feather: Math.min(12, Math.max(0, Math.round((patch.feather ?? was.feather ?? 0) * 10) / 10)) } }), [id]);
 }
 
 /** Centre the crop of a picture to the frame on this point of the picture (null: the middle). Only matters when the picture is wider/taller than the frame and fills it. */

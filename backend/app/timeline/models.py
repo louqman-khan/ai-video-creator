@@ -99,6 +99,8 @@ class ChromaKey(_Strict):
     similarity: float = Field(0.15, ge=0.0, le=0.5)
     blend: float = Field(0.1, ge=0.0, le=0.5)
     despill: bool = True  # remove the key colour's reflection from the edges of the subject
+    shrink: int = Field(0, ge=0, le=8)  # edge clean-up: pull the cut-out's edge in by this many pixels (removes a leftover coloured fringe)
+    feather: float = Field(0.0, ge=0.0, le=12.0)  # edge clean-up: soften the cut-out's edge (Gaussian sigma in pixels)
 
 
 class Word(_Strict):

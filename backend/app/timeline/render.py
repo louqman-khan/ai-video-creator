@@ -182,6 +182,10 @@ def _key_args(c: Clip) -> list[str]:
     r, g, b = (int(k.color[i:i + 2], 16) for i in (1, 3, 5))
     if k.despill and max(r, g, b) in (g, b) and (g >= r or b >= r):
         out.append(f"despill=type={'green' if g >= b else 'blue'}")
+    # edge clean-up works on the transparency only (plane 3 of yuva420p): thresholds 0 leave the colour planes alone
+    out += ["erosion=threshold0=0:threshold1=0:threshold2=0"] * k.shrink
+    if k.feather > 0:
+        out.append(f"gblur=sigma={k.feather:.2f}:planes=8")
     return out
 
 
