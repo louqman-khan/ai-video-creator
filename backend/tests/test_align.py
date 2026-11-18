@@ -76,3 +76,36 @@ def test_wrong_script_gives_low_match_ratio_and_empty_inputs_error():
         align_script("   ", asr("hello"))
     with pytest.raises(ValueError):
         align_script("hello", Transcript(language="en", duration=3, segments=[]))
+
+
+def test_confidence_is_kept_for_matching_words_and_unmatched_words_get_the_given_value():
+    from app.models import Segment, Transcript, Word
+    from app.pipeline.align import align_script
+
+    words = [Word(text="the", start=0, end=0.3, prob=0.9), Word(text="cat", start=0.3, end=0.6, prob=0.8), Word(text="sat", start=0.6, end=1.0, prob=0.3)]
+    asr = Transcript(language="en", duration=1.0, segments=[Segment(text="the cat sat", start=0, end=1, words=words)])
+    out, _ = align_script("the cat sit", asr, unmatched_prob=0.5)
+    assert [w.prob for w in out.words] == [0.9, 0.8, 0.5]                     # "sit" was changed: ask a person to look at it
+    out, _ = align_script("the cat sit", asr)
+    assert [w.prob for w in out.words] == [0.9, 0.8, None]                    # a user's script is exact: nothing to check
+
+
+def test_cleanup_step_applies_checked_corrections_and_never_fails_the_run(tmp_path, monkeypatch):
+    from app.config import Settings
+    from app.models import Segment, Transcript, Word
+    from app.pipeline import correct
+    from app.pipeline.runner import Pipeline
+
+    words = [Word(text=t, start=i * 0.4, end=i * 0.4 + 0.35, prob=0.9) for i, t in enumerate("the cat sat on the mat".split())]
+    tr = Transcript(language="en", duration=3, segments=[Segment(text="x", start=0, end=3, words=words)])
+    s = Settings(_env_file=None, gemini_api_key="k", cleanup="on")
+    p = Pipeline(s, None, tmp_path)  # type: ignore[arg-type]
+    monkeypatch.setattr(correct.GeminiCorrector, "_ask", lambda self, lang, text: text.replace("cat", "cart"))
+    out = p.cleanup(tr, force=True)
+    assert " ".join(w.text for w in out.words) == "the cart sat on the mat"
+    assert [w.prob for w in out.words] == [0.9, 0.5, 0.9, 0.9, 0.9, 0.9]
+    monkeypatch.setattr(correct.GeminiCorrector, "_ask", lambda self, lang, text: None)    # the service is down
+    assert p.cleanup(tr, force=True) is tr
+    monkeypatch.setattr(correct.GeminiCorrector, "_ask", lambda self, lang, text: "totally different words about something else entirely now")
+    assert p.cleanup(tr, force=True) is tr                                                  # too different: rejected
+    assert Pipeline(Settings(_env_file=None, cleanup="off", gemini_api_key="k"), None, tmp_path).cleanup(tr, True) is tr  # type: ignore[arg-type]

@@ -133,6 +133,33 @@ class Pipeline:
         _save(self.run_dir / "transcript.aligned.json", aligned)
         return aligned
 
+    def cleanup(self, transcript: Transcript, force: bool) -> Transcript:
+        """Optional: fix recognition mistakes with the LLM, then put the corrected words back onto the audio's timing. Never fatal."""
+        mode = (self.s.cleanup or "auto").lower()
+        if mode == "off" or (mode == "auto" and not self.s.gemini_api_key) or not self.s.gemini_api_key:
+            return transcript
+        path = self.run_dir / "transcript.cleaned.json"
+        if path.exists() and not force:
+            try:
+                return Transcript.model_validate_json(path.read_text("utf-8"))
+            except ValueError:
+                pass
+        try:
+            from app.pipeline.correct import GeminiCorrector
+
+            text = " ".join(w.text for w in transcript.words)
+            fixed, stats = GeminiCorrector(self.s.gemini_api_key, self.s.gemini_model, self.s.whisper_prompt).correct(text, transcript.language)
+            if stats["accepted"] == 0:
+                log.warning("transcript clean-up produced nothing usable (%s): keeping the recognised text", stats)
+                return transcript
+            cleaned, st = align_script(fixed, transcript, unmatched_prob=0.5)
+            log.info("transcript clean-up: %s; %.0f%% of words unchanged", stats, 100 * st.match_ratio)
+            _save(path, cleaned)
+            return cleaned
+        except Exception as e:  # noqa: BLE001  the clean-up is a bonus: a failure must never stop the video
+            log.warning("transcript clean-up failed (%s): keeping the recognised text", type(e).__name__)
+            return transcript
+
     def _cached(self, name: str, model: type[M], force: bool) -> list[M] | None:
         path = self.run_dir / name
         if path.exists() and not force:
@@ -168,6 +195,9 @@ class Pipeline:
         self.progress("transcribe", 0.30, f"Recognised {len(transcript.words)} words")
         if script:
             transcript = self.align(script, transcript)
+        else:
+            self.progress("transcribe", 0.32, "Checking the recognised text")
+            transcript = self.cleanup(transcript, force)
 
         # options that change the audio/timeline: results derived from them must not be reused
         self._sync_options({"cleaner": self.s.audio_cleaner, "silence": [min_gap, keep_gap] if remove_silence else None,

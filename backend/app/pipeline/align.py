@@ -69,7 +69,9 @@ def _spread(words: list[str], t0: float, t1: float) -> list[tuple[float, float]]
     return out
 
 
-def align_script(script: str, asr: Transcript) -> tuple[Transcript, AlignStats]:
+def align_script(script: str, asr: Transcript, unmatched_prob: float | None = None) -> tuple[Transcript, AlignStats]:
+    """Words that match the recognised ones keep their confidence; the others get `unmatched_prob` (None for a user's script: it is exact by definition;
+    a low value for LLM-corrected text, so the editor asks a person to check what the LLM changed)."""
     urdu = asr.language == "ur"
     sentences = split_script(script, urdu)
     tokens = [t for s in sentences for t in s]
@@ -82,6 +84,7 @@ def align_script(script: str, asr: Transcript) -> tuple[Transcript, AlignStats]:
     s_keys = [_key(t, urdu) for t in tokens]
     a_keys = [_key(w.text, urdu) for w in asr_words]
     times: list[tuple[float, float] | None] = [None] * len(tokens)
+    probs: list[float | None] = [unmatched_prob] * len(tokens)
     exact = 0
     sm = SequenceMatcher(None, s_keys, a_keys, autojunk=False)
     pending: list[tuple[int, int]] = []  # script spans with no ASR words at all
@@ -90,6 +93,7 @@ def align_script(script: str, asr: Transcript) -> tuple[Transcript, AlignStats]:
             for k in range(i2 - i1):
                 w = asr_words[j1 + k]
                 times[i1 + k] = (w.start, w.end)
+                probs[i1 + k] = w.prob
             exact += i2 - i1
         elif i2 > i1:
             if j2 > j1:  # misheard span: spread over the time the recogniser gave it
@@ -117,7 +121,7 @@ def align_script(script: str, asr: Transcript) -> tuple[Transcript, AlignStats]:
 
     segments, idx = [], 0
     for sent in sentences:
-        words = [Word(text=tok, start=fixed[idx + k][0], end=fixed[idx + k][1]) for k, tok in enumerate(sent)]
+        words = [Word(text=tok, start=fixed[idx + k][0], end=fixed[idx + k][1], prob=probs[idx + k]) for k, tok in enumerate(sent)]
         idx += len(sent)
         segments.append(Segment(text=" ".join(sent), start=words[0].start, end=words[-1].end, words=words))
     duration = max(asr.duration, segments[-1].end)
