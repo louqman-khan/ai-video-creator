@@ -25,7 +25,9 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - name: ffmpeg (macOS)
         if: runner.os == 'macOS'
-        run: brew install ffmpeg
+        run: |
+          brew install ffmpeg-full   # plain `ffmpeg` has no libass (caption burn-in); ffmpeg-full is keg-only, so put it first on PATH
+          echo "$(brew --prefix ffmpeg-full)/bin" >> "$GITHUB_PATH"
       - name: ffmpeg (Windows)
         if: runner.os == 'Windows'
         run: choco install ffmpeg-full -y --no-progress
