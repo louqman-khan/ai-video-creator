@@ -14,12 +14,13 @@ Machine: Intel Mac, CPU only, int8.
 | `small` + Gemini clean-up + 10-term glossary | 20.4 % | |
 | `medium` | 27.4 % | 1385 s (2.3x real time) |
 | `medium` + Gemini clean-up | 22.2 % | |
-| `medium` + glossary in Whisper's prompt | (running when written) | |
+| `medium` + 10-term glossary in Whisper's prompt | 28.1 % (no gain; 27.4 % without) | 1996 s |
 
 Reading it:
 - The LLM clean-up helps far more than the bigger model: after it, `small` and `medium` are about equal (21.6 % vs 22.2 %). `medium` alone is 11 points better than `small` alone but costs 2.5x the time and 1.5 GB.
 - The reference `urdu.txt` is not an exact transcript (the speaker says "number two / three" and other words the text lacks; some spellings differ). Folding spelling variants changes the scores by under one point, so most of the remaining ~20 % is probably real errors plus that mismatch. An exact reference would show the true figure.
 - Gemini may know this famous text, so the clean-up gain may be smaller on unfamiliar content. Not yet tested on other material.
+- A glossary given to Whisper itself (`WHISPER_PROMPT`) did not help on this file (28.1 % vs 27.4 %, within noise). Given to the Gemini clean-up it helped a little (21.6 -> 20.4 %).
 - The word that matters most here (طلقاء) is still often wrong after clean-up.
 
 ## English - not measured yet
