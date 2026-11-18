@@ -11,6 +11,7 @@ class Word(BaseModel):
     text: str
     start: float
     end: float
+    prob: float | None = None  # the recogniser's confidence in this word (0..1); low values are the ones worth checking
 
 
 class Segment(BaseModel):

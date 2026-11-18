@@ -31,6 +31,20 @@ const renderEditor = (props: Partial<Parameters<typeof CaptionEditor>[0]> = {}) 
   render(<CaptionEditor project={project()} onChanged={vi.fn()} previewDebounceMs={0} {...props} />);
 
 describe("CaptionEditor", () => {
+  it("marks cues the recogniser was unsure about and can show only those", async () => {
+    vi.spyOn(api, "getCaptions").mockResolvedValue(captions({ cues: [
+      { id: 0, start: 0, end: 2.5, text: "sure caption", confidence: 0.95 },
+      { id: 1, start: 2.5, end: 5, text: "doubtful caption", confidence: 0.31 },
+    ] }));
+    renderEditor();
+    await screen.findByDisplayValue("doubtful caption");
+    expect(screen.getAllByText(/please check/)).toHaveLength(1);
+    await userEvent.click(screen.getByLabelText(/Show only the 1 cue to check/));
+    expect(screen.queryByDisplayValue("sure caption")).not.toBeInTheDocument();
+    expect(screen.getByDisplayValue("doubtful caption")).toBeInTheDocument();
+  });
+
+
   it("lists the captions with time ranges and shows a server-rendered preview of the first one", async () => {
     renderEditor();
     expect(await screen.findByDisplayValue("پاکستان کے پہاڑ")).toHaveAttribute("dir", "auto");

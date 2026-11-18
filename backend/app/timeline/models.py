@@ -109,6 +109,7 @@ class Word(_Strict):
     text: str = Field(..., max_length=80)
     start: int = Field(..., ge=0)
     end: int = Field(..., ge=0)
+    prob: float | None = Field(None, ge=0.0, le=1.0)  # recogniser confidence (None: typed by a person or taken from a script)
 
 
 class Track(_Strict):

@@ -1327,3 +1327,16 @@ def test_the_built_web_app_is_served_by_the_same_process_without_leaking_files(e
         assert c.get("/api/nope").status_code == 404 and c.get("/api/nope").headers["content-type"].startswith("application/json")
     with client(env, frontend_dist=str(tmp_path / "missing")) as c:
         assert c.get("/").status_code == 404                                                          # no built app: just the API, as before
+
+
+def test_cue_confidence_is_the_lowest_word_confidence_inside_the_cue(tmp_path):
+    from app.api.captions import cue_confidences
+    from app.models import Segment, Transcript, Word
+    from app.pipeline.captions import Cue
+
+    words = [Word(text="a", start=0.0, end=0.4, prob=0.9), Word(text="b", start=0.5, end=0.9, prob=0.4), Word(text="c", start=3.0, end=3.4, prob=0.95),
+             Word(text="d", start=6.0, end=6.4)]
+    (tmp_path / "transcript.json").write_text(Transcript(language="en", duration=7, segments=[Segment(text="x", start=0, end=7, words=words)]).model_dump_json(), "utf-8")
+    cues = [Cue(start=0, end=1.0, text="a b"), Cue(start=2.5, end=4.0, text="c"), Cue(start=5.5, end=7.0, text="d")]
+    assert cue_confidences(tmp_path, cues) == [0.4, 0.95, None]                    # a word without a confidence (typed/script) says nothing
+    assert cue_confidences(tmp_path / "missing", cues) == [None, None, None]

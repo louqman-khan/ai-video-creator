@@ -11,7 +11,7 @@ registry: Registry[Transcriber] = Registry("transcriber")
 
 @registry.register("faster_whisper")
 def _fw(settings: Settings) -> Transcriber:
-    return FasterWhisperTranscriber(settings.whisper_model)
+    return FasterWhisperTranscriber(settings.whisper_model, settings.whisper_prompt, settings.whisper_beam)
 
 
 def create_transcriber(settings: Settings) -> Transcriber:

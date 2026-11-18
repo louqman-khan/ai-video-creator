@@ -42,6 +42,7 @@ class CueView(BaseModel):
     start: float
     end: float
     text: str
+    confidence: float | None = None  # the recogniser's lowest word confidence inside this cue (None: unknown, e.g. a script or an edited timeline)
 
 
 class CaptionsView(BaseModel):
@@ -106,6 +107,19 @@ def current_cues(d: Path, info: ProjectInfo) -> tuple[list[Cue], bool, str]:
     return build_cues(transcript, style_of(info, d)), False, transcript.language
 
 
+def cue_confidences(d: Path, cues: list[Cue]) -> list[float | None]:
+    """Per cue: the lowest recogniser confidence among the words that fall inside it. None when the transcript has no confidences (a script, an old project)."""
+    try:
+        words = [w for w in load_transcript(d).words if w.prob is not None]
+    except Exception:  # noqa: BLE001  no transcript: no confidences
+        return [None] * len(cues)
+    out: list[float | None] = []
+    for c in cues:
+        probs = [w.prob for w in words if c.start - 0.05 <= (w.start + w.end) / 2 <= c.end + 0.05]
+        out.append(round(min(probs), 3) if probs else None)  # type: ignore[type-var]
+    return out
+
+
 def build_router(store: ProjectStore, jobs: JobRunner, settings: Settings) -> APIRouter:
     router = APIRouter(prefix="/api/projects/{pid}/captions")
     preview_slots = threading.BoundedSemaphore(2)  # previews are cheap, but never let them pile up
@@ -132,7 +146,8 @@ def build_router(store: ProjectStore, jobs: JobRunner, settings: Settings) -> AP
     def get_captions(pid: str) -> CaptionsView:
         info = project(pid)
         cues, edited, language = current_cues(store.path(pid), info)
-        return CaptionsView(cues=[CueView(id=i, **c.model_dump()) for i, c in enumerate(cues)], edited=edited,
+        conf = cue_confidences(store.path(pid), cues) if not edited else [None] * len(cues)
+        return CaptionsView(cues=[CueView(id=i, confidence=conf[i], **c.model_dump()) for i, c in enumerate(cues)], edited=edited,
                             language=language, style=(style_of(info, store.path(pid)).model_dump(exclude_none=True)
                                                       if edited_timeline(store.path(pid)) else info.options.get("style") or {}))
 

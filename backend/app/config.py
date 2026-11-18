@@ -44,6 +44,8 @@ class Settings(BaseSettings):
     # providers
     transcriber: str = "faster_whisper"
     whisper_model: str = "small"
+    whisper_prompt: str = ""  # a glossary of names/terms the speaker uses (improves spelling of rare words)
+    whisper_beam: int = 5  # search width: larger = a little more accurate, slower
     media_ranker: str = "auto"  # auto | clip | heuristic: auto = CLIP when its model files are in clip_dir (docs/clip-ranker.md)
     audio_cleaner: str = "ffmpeg"  # ffmpeg | noop (--no-clean)
     tts: str = "auto"  # auto | mms | piper | none  (docs/tts.md)

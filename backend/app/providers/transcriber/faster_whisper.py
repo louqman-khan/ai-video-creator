@@ -6,8 +6,10 @@ from app.models import Segment, Transcript, Word
 
 
 class FasterWhisperTranscriber:
-    def __init__(self, model_size: str = "small") -> None:
+    def __init__(self, model_size: str = "small", prompt: str = "", beam_size: int = 5) -> None:
         self.model_size = model_size
+        self.prompt = prompt.strip()  # names and terms the speaker uses: Whisper spells them the way they are written here
+        self.beam_size = beam_size
         self._model = None
 
     def _load(self):
@@ -35,12 +37,13 @@ class FasterWhisperTranscriber:
     def transcribe(self, audio: Path, language: str | None = None) -> Transcript:
         source = self._load_wav(audio) if audio.suffix.lower() == ".wav" else str(audio)
         segments_iter, info = self._load().transcribe(
-            source, language=language, word_timestamps=True, vad_filter=True
+            source, language=language, word_timestamps=True, vad_filter=True,
+            beam_size=self.beam_size, initial_prompt=self.prompt or None,
         )
         segments: list[Segment] = []
         for s in segments_iter:
             words = [
-                Word(text=w.word.strip(), start=w.start, end=w.end)
+                Word(text=w.word.strip(), start=w.start, end=w.end, prob=round(float(w.probability), 3))
                 for w in (s.words or [])
                 if w.word.strip()
             ]

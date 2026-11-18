@@ -114,7 +114,7 @@ def build_timeline(d: Path, info, settings: Settings) -> Timeline:
     nar_len = max(1, frames(ffmpeg.probe_duration(nar), fps))
     assets["narration"] = Asset(id="narration", kind="audio", path=str(nar), duration=nar_len, source="narration",
                                 license="User-provided", attribution="Narration", title="Narration")
-    words = [Word(text=w.text, start=frames(w.start, fps), end=max(frames(w.start, fps), frames(w.end, fps)))
+    words = [Word(text=w.text, start=frames(w.start, fps), end=max(frames(w.start, fps), frames(w.end, fps)), prob=getattr(w, "prob", None))
              for w in transcript.words if w.text.strip()]
     clips.append(Clip(id="narration", track="A1", kind="audio", asset="narration", start=0, duration=nar_len, words=words))
 

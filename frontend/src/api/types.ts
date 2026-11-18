@@ -74,6 +74,7 @@ export interface Cue {
   start: number;
   end: number;
   text: string;
+  confidence?: number | null; // lowest word confidence the recogniser had in this cue (0..1)
 }
 
 export interface CaptionsView {

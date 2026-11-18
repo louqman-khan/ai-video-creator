@@ -12,11 +12,14 @@ interface Props {
   previewDebounceMs?: number;
 }
 
+/** A cue whose least certain word is below this is marked "please check". */
+const UNSURE = 0.6;
 const messageOf = (e: unknown) => (e instanceof Error ? e.message : "Something went wrong");
 
 export function CaptionEditor({ project, onChanged, previewDebounceMs = 400 }: Props) {
   const [data, setData] = useState<CaptionsView | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [onlyUncertain, setOnlyUncertain] = useState(false);
   const [texts, setTexts] = useState<Record<number, string>>({});
   const [style, setStyle] = useState<CaptionStyle | null>(null);
   const [selected, setSelected] = useState(0);
@@ -60,6 +63,8 @@ export function CaptionEditor({ project, onChanged, previewDebounceMs = 400 }: P
 
   if (loadError) return <p className="alert" role="alert">{loadError}</p>;
   if (!data || !style) return busy ? null : <p className="muted">Loading captions…</p>;
+  const isUncertain = (c: { confidence?: number | null }) => c.confidence != null && c.confidence < UNSURE;
+  const uncertainCount = data.cues.filter(isUncertain).length;
   if (data.cues.length === 0) return <p className="muted">This video has no captions.</p>;
 
   const set = <K extends keyof CaptionStyle>(key: K, value: CaptionStyle[K]) => setStyle({ ...style, [key]: value });
@@ -171,14 +176,20 @@ export function CaptionEditor({ project, onChanged, previewDebounceMs = 400 }: P
         </div>
 
         <div className="captions-main">
+          {uncertainCount > 0 && (
+            <label className="small" style={{ display: "block", marginBottom: "0.5rem" }}>
+              <input type="checkbox" checked={onlyUncertain} onChange={(e) => setOnlyUncertain(e.target.checked)} /> Show only the {uncertainCount} cue{uncertainCount === 1 ? "" : "s"} to check
+            </label>
+          )}
           <ol className="cue-list" tabIndex={0} aria-label="Caption cues">
-            {data.cues.map((c) => {
+            {data.cues.filter((c) => !onlyUncertain || isUncertain(c)).map((c) => {
               const value = texts[c.id] ?? c.text;
               const changed = value !== c.text;
               return (
-                <li key={c.id} className={`cue${c.id === selected ? " cue-selected" : ""}${changed ? " cue-changed" : ""}`}>
+                <li key={c.id} className={`cue${c.id === selected ? " cue-selected" : ""}${changed ? " cue-changed" : ""}${isUncertain(c) ? " cue-uncertain" : ""}`}>
                   <label htmlFor={`cue-${c.id}`} className="muted small">
                     {formatTime(c.start)} – {formatTime(c.end)}{changed ? " · edited" : ""}
+                    {isUncertain(c) && <strong className="cue-check" title="The recogniser was not sure about a word here"> · please check</strong>}
                   </label>
                   <textarea id={`cue-${c.id}`} rows={2} dir="auto" maxLength={300} value={value} disabled={disabled}
                     onFocus={() => setSelected(c.id)}
