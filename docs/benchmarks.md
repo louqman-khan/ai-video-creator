@@ -23,8 +23,12 @@ Reading it:
 - A glossary given to Whisper itself (`WHISPER_PROMPT`) did not help on this file (28.1 % vs 27.4 %, within noise). Given to the Gemini clean-up it helped a little (21.6 -> 20.4 %).
 - The word that matters most here (طلقاء) is still often wrong after clean-up.
 
-## English - not measured yet
-Needs the exact text of `samples/english.wav` (a draft from `medium` is in `samples/english.draft.txt` for proofreading).
+## English - `samples/english.wav` (406 s, 1005 reference words, one speaker, clear speech)
+| Setup | WER | Time |
+|---|---|---|
+| `small` | 1.3 % (13 word errors) | 181 s (0.45x real time) |
+
+Caveat: `samples/english.txt` started as a `medium` draft that the owner was asked to proofread; if it was not changed, this number measures how closely `small` agrees with `medium` (still a good sign for clear English, but not proof of 100 %).
 
 ## What this means for the product
 No setting reaches 100 %. The reliable routes to exact text are (1) the user's script aligned to the audio (`--script`) and (2) the caption editor, which marks cues
