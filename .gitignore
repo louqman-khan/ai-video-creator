@@ -26,6 +26,7 @@ frontend/dist/
 desktop/node_modules/
 desktop/src-tauri/target/
 desktop/src-tauri/gen/
-desktop/src-tauri/resources/
+desktop/src-tauri/resources/*
+!desktop/src-tauri/resources/README.txt
 backend/build/
 samples/footage/

@@ -66,9 +66,10 @@ def download_python(dest: Path) -> None:
 
 
 def main() -> None:
-    if OUT.exists():
-        shutil.rmtree(OUT)
-    OUT.mkdir(parents=True)
+    OUT.mkdir(parents=True, exist_ok=True)
+    for old in OUT.iterdir():                      # keep README.txt: Tauri needs at least one file in resources/ to build
+        if old.name != "README.txt":
+            shutil.rmtree(old) if old.is_dir() else old.unlink()
     runtime = OUT / "runtime"
     download_python(runtime)
     py = runtime / ("python.exe" if platform.system() == "Windows" else "bin/python3")
