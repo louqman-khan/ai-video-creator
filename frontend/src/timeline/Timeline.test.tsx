@@ -278,6 +278,21 @@ describe("Timeline editing", () => {
     expect(clipEls(container)).toContain("scene-1");
   });
 
+  it("Shift-click adds clips to the selection and Delete removes all of them", async () => {
+    vi.spyOn(api, "saveTimeline").mockResolvedValue(timeline({ rev: 2 }));
+    vi.spyOn(api, "renderTimeline").mockResolvedValue({ id: "p1" } as never);
+    const { container } = await open();
+    const before = clipEls(container);
+    fireEvent.pointerDown(container.querySelector('[data-clip="scene-1"]')!, { button: 0, clientX: 0 });
+    fireEvent.pointerDown(container.querySelector('[data-clip="scene-2"]')!, { button: 0, clientX: 0, shiftKey: true });
+    expect(container.querySelectorAll(".tl-selected")).toHaveLength(2);
+    screen.getByLabelText(/Timeline tracks/).focus();
+    await userEvent.keyboard("{Delete}");
+    await waitFor(() => expect(clipEls(container)).toHaveLength(before.length - 2));
+    expect(clipEls(container)).not.toContain("scene-1");
+    expect(clipEls(container)).not.toContain("scene-2");
+  });
+
   it("a conflict is shown, edits stay, and nothing more is sent", async () => {
     const { ApiError } = await import("../api/client");
     const save = vi.spyOn(api, "saveTimeline").mockRejectedValue(new ApiError("The timeline was changed elsewhere", 409));

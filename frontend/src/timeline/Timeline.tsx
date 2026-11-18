@@ -99,6 +99,7 @@ function TimelineBody({ projectId, timeline, media, preparing, peaks, film, vide
   const [scrollLeft, setScrollLeft] = useState(0);
   const [viewport, setViewport] = useState(800);
   const [selected, setSelected] = useState<string | null>(null);
+  const [also, setAlso] = useState<string[]>([]); // more clips picked with Shift/Ctrl/Cmd-click: Delete and Ripple delete act on all of them
   const [notice, setNotice] = useState<string | null>(null);
   const [drag, setDrag] = useState<TimelineClip | null>(null); // the clip as it would be if dropped now
   const fitted = useRef(false);
@@ -171,6 +172,7 @@ function TimelineBody({ projectId, timeline, media, preparing, peaks, film, vide
   const run = useCallback((r: ops.Result) => {
     const err = session.apply(r);
     setNotice(err);
+    setAlso([]);
     if (!err && r.ids) setSelected(r.ids[0] ?? null);
     scrollRef.current?.focus({ preventScroll: true }); // a removed or replaced clip must not take the keyboard focus with it
   }, [session]);
@@ -181,6 +183,16 @@ function TimelineBody({ projectId, timeline, media, preparing, peaks, film, vide
     e.stopPropagation();
     const L = live.current;
     const clip = L.doc.clips.find((c) => c.id === id);
+    if (mode === "move" && (e.shiftKey || e.metaKey || e.ctrlKey)) {
+      setSelected((cur) => {
+        if (cur === null || cur === id) return id;
+        setAlso((a) => (a.includes(id) ? a.filter((x) => x !== id) : [...a, id]));
+        return cur;
+      });
+      setNotice(null);
+      return;
+    }
+    setAlso([]);
     setSelected(id);
     setNotice(null);
     seek(frameAt(e.clientX));
@@ -253,7 +265,7 @@ function TimelineBody({ projectId, timeline, media, preparing, peaks, film, vide
       [mod && k === "d", () => selected && run(ops.duplicateClip(doc, selected))],
       [e.altKey && !mod && (e.key === "ArrowLeft" || e.key === "ArrowRight"), () => nudge((e.key === "ArrowLeft" ? -1 : 1) * (e.shiftKey ? fps : 1))],
       [!mod && !e.altKey && (e.key === "[" || e.key === "]"), () => selectNeighbour(e.key === "]" ? 1 : -1)],
-      [e.key === "Escape" && !!selected, () => { setSelected(null); setNotice("Nothing selected."); }],
+      [e.key === "Escape" && !!selected, () => { setSelected(null); setAlso([]); setNotice("Nothing selected."); }],
       [!mod && k === "s", splitAtPlayhead],
       [!mod && (e.key === "Delete" || e.key === "Backspace") && !e.shiftKey, () => removeSelected(false)],
       [!mod && (e.key === "Delete" || e.key === "Backspace") && e.shiftKey, () => removeSelected(true)],
@@ -293,7 +305,8 @@ function TimelineBody({ projectId, timeline, media, preparing, peaks, film, vide
   };
   const removeSelected = (ripple: boolean) => {
     if (!selected) return setNotice("Select a clip first.");
-    run(ripple ? ops.rippleDelete(doc, [selected]) : ops.deleteClips(doc, [selected]));
+    const ids = [selected, ...also];
+    run(ripple ? ops.rippleDelete(doc, ids) : ops.deleteClips(doc, ids));
   };
   /** keyboard: move the selected clip by `frames` (it stops at its neighbours) */
   const nudge = (frames: number) => {
@@ -403,7 +416,7 @@ function TimelineBody({ projectId, timeline, media, preparing, peaks, film, vide
                     const asset = c.asset ? doc.assets[c.asset] : undefined;
                     return (
                       <ClipView key={c.id} clip={c} asset={asset} label={labelOf(c, asset)} left={left} width={width} height={ROW_H[t.kind]}
-                        selected={c.id === selected} onGrab={onGrab}
+                        selected={c.id === selected || also.includes(c.id)} onGrab={onGrab}
                         projectId={projectId} pps={pps} fps={fps} scrollLeft={scrollLeft} viewport={viewport}
                         media={asset ? media[asset.id] : undefined} peaks={asset ? peaks[asset.id] : undefined} film={asset ? film[asset.id] : undefined} />
                     );
