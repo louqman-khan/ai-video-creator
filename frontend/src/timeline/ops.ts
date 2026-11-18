@@ -99,6 +99,42 @@ export function moveClip(doc: Doc, id: string, to: { start: number; track?: stri
   return ok(replaceClip(doc, { ...c, start, track: targetId }), [id]);
 }
 
+/** Move several clips by the same number of frames, each staying on its own track. The shift is limited so that none of them leaves the timeline or runs into a clip that is not part of the move. */
+export function moveClips(doc: Doc, ids: string[], delta: number): Result {
+  const group = new Set(ids);
+  const picked = doc.clips.filter((c) => group.has(c.id));
+  if (picked.length === 0) return refuse(doc, "That clip no longer exists.");
+  if (picked.some((c) => isLocked(doc, c.track))) return refuse(doc, "That track is locked.");
+  let lo = -Infinity;
+  let hi = Infinity;
+  for (const c of picked) {
+    const others = clipsOn(doc, c.track, group);
+    const prev = [...others].reverse().find((o) => clipEnd(o) <= c.start);
+    const next = others.find((o) => o.start >= clipEnd(c));
+    lo = Math.max(lo, prev ? clipEnd(prev) - c.start : -c.start);
+    hi = Math.min(hi, next ? next.start - clipEnd(c) : Infinity);
+  }
+  const d = Math.min(Math.max(Math.round(delta), lo), hi);
+  if (d === 0) return ok(doc, ids);
+  return ok({ ...doc, clips: doc.clips.map((c) => (group.has(c.id) ? { ...c, start: c.start + d } : c)) }, ids);
+}
+
+/** Trim the same edge of several clips by the same number of frames; a clip that cannot follow (its source or a neighbour is in the way) stops where it can. */
+export function trimClips(doc: Doc, ids: string[], edge: "start" | "end", delta: number): Result {
+  let d = doc;
+  let done = 0;
+  for (const id of ids) {
+    const c = findClip(d, id);
+    if (!c) continue;
+    const r = trimClip(d, id, edge, (edge === "start" ? c.start : clipEnd(c)) + Math.round(delta));
+    if (!r.error) {
+      d = r.doc;
+      done++;
+    }
+  }
+  return done === 0 ? refuse(doc, "None of the selected clips can be trimmed that way.") : ok(d, ids);
+}
+
 // ------------------------------------------------------------------ trim
 
 export function trimClip(doc: Doc, id: string, edge: "start" | "end", frame: number): Result {

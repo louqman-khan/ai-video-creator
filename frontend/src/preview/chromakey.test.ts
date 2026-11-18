@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { despill, hexToRgb, keyAlpha, keyImageData, rgbToHex, spillChannel } from "./chromakey";
+import { despill, hexToRgb, keyAlpha, keyImageData, refineAlpha, rgbToHex, spillChannel } from "./chromakey";
 
 const green = { color: "#00ff00", similarity: 0.15, blend: 0.1, despill: false };
 
@@ -37,5 +37,36 @@ describe("chroma key maths (measured against ffmpeg's chromakey / despill)", () 
   it("hex helpers round trip", () => {
     expect(hexToRgb("#1e90ff")).toEqual([30, 144, 255]);
     expect(rgbToHex(30, 144, 255)).toBe("#1e90ff");
+  });
+});
+
+describe("edge clean-up of the cut-out", () => {
+  const square = () => {                                                  // 1920 x 20 strip is too big: use a 1920-wide canvas of height 7 with a solid middle
+    const W = 1920, H = 45;
+    const d = new Uint8ClampedArray(W * H * 4);
+    for (let y = 10; y < 35; y++) for (let x = 900; x < 1000; x++) d[(y * W + x) * 4 + 3] = 255;
+    return { d, W, H, at: (x: number, y: number) => d[(y * W + x) * 4 + 3]! };
+  };
+  it("shrink pulls the edge in by that many pixels and leaves the middle", () => {
+    const s = square();
+    refineAlpha(s.d, s.W, s.H, 2, 0);
+    expect(s.at(900, 22)).toBe(0);
+    expect(s.at(901, 22)).toBe(0);
+    expect(s.at(902, 22)).toBe(255);
+    expect(s.at(950, 22)).toBe(255);
+  });
+  it("feather turns the hard edge into a ramp without moving the middle", () => {
+    const s = square();
+    refineAlpha(s.d, s.W, s.H, 0, 2);
+    expect(s.at(899, 22)).toBeGreaterThan(0);
+    expect(s.at(899, 22)).toBeLessThan(255);
+    expect(s.at(950, 22)).toBe(255);
+    expect(s.at(850, 22)).toBe(0);
+  });
+  it("does nothing with both at zero", () => {
+    const s = square();
+    const before = s.d.slice();
+    refineAlpha(s.d, s.W, s.H, 0, 0);
+    expect(s.d).toEqual(before);
   });
 });

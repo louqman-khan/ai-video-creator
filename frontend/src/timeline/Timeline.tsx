@@ -101,7 +101,7 @@ function TimelineBody({ projectId, timeline, media, preparing, peaks, film, vide
   const [selected, setSelected] = useState<string | null>(null);
   const [also, setAlso] = useState<string[]>([]); // more clips picked with Shift/Ctrl/Cmd-click: Delete and Ripple delete act on all of them
   const [notice, setNotice] = useState<string | null>(null);
-  const [drag, setDrag] = useState<TimelineClip | null>(null); // the clip as it would be if dropped now
+  const [drag, setDrag] = useState<TimelineClip[] | null>(null); // the clips as they would be if dropped now (one, or the whole selection)
   const fitted = useRef(false);
 
   // measure the scroll area, and fit the whole timeline into it the first time we know the width
@@ -167,8 +167,8 @@ function TimelineBody({ projectId, timeline, media, preparing, peaks, film, vide
   );
   // stable, so memoised clips are not re-rendered by unrelated state (playing is no longer one of them anyway)
   const orderRef = useRef<TimelineTrack[]>([]);
-  const live = useRef({ doc, pps, fps });
-  live.current = { doc, pps, fps };
+  const live = useRef<{ doc: typeof doc; pps: number; fps: number; sel: string[] }>({ doc, pps, fps, sel: [] });
+  live.current = { doc, pps, fps, sel: selected ? [selected, ...also] : [] };
   const run = useCallback((r: ops.Result) => {
     const err = session.apply(r);
     setNotice(err);
@@ -192,8 +192,11 @@ function TimelineBody({ projectId, timeline, media, preparing, peaks, film, vide
       setNotice(null);
       return;
     }
-    setAlso([]);
-    setSelected(id);
+    const group = L.sel.length > 1 && L.sel.includes(id) ? L.sel : null;   // pressing one of several selected clips drags them all
+    if (!group) {
+      setAlso([]);
+      setSelected(id);
+    }
     setNotice(null);
     seek(frameAt(e.clientX));
     if (!clip) return;
@@ -220,21 +223,32 @@ function TimelineBody({ projectId, timeline, media, preparing, peaks, film, vide
       if (mode === "move") {
         let start = clip.start + dx;
         start += snap1([start, start + clip.duration]);
-        result = ops.moveClip(L.doc, id, { start, track: trackAt(ev.clientY) });
-        if (result.error) result = ops.moveClip(L.doc, id, { start, track: clip.track });
+        if (group) {
+          result = ops.moveClips(L.doc, group, start - clip.start);
+        } else {
+          result = ops.moveClip(L.doc, id, { start, track: trackAt(ev.clientY) });
+          if (result.error) result = ops.moveClip(L.doc, id, { start, track: clip.track });
+        }
       } else {
         let f = (mode === "start" ? clip.start : clip.start + clip.duration) + dx;
         f += snap1([f]);
-        result = ops.trimClip(L.doc, id, mode, f);
+        result = group ? ops.trimClips(L.doc, group, mode, f - (mode === "start" ? clip.start : clip.start + clip.duration)) : ops.trimClip(L.doc, id, mode, f);
       }
-      setDrag(result.error ? null : result.doc.clips.find((c) => c.id === id) ?? null);
+      const ids = new Set(group ?? [id]);
+      setDrag(result.error ? null : result.doc.clips.filter((c) => ids.has(c.id)));
     };
     const onUp = () => {
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
       window.removeEventListener("pointercancel", onUp);
       setDrag(null);
-      if (moved && result) run({ ...result, ids: result.ids });
+      if (moved && result) {
+        run({ ...result, ids: result.ids });
+        if (group && !result.error) {                // the whole selection stays selected after moving it
+          setSelected(group[0]!);
+          setAlso(group.slice(1));
+        }
+      }
     };
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
@@ -330,7 +344,11 @@ function TimelineBody({ projectId, timeline, media, preparing, peaks, film, vide
 
   const order = useMemo(() => displayOrder(doc.tracks), [doc.tracks]);
   orderRef.current = order;
-  const shown = useMemo(() => (drag ? doc.clips.map((c) => (c.id === drag.id ? drag : c)) : doc.clips), [doc.clips, drag]);
+  const shown = useMemo(() => {
+    if (!drag) return doc.clips;
+    const by = new Map(drag.map((c) => [c.id, c]));
+    return doc.clips.map((c) => by.get(c.id) ?? c);
+  }, [doc.clips, drag]);
   const byTrack = useMemo(() => {
     const m = new Map<string, TimelineClip[]>();
     for (const c of shown) (m.get(c.track) ?? m.set(c.track, []).get(c.track)!).push(c);

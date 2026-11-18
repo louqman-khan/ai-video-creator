@@ -293,6 +293,22 @@ describe("Timeline editing", () => {
     expect(clipEls(container)).not.toContain("scene-2");
   });
 
+  it("dragging one of several selected clips moves all of them and keeps them selected", async () => {
+    const save = vi.spyOn(api, "saveTimeline").mockResolvedValue(timeline({ rev: 2 }));
+    vi.spyOn(api, "renderTimeline").mockResolvedValue({ id: "p1" } as never);
+    const { container } = await open();
+    const el = (id: string) => container.querySelector(`[data-clip="${id}"]`)!;
+    fireEvent.pointerDown(el("scene-1"), { button: 0, clientX: 0 });
+    fireEvent.pointerDown(el("scene-2"), { button: 0, clientX: 0, shiftKey: true });
+    expect(container.querySelectorAll(".tl-selected")).toHaveLength(2);
+    fireEvent.pointerDown(el("scene-2"), { button: 0, clientX: 300, clientY: 0 });   // press a selected clip without a modifier
+    expect(container.querySelectorAll(".tl-selected")).toHaveLength(2);             // the group is kept
+    fireEvent.pointerMove(window, { clientX: 330, clientY: 0 });
+    fireEvent.pointerUp(window);
+    expect(container.querySelectorAll(".tl-selected")).toHaveLength(2);
+    await waitFor(() => expect(save).toHaveBeenCalled());                           // the move was saved (as one edit)
+  });
+
   it("a conflict is shown, edits stay, and nothing more is sent", async () => {
     const { ApiError } = await import("../api/client");
     const save = vi.spyOn(api, "saveTimeline").mockRejectedValue(new ApiError("The timeline was changed elsewhere", 409));

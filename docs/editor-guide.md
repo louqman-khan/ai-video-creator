@@ -9,7 +9,7 @@ Tracks (top to bottom): captions, video (higher tracks cover lower ones), audio.
 |---|---|
 | Drag a clip / its edges | move (also to another track of the same kind) / trim; snaps to neighbours and the playhead |
 | `S`, `Delete`, `Shift+Delete` | split at the playhead, remove and leave a gap, remove and close the gap |
-| `Shift`/`Ctrl`/`Cmd` + click | add a clip to the selection; `Delete` and `Shift+Delete` then remove all selected clips (moving several at once is not supported yet) |
+| `Shift`/`Ctrl`/`Cmd` + click | add a clip to the selection; `Delete` and `Shift+Delete` then remove all selected clips ; pressing one of the selected clips and dragging moves them all by the same amount (each stays on its track; the group stops at the first clip that is not part of it), and dragging an edge trims that edge of all of them |
 | `Ctrl/Cmd+D`, `Ctrl/Cmd+Z`, `Ctrl/Cmd+Shift+Z` | duplicate, undo, redo |
 | `[` `]`, `Alt+arrows`, `Esc` | select previous / next clip, nudge it, clear the selection |
 | Track label buttons | mute, lock, duck (music under narration), remove an empty track |

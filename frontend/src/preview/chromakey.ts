@@ -4,7 +4,7 @@
 // channel (green or blue) to the mean of the other two. A WebGL shader does it per frame; the CPU version is the fallback
 // (and what the tests exercise).
 
-export interface Key { color: string; similarity: number; blend: number; despill: boolean }
+export interface Key { color: string; similarity: number; blend: number; despill: boolean; shrink?: number; feather?: number }
 
 export const hexToRgb = (hex: string): [number, number, number] => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)) as [number, number, number];
 export const rgbToHex = (r: number, g: number, b: number) => `#${[r, g, b].map((v) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, "0")).join("")}`;
@@ -121,4 +121,45 @@ export class GlKeyer {
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     return this.canvas;
   }
+}
+
+/** Edge clean-up of the cut-out, on the transparency only (same steps as the export: `erosion` repeated, then a Gaussian blur).
+ *  `shrink` and `feather` are in pixels of a 1920-wide frame, so they are scaled to this canvas. In place on RGBA data. */
+export function refineAlpha(data: Uint8ClampedArray, W: number, H: number, shrink: number, feather: number): void {
+  const scale = W / 1920;
+  const r = shrink > 0 ? Math.max(1, Math.round(shrink * scale)) : 0;
+  const sigma = feather > 0 ? Math.max(0.3, feather * scale) : 0;
+  if (!r && !sigma) return;
+  let a = new Float32Array(W * H);
+  for (let i = 0; i < a.length; i++) a[i] = data[i * 4 + 3]!;
+  const tmp = new Float32Array(W * H);
+  if (r) {   // repeating a 3x3 minimum r times = a (2r+1) square minimum, which separates into a row pass and a column pass
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      let m = 255;
+      for (let k = Math.max(0, x - r); k <= Math.min(W - 1, x + r); k++) m = Math.min(m, a[y * W + k]!);
+      tmp[y * W + x] = m;
+    }
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      let m = 255;
+      for (let k = Math.max(0, y - r); k <= Math.min(H - 1, y + r); k++) m = Math.min(m, tmp[k * W + x]!);
+      a[y * W + x] = m;
+    }
+  }
+  if (sigma) {
+    const rad = Math.ceil(sigma * 3);
+    const w = Array.from({ length: 2 * rad + 1 }, (_, i) => Math.exp(-((i - rad) ** 2) / (2 * sigma * sigma)));
+    const sum = w.reduce((p, q) => p + q, 0);
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      let acc = 0;
+      for (let k = -rad; k <= rad; k++) acc += w[k + rad]! * a[y * W + Math.min(W - 1, Math.max(0, x + k))]!;
+      tmp[y * W + x] = acc / sum;
+    }
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      let acc = 0;
+      for (let k = -rad; k <= rad; k++) acc += w[k + rad]! * tmp[Math.min(H - 1, Math.max(0, y + k)) * W + x]!;
+      a[y * W + x] = acc / sum;
+    }
+  }
+  for (let i = 0; i < a.length; i++) data[i * 4 + 3] = Math.round(a[i]!);
+  a = new Float32Array(0);
 }

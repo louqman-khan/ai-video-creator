@@ -84,7 +84,7 @@ export function Inspector({ clip: c, doc, onApply, cropMode = false, onCropMode,
             <Slider label="Soft edge" value={c.key.blend} min={0} max={0.3} step={0.01} show={(v) => v.toFixed(2)} onCommit={(v) => onApply(ops.setKey(doc, c.id, { blend: v }))} />
             <Slider label="Shrink edge" value={c.key.shrink ?? 0} min={0} max={8} step={1} show={(v) => `${v} px`} onCommit={(v) => onApply(ops.setKey(doc, c.id, { shrink: v }))} />
             <Slider label="Feather edge" value={c.key.feather ?? 0} min={0} max={12} step={0.5} show={(v) => `${v} px`} onCommit={(v) => onApply(ops.setKey(doc, c.id, { feather: v }))} />
-            <p className="muted" style={{ fontSize: "0.8rem" }}>Shrink and Feather clean up a leftover coloured fringe. They show in the exported video, not in the live preview.</p>
+            <p className="muted" style={{ fontSize: "0.8rem" }}>Shrink and Feather clean up a leftover coloured fringe. They show in the live preview and in the exported video.</p>
             <div className="insp-row">
               <input id={`${c.id}-spill`} type="checkbox" checked={c.key.despill} onChange={(e) => onApply(ops.setKey(doc, c.id, { despill: e.target.checked }))} />
               <label htmlFor={`${c.id}-spill`} style={{ width: "auto" }}>Remove colour spill from the edges</label>

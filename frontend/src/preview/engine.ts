@@ -5,7 +5,7 @@
 
 import type { Doc } from "../timeline/ops";
 import { timelineLength } from "../timeline/ops";
-import { GlKeyer, keyImageData, rgbToHex, type Key } from "./chromakey";
+import { GlKeyer, keyImageData, refineAlpha, rgbToHex, type Key } from "./chromakey";
 import { audioAt, captionAt, layersAt, type Layer } from "./plan";
 
 /** Addresses of the prepared files; null while a file is not ready yet (nothing is requested until it is). */
@@ -319,15 +319,21 @@ export class LiveEngine extends EventTarget {
   /** The green screen: make the key colour transparent (on the graphics card when there is one). */
   private applyKey(a: CanvasRenderingContext2D, key: Key, W: number, H: number) {
     this.keyer ??= new GlKeyer();
+    const refine = !!(key.shrink || key.feather);
     const out = this.keyer.apply(a.canvas, key);
     if (out) {
       a.clearRect(0, 0, W, H);
       a.drawImage(out, 0, 0);
-      return;
+    } else {
+      const img = a.getImageData(0, 0, W, H);
+      keyImageData(img.data, key);
+      a.putImageData(img, 0, 0);
     }
-    const img = a.getImageData(0, 0, W, H);
-    keyImageData(img.data, key);
-    a.putImageData(img, 0, 0);
+    if (refine) {   // edge clean-up needs the neighbours of each pixel: done on the pixels (a few ms at preview size)
+      const img = a.getImageData(0, 0, W, H);
+      refineAlpha(img.data, W, H, key.shrink ?? 0, key.feather ?? 0);
+      a.putImageData(img, 0, 0);
+    }
   }
   private keyer: GlKeyer | null = null;
 

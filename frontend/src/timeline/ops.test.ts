@@ -117,6 +117,38 @@ describe("move", () => {
   });
 });
 
+describe("several clips at once", () => {
+  const start = (d: Doc, id: string) => d.clips.find((c) => c.id === id)!.start;
+  it("moves the picked clips together, each on its own track, and keeps the document valid", () => {
+    const r = ops.moveClips(sample(), ["music", "cap8", "cap9"], 10);
+    expect(r.error).toBeUndefined();
+    expect([start(r.doc, "music"), start(r.doc, "cap8"), start(r.doc, "cap9")]).toEqual([30, 330, 370]);
+    expect(start(r.doc, "cap7")).toBe(280);                                     // the clip that was not picked stays
+    expect(problems(r.doc)).toEqual([]);
+  });
+  it("stops the whole group at the first obstacle or at zero", () => {
+    expect(ops.moveClips(sample(), ["cap0", "cap1"], -500).doc.clips.find((c) => c.id === "cap0")!.start).toBe(0);   // cannot go before the start
+    const stuck = ops.moveClips(sample(), ["cap3", "cap4"], 100);               // cap5 is next to cap4: nothing can move
+    expect(start(stuck.doc, "cap3")).toBe(120);
+    const some = ops.moveClips(sample(), ["music", "cap0"], 400);
+    expect(start(some.doc, "cap0")).toBe(0);                                    // cap1 sits right after cap0: the group cannot move forward at all
+    expect(start(some.doc, "music")).toBe(20);
+  });
+  it("refuses a locked track and an unknown clip", () => {
+    const d = sample();
+    d.tracks.find((t) => t.id === "a2")!.locked = true;
+    expect(ops.moveClips(d, ["music", "cap0"], 10).error).toMatch(/locked/);
+    expect(ops.moveClips(sample(), ["nope"], 10).error).toBeDefined();
+  });
+  it("trims the same edge of several clips and lets each stop where it can", () => {
+    const r = ops.trimClips(sample(), ["s1", "s2"], "end", -20);
+    expect(r.doc.clips.find((c) => c.id === "s1")!.duration).toBe(80);
+    expect(r.doc.clips.find((c) => c.id === "s2")!.duration).toBe(100);
+    expect(problems(r.doc)).toEqual([]);
+    expect(ops.trimClips(sample(), ["s3"], "end", 5000).doc.clips.find((c) => c.id === "s3")).toBeDefined();
+  });
+});
+
 describe("trim", () => {
   it("cannot extend past the media or into a neighbour", () => {
     const d = sample();

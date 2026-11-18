@@ -573,9 +573,9 @@ def test_shrink_and_feather_clean_up_the_edge_without_touching_the_middle(media,
     # the left edge of the red subject is at x = 20/320 of the frame; a few pixels inside it the plain key still shows red, the shrunk one shows what is underneath
     x_edge = round(20 / 320 * 960)                                                   # previews are 960 px wide
     r, g, b = px(plain, 0.5, x_edge + 3, 270); assert r > 200 and b < 80
-    r, g, b = px(shrunk, 0.5, x_edge + 3, 270); assert b > 150 and r < 100
+    r, g, b = px(shrunk, 0.5, x_edge + 1, 270); assert b > 150 and r < 100        # shrink 8 px of a 1920 frame = 4 px of this 960 px preview
     r, g, b = px(shrunk, 0.5, 200, 270); assert r > 200 and g < 60                  # the middle of the subject is untouched
-    soft = render_to(keyed_tl(media, tmp_path, ChromaKey(despill=False, feather=6)), tmp_path, "e2.mp4")
+    soft = render_to(keyed_tl(media, tmp_path, ChromaKey(despill=False, feather=12)), tmp_path, "e2.mp4")
     mixed = [px(soft, 0.5, x, 270) for x in range(x_edge - 12, x_edge + 14, 3)]
     assert sum(1 for r, g, b in mixed if 10 < r < 245 and 10 < b < 245) >= 3           # a soft ramp of blends instead of a hard step
     hard = [px(plain, 0.5, x, 270) for x in range(x_edge - 12, x_edge + 14, 3)]

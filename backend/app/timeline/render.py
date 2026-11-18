@@ -172,7 +172,7 @@ def _timing(c: Clip) -> Timing:
     return Timing("*".join(parts) or None, dx, zoom)
 
 
-def _key_args(c: Clip) -> list[str]:
+def _key_args(c: Clip, w: int = 1920) -> list[str]:
     """Chroma key as ffmpeg filters. The live preview does the same maths (preview/chromakey.ts): the colour distance is measured on the
     chroma (BT.709, limited range) and scaled like ffmpeg's `chromakey`; despill limits the key's own channel by the mean of the other two."""
     k = c.key
@@ -183,9 +183,11 @@ def _key_args(c: Clip) -> list[str]:
     if k.despill and max(r, g, b) in (g, b) and (g >= r or b >= r):
         out.append(f"despill=type={'green' if g >= b else 'blue'}")
     # edge clean-up works on the transparency only (plane 3 of yuva420p): thresholds 0 leave the colour planes alone
-    out += ["erosion=threshold0=0:threshold1=0:threshold2=0"] * k.shrink
+    # shrink and feather are in pixels of a 1920-wide frame: scaled to this frame so a preview and a full-size export look the same
+    scale = w / 1920
+    out += ["erosion=threshold0=0:threshold1=0:threshold2=0"] * (max(1, round(k.shrink * scale)) if k.shrink else 0)
     if k.feather > 0:
-        out.append(f"gblur=sigma={k.feather:.2f}:planes=8")
+        out.append(f"gblur=sigma={max(0.3, k.feather * scale):.2f}:planes=8")
     return out
 
 
@@ -348,7 +350,7 @@ def _layer_chain(tl: Timeline, seg: Segment, c: Clip, idx: int, w: int, h: int) 
         chain = f"[bg{idx}][fg{idx}]overlay=x=(main_w-overlay_w)/2:y=(main_h-overlay_h)/2,setsar=1"
     else:
         chain = f"[{idx}:v]{tm}{cover},fps={tl.fps}{hold}"
-    for f in [*_key_args(c), *_fx_args(c, w)]:
+    for f in [*_key_args(c, w), *_fx_args(c, w)]:
         chain += "," + f
     g = _geometry(c, w, h)
     t = c.transform

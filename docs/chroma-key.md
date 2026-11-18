@@ -9,7 +9,7 @@
 - despill (green screen): `G = min(G, (R + B) / 2)`; blue screen: `B = min(B, (R + G) / 2)` (ffmpeg `despill` defaults); other colours are not despilled
 
 ## Edge clean-up (shrink, feather)
-`shrink` (0..8 px) erodes the cut-out's transparency by that many pixels (removes a coloured fringe); `feather` (0..12 px, Gaussian sigma) softens the edge. Both act on the transparency only (ffmpeg `erosion` with thresholds 0 on the colour planes, `gblur planes=8`) after despill. Defaults 0 = unchanged. **They are applied in exports and the rendered preview video, not in the live canvas preview** (the Inspector says so).
+`shrink` (0..8 px) erodes the cut-out's transparency by that many pixels (removes a coloured fringe); `feather` (0..12 px, Gaussian sigma) softens the edge. Both act on the transparency only (ffmpeg `erosion` with thresholds 0 on the colour planes, `gblur planes=8`) after despill. Defaults 0 = unchanged. Pixels are those of a 1920-wide frame and are scaled to the actual frame, so a preview and a full-size export look the same. The live canvas preview does the same steps on the pixels (`refineAlpha` in `preview/chromakey.ts`).
 
 ## Where it sits in a layer's steps
 picture in the frame (fill / fit / blur) -> **key** -> effects -> crop -> resize -> rotate -> opacity, fades, transitions -> overlay.
