@@ -27,7 +27,10 @@ jobs:
       - name: Make the voices and have Whisper listen to them
         run: python backend/tools/voice_experiment.py
       - run: cat out/results.md >> "$GITHUB_STEP_SUMMARY"
+        if: always()
+        continue-on-error: true
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: voice-samples
           path: out/

@@ -75,4 +75,12 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    import traceback
+
+    try:
+        main()
+    except Exception:  # noqa: BLE001  report the reason where the public API can read it (the job log needs a login)
+        tb = traceback.format_exc()
+        (OUT / "error.txt").write_text(tb, "utf-8")
+        print("::error title=voice experiment failed::" + tb[-900:].replace("%", "%25").replace("\r", "").replace("\n", "%0A"))
+        sys.exit(1)
