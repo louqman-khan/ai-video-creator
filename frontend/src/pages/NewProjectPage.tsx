@@ -97,6 +97,19 @@ export function NewProjectPage() {
         </div>
       </div>
 
+      <ol className="steps" aria-label="Progress">
+        {[{ title: "Your words", sub: "Script or audio", n: 1 }, { title: "Make it yours", sub: "Language and format", n: 2 }, { title: "First draft", sub: "We build the video", n: 3 }].map(({ title, sub, n }) => {
+          const at = uploading ? 3 : ready ? 2 : 1;   // where the person is: choosing the words, tuning the settings, or waiting for the draft
+          const state = n < at ? "done" : n === at ? "on" : "todo";
+          return (
+            <li key={n} className={`step-i step-${state}`} aria-current={state === "on" ? "step" : undefined}>
+              <span className="step-n">{state === "done" ? <Icon name="check" size={14} /> : n}</span>
+              <span className="step-t"><strong>{title}</strong><span>{sub}</span></span>
+            </li>
+          );
+        })}
+      </ol>
+
       <form className="np-grid" onSubmit={submit} noValidate>
         <div className="np-main">
         <div className="choices" role="radiogroup" aria-label="Where does the narration come from?">

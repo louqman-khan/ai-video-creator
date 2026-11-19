@@ -4,6 +4,7 @@ import { Icon } from "./components/Icon";
 import { TopBar } from "./components/TopBar";
 import { SetupCard } from "./components/SetupCard";
 import { CreditsCard } from "./components/CreditsCard";
+import { RecentProjects } from "./components/RecentProjects";
 import { AccountPage, ForgotPage, LegalPage, LoginPage, ResetPage, SignupPage, VerifyPage } from "./pages/AuthPages";
 import { EditorPage } from "./pages/EditorPage";
 import { NewProjectPage } from "./pages/NewProjectPage";
@@ -74,6 +75,7 @@ export function App() {
             <NavLink to="/" end><Icon name="grid" />Projects</NavLink>
             {!hosted && <NavLink to="/setup"><Icon name="settings" />Settings</NavLink>}
           </nav>
+          <RecentProjects />
           {!hosted && <SetupCard />}
           {hosted && <CreditsCard />}
           {hosted && user && (

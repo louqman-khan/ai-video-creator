@@ -30,6 +30,22 @@ beforeEach(() => {
 const renderEditor = (props: Partial<Parameters<typeof CaptionEditor>[0]> = {}) =>
   render(<CaptionEditor project={project()} onChanged={vi.fn()} previewDebounceMs={0} {...props} />);
 
+describe("CaptionEditor looks", () => {
+  it("a look sets colour, outline and weight in one click and shows which one is active", async () => {
+    renderEditor();
+    await screen.findByDisplayValue("پاکستان کے پہاڑ");
+    const classic = screen.getByRole("button", { name: /Classic/ });
+    expect(classic).toHaveAttribute("aria-pressed", "true");                       // the default style is the Classic look
+    await userEvent.click(screen.getByRole("button", { name: /Pop/ }));
+    expect(screen.getByRole("button", { name: /Pop/ })).toHaveAttribute("aria-pressed", "true");
+    expect(classic).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByLabelText("Outline width")).toHaveValue(4);
+    expect(screen.getByLabelText("Bold")).toBeChecked();
+    expect(screen.getByLabelText("Text colour")).toHaveValue("#ffe066");
+    expect(screen.getByRole("button", { name: "Apply and re-render" })).toBeEnabled();   // it counts as a change
+  });
+});
+
 describe("CaptionEditor", () => {
   it("marks cues the recogniser was unsure about and can show only those", async () => {
     vi.spyOn(api, "getCaptions").mockResolvedValue(captions({ cues: [

@@ -29,3 +29,10 @@ Type: Space Grotesk (display) + DM Sans (text) + Noto Nastaliq Urdu (Urdu); all 
 Timeline tints: teal = pictures, coral = captions, blue = voice-over. Applied in `frontend/src/theme.css`.
 Layout ideas taken over: start cards on the projects page, new-project page with the main choices on the left and a settings panel (language, format, options, Create) on the right, sort and search above the grid.
 Left for later: credits/plan card (only when plans exist), duration badges on cards, visual-style and stock-visual choices on the new-project page (need backend support), breadcrumb.
+
+## Rule for borrowing ideas (2026-11-19)
+Keep what already works in our product; take an idea from another tool only where it adds value. After reviewing the Manus "frame" mock-up (rated 8.5/10 as a visual reference, but a static demo with tiny 10-11 px text and low-contrast greys):
+- **Adopted:** caption looks (one-click presets above the existing style fields, which all stay), a 3-step progress indicator on New project, recent projects in the sidebar.
+- **Kept ours:** larger text (14.5 px base), the working multi-track editor and its controls, the credits card, the app bar.
+- **Not adopted:** the large hero banner (takes too much room for returning users), the workspace switcher (no teams yet), the design-system page for customers, very small type.
+- **Maybe later:** a 3x3 position grid and text-colour swatches for captions, a "good default / Reset" row, a caption-first right-hand panel.

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../api/client";
 import { isActive, type CaptionsView, type CaptionStyle, type Project } from "../api/types";
-import { FONT_SUGGESTIONS, sameStyle, toForm, toPayload } from "../captionStyle";
+import { FONT_SUGGESTIONS, LOOKS, lookIsActive, sameStyle, toForm, toPayload } from "../captionStyle";
 import { formatTime } from "../format";
 import { useCaptionPreview } from "../hooks";
 
@@ -127,6 +127,16 @@ export function CaptionEditor({ project, onChanged, previewDebounceMs = 400 }: P
 
           <fieldset className="style-form" disabled={disabled}>
             <legend>Style</legend>
+            <div className="looks" role="group" aria-label="Caption looks">
+              {LOOKS.map((l) => (
+                <button key={l.id} type="button" className={`look${lookIsActive(style, l) ? " look-on" : ""}`} aria-pressed={lookIsActive(style, l)}
+                  onClick={() => setStyle({ ...style, ...l.values })}>
+                  <span className="look-aa" style={{ color: l.values.color, fontWeight: l.values.bold ? 700 : 500,
+                    WebkitTextStroke: l.values.outline_width ? `${Math.min(2.5, l.values.outline_width / 2)}px ${l.values.outline_color}` : undefined, paintOrder: "stroke fill" }}>Aa</span>
+                  <span className="look-name">{l.name}</span>
+                </button>
+              ))}
+            </div>
             <label className="field">
               <span className="label">Font</span>
               <input type="text" list="font-suggestions" value={style.font ?? ""} placeholder="Automatic"
