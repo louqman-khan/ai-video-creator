@@ -497,3 +497,4 @@ input[type="color"] { width: 44px; min-height: 30px; height: 30px; padding: 2px;
 .hero-chip .icon { color: var(--accent); }
 .hero-chip-a { right: 0; top: 10px; } .hero-chip-b { right: 4px; top: 96px; }
 @media (max-width: 900px) { .hero { grid-template-columns: minmax(0, 1fr); } .hero-visual { display: none; } }
+.auth-brand .eyebrow::before { background: #a7e3d3; }
