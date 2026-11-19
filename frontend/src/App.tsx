@@ -5,6 +5,12 @@ import { TopBar } from "./components/TopBar";
 import { SetupCard } from "./components/SetupCard";
 import { CreditsCard } from "./components/CreditsCard";
 import { RecentProjects } from "./components/RecentProjects";
+import { useProjects } from "./store/projects";
+
+function ProjectCount() {
+  const n = useProjects((s) => s.projects.length);
+  return n > 0 ? <span className="count">{n}</span> : null;
+}
 import { AccountPage, ForgotPage, LegalPage, LoginPage, ResetPage, SignupPage, VerifyPage } from "./pages/AuthPages";
 import { EditorPage } from "./pages/EditorPage";
 import { NewProjectPage } from "./pages/NewProjectPage";
@@ -71,10 +77,14 @@ export function App() {
       {!inEditor && (
         <aside className="sidebar">
           <Link to="/" className="brand"><span className="brand-mark" aria-hidden="true" />AI Video Creator</Link>
-          <Link to="/new" className="btn btn-primary side-new"><Icon name="plus" />New video</Link>
+          <div className="workspace">
+            <span className="workspace-mark" aria-hidden="true">{hosted ? (user?.email ?? "W").slice(0, 1).toUpperCase() : "L"}</span>
+            <span><strong>{hosted ? "Your workspace" : "Local workspace"}</strong><span className="muted">{hosted ? "Personal" : "This computer"}</span></span>
+          </div>
           <nav className="side-nav" aria-label="Main">
             <span className="side-label">Workspace</span>
-            <NavLink to="/" end><Icon name="grid" />Projects</NavLink>
+            <NavLink to="/" end><Icon name="grid" />Projects<ProjectCount /></NavLink>
+            <NavLink to="/new"><Icon name="plus" />New project</NavLink>
             {!hosted && <NavLink to="/setup"><Icon name="settings" />Settings</NavLink>}
           </nav>
           <RecentProjects />

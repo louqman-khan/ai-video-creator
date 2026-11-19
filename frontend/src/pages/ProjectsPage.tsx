@@ -14,6 +14,15 @@ function greeting(now = new Date()): string {
   const h = now.getHours();
   return h < 5 ? "Working late?" : h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
 }
+function ago(iso: string, now = Date.now()): string {
+  const m = Math.max(0, Math.round((now - new Date(iso).getTime()) / 60000));
+  if (m < 1) return "just now";
+  if (m < 60) return `${m} min ago`;
+  const h = Math.round(m / 60);
+  if (h < 24) return `${h} h ago`;
+  const d = Math.round(h / 24);
+  return d === 1 ? "yesterday" : `${d} days ago`;
+}
 const clock = (s: number) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, "0")}`;
 
 export function ProjectsPage() {
@@ -45,24 +54,23 @@ export function ProjectsPage() {
     <section>
       <div className="page-head">
         <div>
-          <p className="eyebrow"><span className="dot" />Your creative space</p>
-          <h1>{greeting()}</h1>
-          <p className="page-sub">Your next story is only a few clicks away.</p>
+          <p className="eyebrow">Your studio, in motion</p>
+          <h1>{greeting()}. Start with a <span className="hl">first frame.</span></h1>
+          <p className="page-sub">Turn the words in your head into something people can see.</p>
         </div>
-        <Link className="btn btn-primary" to="/new"><Icon name="plus" />New project</Link>
+        <Link className="btn btn-primary" to="/new"><Icon name="plus" />Create a video</Link>
       </div>
 
       <SetupBanner />
-      <div className="starts" aria-label="Start a video">
-        <Link to="/new" className="start">
-          <span className="start-ico"><Icon name="mic" size={22} /></span>
-          <span><strong>Start with a voiceover</strong><span className="muted">Upload narration (Urdu or English). We find the visuals and add captions.</span><span className="start-go">From audio<Icon name="chevron" size={14} /></span></span>
-        </Link>
-        <Link to="/new?source=script" className="start">
-          <span className="start-ico"><Icon name="text" size={22} /></span>
-          <span><strong>Bring a script to life</strong><span className="muted">Type or paste your story and a computer voice reads it.</span><span className="start-go">From a script<Icon name="chevron" size={14} /></span></span>
-        </Link>
-      </div>
+      <section className="hero" aria-label="Start a video">
+        <p className="eyebrow">A little magic, a lot less work</p>
+        <h2>Your voice. Your story.<span>Every language in between.</span></h2>
+        <p>Start with a script or a recording. We find the pictures, time them and add captions in English or Urdu.</p>
+        <div className="hero-actions">
+          <Link to="/new" className="btn btn-primary"><Icon name="mic" />Start with a voiceover</Link>
+          <Link to="/new?source=script" className="btn"><Icon name="text" />Write a script</Link>
+        </div>
+      </section>
       {error && (
         <p className="alert" role="alert">
           {error}
@@ -80,14 +88,15 @@ export function ProjectsPage() {
 
       {admin && <StoragePanel />}
       {projects.length > 0 && (
-        <div className="tabs" role="tablist" aria-label="Filter projects">
-          {([["all", "All projects"], ["recent", "Recent"], ["progress", "In progress"]] as const).map(([id, label]) => (
-            <button key={id} type="button" role="tab" aria-selected={tab === id} className={`tab${tab === id ? " tab-on" : ""}`} onClick={() => setTab(id)}>{label}</button>
-          ))}
-        </div>
+        <div className="section-head"><h2>Your projects</h2><span className="count">{projects.length}</span></div>
       )}
       {projects.length > 0 && (
         <div className="toolbar">
+          <div className="tabs" role="tablist" aria-label="Filter projects">
+            {([["all", "All projects"], ["recent", "Recent"], ["progress", "In progress"]] as const).map(([id, label]) => (
+              <button key={id} type="button" role="tab" aria-selected={tab === id} className={`tab${tab === id ? " tab-on" : ""}`} onClick={() => setTab(id)}>{label}</button>
+            ))}
+          </div>
           <label className="search">
             <Icon name="search" />
             <input type="text" placeholder="Search projects" aria-label="Search projects" value={query} onChange={(e) => setQuery(e.target.value)} />
@@ -128,9 +137,7 @@ export function ProjectsPage() {
                   </div>
                 </details>
               </div>
-              <p className="proj-meta">
-                {p.aspect} · {p.language ?? "auto language"} · {new Date(p.created_at).toLocaleDateString()}
-              </p>
+              <p className="proj-sub">{p.language === "ur" ? "Urdu" : p.language === "en" ? "English" : "Auto language"}</p>
               {isActive(p) && (
                 <>
                   <ProgressBar value={p.progress} label={`${p.name} progress`} />
@@ -138,6 +145,7 @@ export function ProjectsPage() {
                 </>
               )}
               {p.status === "failed" && p.error && <p className="alert small">{p.error}</p>}
+              <div className="proj-foot"><span>Edited {ago(p.updated_at)}</span><span>{p.aspect}</span></div>
             </div>
           </li>
         ))}

@@ -92,8 +92,9 @@ export function NewProjectPage() {
     <section>
       <div className="page-head">
         <div>
-          <h1>New project</h1>
-          <p className="page-sub">Start from your own recording, or type a script and let a voice read it. We find the pictures, time them and add captions.</p>
+          <p className="eyebrow">A fresh start</p>
+          <h1>New project: let’s find your <span className="hl">first frame.</span></h1>
+          <p className="page-sub">Bring a script or a recording. We find the pictures, time them and add captions.</p>
         </div>
       </div>
 

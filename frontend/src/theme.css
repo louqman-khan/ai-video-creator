@@ -11,26 +11,26 @@
   --radius: 12px; --radius-sm: 8px; --ctl: 36px; --ctl-sm: 28px;
 
   /* light */
-  --bg: #f5f7f5; --panel: #ffffff; --panel-2: #f9faf9; --panel-3: #edf1ef;
-  --text: #1b2826; --text-2: #3a4a46; --muted: #667470; --line: #e3e9e6; --line-strong: #d9e2de;
-  --accent: #246b62; --accent-strong: #1b5750; --accent-soft: #e3f0ed; --accent-text: #ffffff;
+  --bg: #f7f8f6; --panel: #ffffff; --panel-2: #fafbf9; --panel-3: #eef1ee;
+  --text: #172321; --text-2: #3a4846; --muted: #6a7876; --line: #e5e9e6; --line-strong: #d6dcd8;
+  --accent: #176b63; --accent-strong: #115650; --accent-soft: #e4f4ee; --accent-text: #ffffff; --mint: #bce9d8;
   --coral: #e7745d; --coral-soft: #fbece8;
-  --grad: linear-gradient(135deg, #246b62 0%, #2f8a7d 100%);
-  --danger: #c34f4f; --ok: #277a58; --warn: #ab6c1b; --info: #3f7ead;
+  --grad: linear-gradient(135deg, #176b63 0%, #20846e 100%);
+  --danger: #c45151; --ok: #20846e; --warn: #ba7b26; --info: #3f7ead;
   --shadow-1: 0 1px 2px rgba(27, 40, 38, .05);
   --shadow-2: 0 1px 2px rgba(27, 40, 38, .06), 0 10px 28px -16px rgba(27, 40, 38, .25);
   --shadow-3: 0 16px 40px -12px rgba(27, 40, 38, .3);
-  --stage: #101616;
+  --stage: #172321;
   --font: "DM Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", "Noto Nastaliq Urdu", sans-serif;
-  --font-display: "Space Grotesk", "DM Sans", ui-sans-serif, system-ui, "Noto Nastaliq Urdu", sans-serif;
+  --font-display: "DM Sans", ui-sans-serif, system-ui, "Noto Nastaliq Urdu", sans-serif;
   --shadow: var(--shadow-1); --shadow-lg: var(--shadow-3);
 }
 /* dark: follows the system unless the user chose a theme (data-theme on <html>, set by store/theme.ts) */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #13191a; --panel: #1a2222; --panel-2: #1e2828; --panel-3: #222c2c;
-    --text: #f3f7f4; --text-2: #cdd8d4; --muted: #9dacaa; --line: #2b3736; --line-strong: #35413f;
-    --accent: #69c9b0; --accent-strong: #8bdcc6; --accent-soft: #1d3a36; --accent-text: #0c1514;
+    --bg: #131918; --panel: #1c2422; --panel-2: #212a28; --panel-3: #26302e;
+    --text: #f1f5f2; --text-2: #cbd6d2; --muted: #9aa9a6; --line: #303a37; --line-strong: #3b4642;
+    --accent: #5ec2a6; --accent-strong: #86d9c1; --accent-soft: #1d3a34; --accent-text: #0c1514; --mint: #bce9d8;
     --coral: #f38a72; --coral-soft: #3a2420;
     --grad: linear-gradient(135deg, #3fa690 0%, #69c9b0 100%);
     --danger: #ef8585; --ok: #72c99a; --warn: #e4b35e; --info: #82bbe7;
@@ -40,9 +40,9 @@
   }
 }
 :root[data-theme="dark"] {
-  --bg: #13191a; --panel: #1a2222; --panel-2: #1e2828; --panel-3: #222c2c;
-  --text: #f3f7f4; --text-2: #cdd8d4; --muted: #9dacaa; --line: #2b3736; --line-strong: #35413f;
-  --accent: #69c9b0; --accent-strong: #8bdcc6; --accent-soft: #1d3a36; --accent-text: #0c1514;
+  --bg: #131918; --panel: #1c2422; --panel-2: #212a28; --panel-3: #26302e;
+  --text: #f1f5f2; --text-2: #cbd6d2; --muted: #9aa9a6; --line: #303a37; --line-strong: #3b4642;
+  --accent: #5ec2a6; --accent-strong: #86d9c1; --accent-soft: #1d3a34; --accent-text: #0c1514; --mint: #bce9d8;
   --coral: #f38a72; --coral-soft: #3a2420;
   --grad: linear-gradient(135deg, #3fa690 0%, #69c9b0 100%);
   --danger: #ef8585; --ok: #72c99a; --warn: #e4b35e; --info: #82bbe7;
@@ -55,7 +55,7 @@
 /* ---- base typography */
 body { font-family: var(--font); font-size: 14.5px; line-height: 1.55; color: var(--text); -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
 h1, h2, .brand, .ws-title { font-family: var(--font-display); }
-h1 { font-size: 1.875rem; line-height: 1.25; letter-spacing: -.02em; font-weight: 700; }
+h1 { font-size: 2.25rem; font-weight: 600; line-height: 1.25; letter-spacing: -.02em; font-weight: 700; }
 h2 { font-size: 1.0625rem; line-height: 1.35; letter-spacing: -.01em; font-weight: 600; margin: var(--s5) 0 var(--s3); }
 p { margin: 0 0 var(--s3); }
 .muted { color: var(--muted); } .small { font-size: .8125rem; }
@@ -396,3 +396,49 @@ input[type=file]::file-selector-button { font: inherit; font-weight: 500; min-he
 .auth-brand .brand-mark { background: rgba(255, 255, 255, .18); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .25); }
 .auth-points [lang="ur"] { font-family: "Noto Nastaliq Urdu", serif; font-size: 1.05em; line-height: 1; padding: 0 2px; }
 .auth-card .check { align-items: flex-start; font-size: .875rem; line-height: 1.5; } .auth-card .check input { margin-top: 3px; flex: none; }
+
+/* ============ Manus "frame" look: headline with a teal phrase, hero banner, workspace card, quieter project cards ============ */
+.hl { color: var(--accent); }
+h1 .hl { font-weight: 600; }
+.shell { grid-template-columns: 264px minmax(0, 1fr); }
+.sidebar { gap: var(--s4); }
+.workspace { display: flex; align-items: center; gap: var(--s3); padding: var(--s3); border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); box-shadow: var(--shadow-1); }
+.workspace-mark { flex: none; display: grid; place-items: center; width: 34px; height: 34px; border-radius: var(--radius-sm); background: var(--accent-soft); color: var(--accent-strong); font-weight: 700; }
+.workspace strong { display: block; font-size: .9375rem; line-height: 1.2; } .workspace .muted { font-size: .8125rem; }
+.side-nav a { min-height: 42px; }
+.side-nav a .count { margin-left: auto; font-size: .75rem; padding: 2px 8px; border-radius: 999px; background: var(--panel-3); color: var(--muted); }
+.side-nav a.active .count { background: var(--panel); color: var(--accent-strong); }
+.hero { position: relative; overflow: hidden; display: grid; gap: var(--s3); align-content: center; padding: var(--s6) var(--s7); margin-bottom: var(--s6); border-radius: 20px; background: linear-gradient(120deg, var(--accent-soft) 0%, color-mix(in srgb, var(--mint) 40%, var(--accent-soft)) 100%); border: 1px solid color-mix(in srgb, var(--accent) 12%, transparent); }
+.hero::after { content: ""; position: absolute; right: -80px; top: -120px; width: 420px; height: 420px; border-radius: 50%; background: color-mix(in srgb, var(--mint) 55%, transparent); opacity: .5; pointer-events: none; }
+.hero > * { position: relative; z-index: 1; }
+.hero h2 { margin: 0; font-size: 1.75rem; line-height: 1.2; font-weight: 600; letter-spacing: -.02em; } .hero h2 span { color: var(--muted); font-weight: 400; display: block; }
+.hero p { margin: 0; color: var(--text-2); max-width: 46ch; }
+.hero-actions { display: flex; gap: var(--s3); flex-wrap: wrap; margin-top: var(--s2); }
+.hero-actions .btn { min-height: 42px; }
+.section-head { display: flex; align-items: baseline; gap: var(--s3); margin: 0 0 var(--s4); }
+.section-head h2 { margin: 0; font-size: 1.5rem; } .section-head .count { font-size: .75rem; padding: 2px 8px; border-radius: 999px; background: var(--panel-3); color: var(--muted); }
+.eyebrow { letter-spacing: .12em; } .eyebrow::before { content: ""; width: 22px; height: 1.5px; background: var(--accent); } .eyebrow .dot { display: none; }
+.tabs { display: inline-flex; gap: 2px; padding: 3px; margin: 0; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--panel); }
+.tab { margin: 0; padding: 0 var(--s3); min-height: 30px; border: 0; border-radius: 6px; font-size: .8125rem; }
+.tab-on { background: var(--panel-3); border-bottom: 0; }
+.proj { border-radius: 14px; }
+.proj-body { gap: 6px; padding: var(--s3) var(--s4) var(--s3); }
+.proj-foot { display: flex; justify-content: space-between; gap: var(--s2); padding-top: var(--s3); margin-top: var(--s2); border-top: 1px solid var(--line); color: var(--muted); font-size: .75rem; }
+.proj-sub { margin: 0; color: var(--muted); font-size: .8125rem; }
+.toolbar .tabs { margin-right: auto; } .toolbar .search { flex: 0 1 300px; } .toolbar > .muted { order: 5; }
+
+/* ---- new project in the Manus look: one card for the story, a quiet side column */
+.np-main { gap: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--shadow-1); overflow: hidden; }
+.np-main > .panel, .np-main > .dropzone { margin: 0; border: 0; border-top: 1px solid var(--line); border-radius: 0; box-shadow: none; padding: var(--s5); }
+.np-main > .dropzone { margin: var(--s5); border: 2px dashed var(--line-strong); border-radius: 14px; padding: var(--s7) var(--s4); }
+.np-main > .dropzone + .panel { border-top: 1px solid var(--line); }
+.np-main .choices { gap: 0; border-bottom: 1px solid var(--line); }
+.np-main .choice { border: 0; border-radius: 0; box-shadow: none; padding: var(--s4) var(--s5); grid-template-columns: auto 1fr; align-items: center; column-gap: var(--s3); border-bottom: 2px solid transparent; background: transparent; }
+.np-main .choice strong { grid-column: 2; } .np-main .choice > span { grid-column: 2; }
+.np-main .choice .icon { grid-row: 1 / span 2; margin: 0; }
+.np-main .choice-on { background: var(--panel-2); border-bottom-color: var(--accent); box-shadow: none; }
+.np-side .panel { border-radius: 16px; }
+.np-note { background: var(--accent-soft); } .np-note .icon { color: var(--accent); }
+/* the sidebar width above must not apply to pages without a sidebar (the editor, the sign-in pages) */
+.shell.shell-editor, .shell.shell-bare, .shell.shell-auth { grid-template-columns: minmax(0, 1fr); }
+@media (max-width: 1000px) { .shell { grid-template-columns: minmax(0, 1fr); } }

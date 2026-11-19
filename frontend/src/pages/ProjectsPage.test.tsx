@@ -25,7 +25,7 @@ describe("ProjectsPage", () => {
     vi.spyOn(api, "listProjects").mockResolvedValue([]);
     renderPage();
     expect(await screen.findByText(/No projects yet/)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "New project" })).toHaveAttribute("href", "/new");
+    expect(screen.getByRole("link", { name: "Create a video" })).toHaveAttribute("href", "/new");
   });
 
   it("lists projects with status, progress for running ones, and errors for failed ones", async () => {
