@@ -204,7 +204,7 @@ input[type=file]::file-selector-button { font: inherit; font-weight: 500; min-he
 .ws-modes .btn[aria-pressed="true"] { background: #246b62; color: #fff; }
 .ws-canvas { flex: 1; min-height: 0; width: 100%; display: grid; place-items: center; overflow: hidden; container-type: size; }
 /* the picture is fitted into the free space: as large as possible, never cropped, keeping its shape (the handles on top need the box to match the picture exactly) */
-.ws-canvas > .live-host, .ws-canvas > .player { width: min(100cqw, calc(100cqh * var(--ar))); height: auto; aspect-ratio: var(--ar); max-width: none; max-height: none; border-radius: 6px; box-shadow: 0 12px 48px rgba(0, 0, 0, .55); }
+.ws-canvas > .live-host, .ws-canvas > .player { width: min(100cqw, calc(100cqh * var(--ar))); height: auto; aspect-ratio: var(--ar); max-width: none; max-height: none; border-radius: 6px; outline: 1px solid rgba(255, 255, 255, .08); }
 .ws-canvas .live-canvas { width: 100%; height: 100%; max-width: none; }
 .ws-canvas > .player { object-fit: contain; }
 .ws-note { margin: var(--s2) 0 0; text-align: center; color: #a3adaa; font-size: .75rem; max-width: 70ch; }

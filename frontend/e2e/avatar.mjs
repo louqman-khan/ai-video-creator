@@ -16,6 +16,7 @@ const api = (p) => fetch(`${base}/api/projects/${pid}${p}`).then((r) => r.json()
 await page.goto(`${base}/projects/${pid}`);
 await page.locator("canvas.live-canvas").waitFor();
 await page.waitForTimeout(2500);
+await page.getByRole("tab", { name: "Avatar" }).click();                    // the avatar panel is one of the editor's side tabs
 await page.getByText("Talking avatar").click();
 const thumbs = await page.locator(".avatar-choice img").evaluateAll((els) => els.map((e) => e.complete && e.naturalWidth > 0));
 step("the avatar pictures load", thumbs.length >= 3 && thumbs.every(Boolean), `${thumbs.length} avatars`);
