@@ -16,7 +16,7 @@
   --accent: #176b63; --accent-strong: #115650; --accent-soft: #e4f4ee; --accent-text: #ffffff; --mint: #bce9d8;
   --coral: #e7745d; --coral-soft: #fbece8;
   --grad: linear-gradient(135deg, #176b63 0%, #20846e 100%);
-  --danger: #c45151; --ok: #17715d; --warn: #ba7b26; --info: #3f7ead;
+  --danger: #c45151; --ok: #17715d; --warn: #8f5a0d; --info: #3f7ead;
   --shadow-1: 0 1px 2px rgba(27, 40, 38, .05);
   --shadow-2: 0 1px 2px rgba(27, 40, 38, .06), 0 10px 28px -16px rgba(27, 40, 38, .25);
   --shadow-3: 0 16px 40px -12px rgba(27, 40, 38, .3);
@@ -207,7 +207,7 @@ input[type=file]::file-selector-button { font: inherit; font-weight: 500; min-he
 .ws-canvas > .live-host, .ws-canvas > .player { width: min(100cqw, calc(100cqh * var(--ar))); height: auto; aspect-ratio: var(--ar); max-width: none; max-height: none; border-radius: 6px; box-shadow: 0 12px 48px rgba(0, 0, 0, .55); }
 .ws-canvas .live-canvas { width: 100%; height: 100%; max-width: none; }
 .ws-canvas > .player { object-fit: contain; }
-.ws-note { margin: var(--s2) 0 0; text-align: center; color: #7f869b; font-size: .75rem; max-width: 70ch; }
+.ws-note { margin: var(--s2) 0 0; text-align: center; color: #a3adaa; font-size: .75rem; max-width: 70ch; }
 @media (max-height: 760px) { .ws-note { display: none; } }
 .ws-wait { margin: auto; display: grid; justify-items: center; gap: var(--s3); color: #8d94a3; }
 .ws-split { position: relative; background: var(--line); cursor: row-resize; }
