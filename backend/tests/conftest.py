@@ -2,6 +2,7 @@ import os
 
 # Tests must never call an online service because a developer's .env happens to hold a key.
 os.environ["CLEANUP"] = "off"
+os.environ["SMTP_HOST"] = ""   # and never send real e-mail from a test, even when the developer's .env holds real mail settings
 
 
 # On GitHub Actions, show each failing test as an annotation on the run (readable through the public API and on the run's summary page).

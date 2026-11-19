@@ -37,8 +37,13 @@ class SmtpMailer:
         msg = EmailMessage()
         msg["From"], msg["To"], msg["Subject"] = self.s.mail_from, to, subject
         msg.set_content(body)
-        with smtplib.SMTP(self.s.smtp_host, self.s.smtp_port, timeout=20) as smtp:
-            smtp.starttls()
+        if self.s.smtp_port == 465:  # "implicit TLS": the connection is encrypted from the first byte (587 and 25 start plain and upgrade with STARTTLS)
+            smtp = smtplib.SMTP_SSL(self.s.smtp_host, self.s.smtp_port, timeout=20)
+        else:
+            smtp = smtplib.SMTP(self.s.smtp_host, self.s.smtp_port, timeout=20)
+        with smtp:
+            if self.s.smtp_port != 465:
+                smtp.starttls()
             if self.s.smtp_user:
                 smtp.login(self.s.smtp_user, self.s.smtp_password)
             smtp.send_message(msg)
