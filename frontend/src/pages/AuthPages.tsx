@@ -2,6 +2,7 @@ import { useState, type FormEvent, type ReactNode } from "react";
 import { Link, Navigate, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { api, ApiError } from "../api/client";
 import { useAuth } from "../store/auth";
+import { creditsText, plural, resetLabel } from "../credits";
 
 const message = (e: unknown) => (e instanceof ApiError || e instanceof Error ? e.message : "Something went wrong");
 
@@ -213,6 +214,13 @@ export function AccountPage() {
       <div className="page-head"><h1>Your account</h1></div>
       <div className="panel">
         <p>Signed in as <strong>{account.user.email}</strong></p>
+        {u?.credits && (
+          <div className="credits-line">
+            <strong>{u.credits.plan} plan</strong>
+            <span>{creditsText(u.credits)} this month{u.credits.unlimited ? "" : `; ${plural(u.credits.remaining, "credit", "credits")} left, renewing ${resetLabel(u.credits.resets_on)}`}.</span>
+            <span className="muted small">A video costs 1 credit for every {u.credits.minutes_per_credit === 1 ? "minute" : `${u.credits.minutes_per_credit} minutes`} of narration, rounded up (at least 1). A video that cannot be made gives its credits back.</span>
+          </div>
+        )}
         {u && (
           <ul className="small">
             <li>Projects: {u.projects} of {u.max_projects}</li>

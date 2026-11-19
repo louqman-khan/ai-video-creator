@@ -274,3 +274,82 @@ def test_the_free_voices_stay_off_the_public_site_unless_the_operator_allows_the
     hostedset = Settings(_env_file=None, mode="hosted")
     assert voices_allowed(hostedset) is False and create_tts(hostedset).languages() == []
     assert voices_allowed(Settings(_env_file=None, mode="hosted", allow_noncommercial_voices=True)) is True
+
+
+# ------------------------------------------------------------------ credits
+
+def credits_of(b):
+    return b.c.get("/api/auth/me").json()["usage"]["credits"]
+
+
+def test_a_video_costs_credits_by_the_length_of_its_narration_and_the_balance_is_visible(env):
+    app, s, tone, _ = hosted(env, credits_per_month=10)
+    with Browser(app, s) as b:
+        b.register("ann@example.com")
+        c = credits_of(b)
+        assert (c["plan"], c["monthly"], c["used"], c["remaining"], c["unlimited"]) == ("Free", 10, 0, 10, False)
+        assert re.match(r"\d{4}-\d{2}-01$", c["resets_on"])
+        assert b.make_project(tone).status_code == 202                       # a 4 second narration: one credit (the minimum)
+        c = credits_of(b)
+        assert (c["used"], c["remaining"]) == (1, 9)
+
+
+def test_without_enough_credits_no_project_is_made_and_the_reason_is_clear(env):
+    app, s, tone, _ = hosted(env, credits_per_month=1)
+    with Browser(app, s) as b:
+        b.register("ann@example.com")
+        first = b.make_project(tone)
+        assert first.status_code == 202
+        wait_done(b.c, first.json()["id"])                                   # one job at a time: let the first finish
+        r = b.make_project(tone)
+        assert r.status_code == 402 and "Not enough credits" in r.json()["detail"] and "renew" in r.json()["detail"]
+        assert len(b.c.get("/api/projects").json()) == 1                      # the refused one left nothing behind
+        assert credits_of(b)["remaining"] == 0
+
+
+def test_a_typed_script_is_priced_by_its_words_and_administrators_are_not_charged(env):
+    app, s, tone, _ = hosted(env, credits_per_month=2, admin_emails="boss@example.com", max_active_jobs_per_user=5)
+    from app.accounts.quotas import Quotas
+    quotas = Quotas(s, app.state.store)
+    assert quotas.cost_for_script("word " * 150) == 1 and quotas.cost_for_script("word " * 151) == 2 and quotas.cost_for_script("") == 1
+    assert quotas.cost_for_seconds(59) == 1 and quotas.cost_for_seconds(61) == 2 and quotas.cost_for_seconds(600) == 10
+    with Browser(app, s) as b:
+        b.register("boss@example.com")
+        assert credits_of(b)["unlimited"] is True
+        for _ in range(3):
+            assert b.make_project(tone).status_code == 202                    # more than the monthly allowance: not charged
+        assert credits_of(b)["used"] == 0
+
+
+def test_a_video_that_could_not_be_made_gives_its_credits_back_once(env):
+    settings, factory, tone, gate = env
+
+    class Boom:
+        def transcribe(self, audio, language=None):
+            raise RuntimeError("the recogniser broke")
+
+    def broken(s, cache):
+        p = factory(s, cache)
+        object.__setattr__(p, "transcriber", Boom())
+        return p
+
+    s = settings.model_copy(update={"mode": "hosted", "public_url": "http://testserver", "credits_per_month": 5})
+    app = create_app(s, broken)
+    with Browser(app, s) as b:
+        b.register("ann@example.com")
+        pid = b.make_project(tone).json()["id"]
+        assert wait_done(b.c, pid)["status"] == "failed"
+        assert credits_of(b)["used"] == 0                                    # refunded
+        app.state.jobs.on_failed(pid)                                        # a second report of the same failure
+        assert credits_of(b)["used"] == 0                                    # still only refunded once
+
+
+def test_the_monthly_allowance_renews_on_the_first_of_the_month():
+    from datetime import datetime, timezone
+
+    from app.accounts.quotas import month_start, next_month_start
+
+    t = datetime(2026, 12, 31, 23, 59, tzinfo=timezone.utc).timestamp()
+    assert month_start(t).isoformat().startswith("2026-12-01") and next_month_start(t).isoformat().startswith("2027-01-01")
+    t = datetime(2026, 3, 15, 8, 0, tzinfo=timezone.utc).timestamp()
+    assert next_month_start(t).isoformat().startswith("2026-04-01")

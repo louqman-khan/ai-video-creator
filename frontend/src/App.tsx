@@ -3,6 +3,7 @@ import { Link, Navigate, NavLink, Route, Routes, useLocation } from "react-route
 import { Icon } from "./components/Icon";
 import { TopBar } from "./components/TopBar";
 import { SetupCard } from "./components/SetupCard";
+import { CreditsCard } from "./components/CreditsCard";
 import { AccountPage, ForgotPage, LegalPage, LoginPage, ResetPage, SignupPage, VerifyPage } from "./pages/AuthPages";
 import { EditorPage } from "./pages/EditorPage";
 import { NewProjectPage } from "./pages/NewProjectPage";
@@ -74,6 +75,7 @@ export function App() {
             {!hosted && <NavLink to="/setup"><Icon name="settings" />Settings</NavLink>}
           </nav>
           {!hosted && <SetupCard />}
+          {hosted && <CreditsCard />}
           {hosted && user && (
             <div className="side-foot">
               <NavLink to="/account"><Icon name="user" /><span className="side-email">{user.email}</span></NavLink>

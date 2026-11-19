@@ -38,6 +38,7 @@ class JobRunner:
         self._pending: set[str] = set()  # projects with a coalesced preview render already waiting
         self._lock = threading.Lock()
         self._tts = None
+        self.on_failed: Callable[[str], None] | None = None  # called with the project id when its work failed (hosted mode: gives the credits back)
 
     def submit(self, project_id: str, prepare: Callable[[], None] | None = None, *, export_aspect: str | None = None,
                export_preset: str | None = None, export_encoder: str | None = None) -> None:
@@ -162,3 +163,5 @@ class JobRunner:
                              error=msg if isinstance(e, RenderUnsupported) else f"The export failed: {msg}")
             else:
                 store.update(pid, status="failed", error=msg)
+                if self.on_failed:
+                    self.on_failed(pid)

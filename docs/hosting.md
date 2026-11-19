@@ -39,3 +39,7 @@ who pays for AI services that bill per use (Gemini planning, optional paid voice
 - No Google sign-in (needs credentials from you), no payments or plans, no admin screen (only the storage clean-up).
 - Rate limits are per process, in memory.
 - Untested on a real server and domain: see `docs/security.md` for what was and was not verified.
+
+## Credits (hosted mode)
+Each account has a monthly allowance (`CREDITS_PER_MONTH`, default 10; renews on the 1st, UTC). Creating a video charges 1 credit per `CREDIT_MINUTES` (default 1) of narration, rounded up, at least 1; a typed script is priced at 150 words a minute. Not enough credits: the server answers 402 with the reason and no project is made. A video that fails before it ever produced a preview gives its credits back, once. Administrators (`ADMIN_EMAILS`) are not charged. The ledger is the `credit_events` table (spent, refund, bonus rows), so balances are auditable and a bonus is one inserted row.
+The sidebar shows the plan card (used / left / renewal date), the new-project page shows the cost before Create, the account page explains the rule. Plans and payment are not built: `CREDITS_PLAN_NAME` is only a label for now.

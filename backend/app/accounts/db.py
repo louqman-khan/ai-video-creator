@@ -47,6 +47,15 @@ usage = sa.Table(
     sa.Column("kind", sa.String(20), nullable=False),
     sa.Column("ts", sa.Float, nullable=False),
 )
+credit_events = sa.Table(
+    "credit_events", meta,
+    sa.Column("id", sa.Integer, primary_key=True, autoincrement=True),
+    sa.Column("user_id", sa.String(32), index=True, nullable=False),
+    sa.Column("ts", sa.Float, nullable=False),
+    sa.Column("delta", sa.Integer, nullable=False),          # negative: spent; positive: refund or bonus
+    sa.Column("reason", sa.String(20), nullable=False),      # "video" | "refund" | "bonus"
+    sa.Column("project_id", sa.String(32), index=True),
+)
 
 
 @dataclass(frozen=True)
@@ -132,6 +141,7 @@ class Accounts:
             c.execute(sessions.delete().where(sessions.c.user_id == user_id))
             c.execute(tokens.delete().where(tokens.c.user_id == user_id))
             c.execute(usage.delete().where(usage.c.user_id == user_id))
+            c.execute(credit_events.delete().where(credit_events.c.user_id == user_id))
             c.execute(users.delete().where(users.c.id == user_id))
 
     # ---- sessions
@@ -185,3 +195,21 @@ class Accounts:
         with self.engine.connect() as c:
             return c.execute(sa.select(sa.func.count()).select_from(usage).where(
                 sa.and_(usage.c.user_id == user_id, usage.c.kind == kind, usage.c.ts > time.time() - seconds))).scalar_one()
+
+    # ---- credits (a ledger: the balance is the sum of the events of the current month)
+    def credit_add(self, user_id: str, delta: int, reason: str, project_id: str | None = None) -> None:
+        with self.engine.begin() as c:
+            c.execute(credit_events.insert().values(user_id=user_id, ts=time.time(), delta=delta, reason=reason, project_id=project_id))
+
+    def credit_sum(self, user_id: str, since: float) -> int:
+        with self.engine.connect() as c:
+            return int(c.execute(sa.select(sa.func.coalesce(sa.func.sum(credit_events.c.delta), 0)).where(
+                sa.and_(credit_events.c.user_id == user_id, credit_events.c.ts >= since))).scalar_one())
+
+    def credit_event_for(self, project_id: str, reason: str) -> int | None:
+        """The amount of the first event of this kind for a project (None when there is none)."""
+        with self.engine.connect() as c:
+            row = c.execute(sa.select(credit_events.c.delta).where(
+                sa.and_(credit_events.c.project_id == project_id, credit_events.c.reason == reason)).limit(1)).first()
+        return None if row is None else int(row[0])
+

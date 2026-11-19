@@ -3,12 +3,23 @@ import type { Aspect, Asset, AvatarCorner, ExportEncoder, ExportPreset, Attribut
 /** Our own pages send this header on every request; the hosted server refuses state-changing requests without it (protection against other sites). */
 export const CSRF_HEADERS = { "X-Requested-With": "avc" } as const;
 
+/** The monthly allowance of a hosted account: a video costs credits by the length of its narration. */
+export interface Credits {
+  plan: string;
+  monthly: number;
+  used: number;
+  remaining: number;
+  resets_on: string;   // YYYY-MM-DD
+  unlimited: boolean;
+  minutes_per_credit: number;
+}
+
 export interface Account {
   mode: "local" | "hosted";
   signups: "open" | "invite" | "closed";
   require_verification: boolean;
   user: { id: string; email: string | null; admin: boolean; verified?: boolean } | null;
-  usage?: { projects: number; max_projects: number; storage_bytes: number; max_storage_bytes: number; max_exports_per_day: number };
+  usage?: { credits?: Credits; projects: number; max_projects: number; storage_bytes: number; max_storage_bytes: number; max_exports_per_day: number };
 }
 
 export class ApiError extends Error {

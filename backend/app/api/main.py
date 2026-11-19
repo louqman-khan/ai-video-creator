@@ -37,7 +37,7 @@ from app.accounts import routes as auth_routes
 from app.accounts.db import Accounts
 from app.accounts.guard import Guard
 from app.accounts.mailer import create_mailer
-from app.accounts.quotas import Quotas
+from app.accounts.quotas import CreditsExhausted, Quotas
 from app.accounts.ratelimit import RateLimiter
 from app.pipeline import export_speed
 from app.providers.tts import TTSUnavailable
@@ -116,13 +116,22 @@ def create_app(settings: Settings | None = None, providers_factory: ProvidersFac
 
     hosted = settings.mode == "hosted"
     accounts = Accounts(settings) if hosted else None
-    quotas = Quotas(settings, store) if hosted else None
+    quotas = Quotas(settings, store, accounts) if hosted else None
     limiter = RateLimiter()
     guard = Guard(settings, store, accounts, quotas, limiter)
     app = FastAPI(title="AI Video Creator", version="0.1.0", lifespan=lifespan, dependencies=[Depends(guard)])
     origins = [] if hosted else [o.strip() for o in settings.cors_origins.split(",") if o.strip()]  # the hosted site is one origin: no other site may talk to it
     app.add_middleware(CORSMiddleware, allow_origins=origins, allow_methods=["*"], allow_headers=["*"])
     app.state.store, app.state.jobs = store, jobs
+    if quotas is not None:  # a video that could not be made at all gives its credits back (an edit that fails later does not)
+        def refund_if_never_made(pid: str) -> None:
+            try:
+                info = store.get(pid)
+                if not info.video_ready:
+                    quotas.refund_project(info.owner, pid)
+            except Exception:  # noqa: BLE001  a refund problem must never hide the real error
+                log.exception("refund failed for %s", pid)
+        jobs.on_failed = refund_if_never_made
     app.include_router(auth_routes.build_router(settings, store, accounts, quotas, create_mailer(settings) if hosted else None, limiter))
     if not hosted:
         from app.api import setup as setup_routes
@@ -243,6 +252,13 @@ def create_app(settings: Settings | None = None, providers_factory: ProvidersFac
         except Exception:
             store.delete(info.id)  # never keep a half-created project
             raise
+        if quotas is not None:  # hosted: the video is paid for in credits (by the narration's length, or the script's) before work starts
+            who = request.state.user
+            try:
+                quotas.charge(who.id, quotas.cost_for_script(script) if speak else quotas.cost_for_seconds(seconds), info.id, admin=bool(who.is_admin))
+            except CreditsExhausted as e:
+                store.delete(info.id)
+                raise HTTPException(402, str(e)) from None
         jobs.submit(info.id)
         return store.get(info.id)
 

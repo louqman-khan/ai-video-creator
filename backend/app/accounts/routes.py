@@ -80,7 +80,7 @@ def build_router(s: Settings, store: ProjectStore, accounts: Accounts | None, qu
         if user is None:
             return {**info, "user": None}
         assert quotas is not None
-        return {**info, "user": {"id": user.id, "email": user.email, "admin": user.is_admin, "verified": user.verified}, "usage": quotas.summary(user.id)}
+        return {**info, "user": {"id": user.id, "email": user.email, "admin": user.is_admin, "verified": user.verified}, "usage": quotas.summary(user.id, user.is_admin)}
 
     @router.post("/signup", status_code=202)
     def signup(body: SignUp, request: Request) -> dict:

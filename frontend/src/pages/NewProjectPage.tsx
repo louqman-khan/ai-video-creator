@@ -3,6 +3,8 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { api, DEFAULT_LIMITS, uploadProject, type Limits } from "../api/client";
 import { Icon } from "../components/Icon";
 import { ProgressBar } from "../components/ProgressBar";
+import { costOfScript, costOfSeconds, plural } from "../credits";
+import { useAuth } from "../store/auth";
 import { useProjects } from "../store/projects";
 import {
   buildForm, DEFAULT_VALUES, formatSize, validateAudioFile, validateScript, validateSpeak, type NewProjectValues,
@@ -24,6 +26,8 @@ export function NewProjectPage() {
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [dragging, setDragging] = useState(false);
+  const credits = useAuth((s) => s.account?.usage?.credits);   // hosted accounts pay for each video in credits
+  const [fileSeconds, setFileSeconds] = useState<number | null>(null);
   const abortRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
@@ -44,11 +48,23 @@ export function NewProjectPage() {
     const problem = validateAudioFile(f, limits);
     setFileError(problem);
     setFile(problem ? null : f);
+    setFileSeconds(null);
+    if (!problem && credits && !credits.unlimited) {   // the browser can read the length: that is what the credits are based on
+      const url = URL.createObjectURL(f);
+      const a = new Audio();
+      a.preload = "metadata";
+      a.onloadedmetadata = () => { setFileSeconds(Number.isFinite(a.duration) ? a.duration : null); URL.revokeObjectURL(url); };
+      a.onerror = () => URL.revokeObjectURL(url);
+      a.src = url;
+    }
   };
 
   const scriptError = validateScript(values.script, limits);
   const speakError = mode === "speak" ? validateSpeak(values, speech) : null;
-  const ready = mode === "speak" ? !speakError && (!speechPaid || paidOk) : !!file;
+  const per = credits?.minutes_per_credit ?? 1;
+  const cost = !credits || credits.unlimited ? null : mode === "speak" ? costOfScript(values.script, per) : fileSeconds !== null ? costOfSeconds(fileSeconds, per) : null;
+  const short = cost !== null && credits !== undefined && cost > credits.remaining;   // the server refuses it too; this tells the person first
+  const ready = (mode === "speak" ? !speakError && (!speechPaid || paidOk) : !!file) && !short;
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
@@ -62,6 +78,7 @@ export function NewProjectPage() {
       .then((project) => {
         abortRef.current = null;
         upsert(project);
+        void useAuth.getState().load();   // the balance has changed
         navigate(`/projects/${project.id}`);
       })
       .catch((err: Error) => {
@@ -189,6 +206,16 @@ export function NewProjectPage() {
             </label>
           </div>
           </div>
+          {credits && !credits.unlimited && (
+            <div className={`np-credits${short ? " np-credits-short" : ""}`} role="status">
+              <Icon name="credit" size={18} />
+              <p>
+                {cost === null ? <>A video uses 1 credit for every {credits.minutes_per_credit === 1 ? "minute" : `${credits.minutes_per_credit} minutes`} of narration (at least 1).</>
+                  : short ? <><strong>Not enough credits.</strong> This video needs {cost}; you have {credits.remaining} left this month.</>
+                  : <><strong>Uses {plural(cost, "credit", "credits")}.</strong> You have {credits.remaining} left this month.</>}
+              </p>
+            </div>
+          )}
           <div className="np-note">
             <Icon name="check" size={18} />
             <p><strong>Made for both languages.</strong> English and Urdu captions keep their own reading direction, font and line breaks.</p>

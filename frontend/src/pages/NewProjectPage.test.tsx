@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as client from "../api/client";
 import { DEFAULT_LIMITS } from "../api/client";
 import type { Project } from "../api/types";
+import { useAuth } from "../store/auth";
 import { useProjects } from "../store/projects";
 import { NewProjectPage } from "./NewProjectPage";
 
@@ -143,5 +144,23 @@ describe("NewProjectPage", () => {
     expect(button).toBeDisabled();
     await userEvent.click(screen.getByLabelText(/outside paid service/));
     expect(button).toBeEnabled();
+  });
+
+  it("hosted: shows what the video will cost in credits and blocks Create when there are not enough", async () => {
+    useAuth.setState({ account: { mode: "hosted", signups: "open", require_verification: true, user: { id: "u", email: "a@b.co", admin: false },
+      usage: { credits: { plan: "Free", monthly: 10, used: 9, remaining: 1, resets_on: "2026-12-01", unlimited: false, minutes_per_credit: 1 }, projects: 0, max_projects: 20, storage_bytes: 0, max_storage_bytes: 1, max_exports_per_day: 10 } } });
+    vi.spyOn(client.api, "health").mockResolvedValue({ ok: true, ffmpeg: true, speech: ["en"], limits: DEFAULT_LIMITS });
+    renderPage();
+    await userEvent.click(screen.getByLabelText("Speak my script with a computer voice"));
+    await userEvent.type(screen.getByLabelText("Script to speak"), "Hello there.");
+    await userEvent.selectOptions(screen.getByLabelText("Language"), "en");
+    expect(await screen.findByText(/Uses 1 credit/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Create video" })).toBeEnabled();
+    await userEvent.clear(screen.getByLabelText("Script to speak"));
+    await userEvent.click(screen.getByLabelText("Script to speak"));
+    await userEvent.paste("word ".repeat(400));                                           // about three minutes
+    expect(await screen.findByText(/Not enough credits/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Create video" })).toBeDisabled();
+    useAuth.setState({ account: null });
   });
 });

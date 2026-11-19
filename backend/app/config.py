@@ -96,6 +96,10 @@ class Settings(BaseSettings):
     max_storage_mb_per_user: int = 5000
     max_active_jobs_per_user: int = 1
     max_exports_per_day: int = 10
+    # credits (hosted mode): a video costs credits by the length of its narration; the allowance renews on the 1st of each month (UTC). Administrators are exempt.
+    credits_per_month: int = 10
+    credit_minutes: float = 1.0  # minutes of narration one credit pays for (rounded up, at least one credit per video)
+    credits_plan_name: str = "Free"
     trusted_proxy: bool = False  # behind a reverse proxy that sets X-Forwarded-For (Caddy, nginx): use it for rate limits
 
     # scene chunking

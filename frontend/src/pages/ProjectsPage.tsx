@@ -22,6 +22,7 @@ export function ProjectsPage() {
 
   useEffect(() => {
     void load();
+    void useAuth.getState().load();   // refresh the credit balance (a failed video gives its credits back)
   }, [load]);
 
   // refresh while anything is still processing
