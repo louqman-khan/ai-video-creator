@@ -12,6 +12,7 @@ import sys
 import time
 from pathlib import Path
 
+import numpy as np
 import soundfile as sf
 from faster_whisper import WhisperModel
 from kokoro_onnx import Kokoro
@@ -56,7 +57,10 @@ def main() -> None:
         path = OUT / f"{label}.wav"
         sf.write(path, samples, sr)
         secs = len(samples) / sr
-        segs, _ = whisper.transcribe(str(path), language=whisper_lang, beam_size=5)
+        # Whisper wants 16 kHz; the audio is handed over directly (newer PyAV breaks faster-whisper's own file reader, as in the product)
+        x = np.asarray(samples, dtype=np.float32)
+        x16 = np.interp(np.linspace(0, len(x) - 1, int(len(x) * 16000 / sr)), np.arange(len(x)), x).astype(np.float32)
+        segs, _ = whisper.transcribe(x16, language=whisper_lang, beam_size=5)
         heard = " ".join(s.text for s in segs).strip()
         score = wer(words(reference or text), words(heard))
         rows.append({"label": label, "voice": voice, "audio_s": round(secs, 1), "made_in_s": round(made, 1), "x_realtime": round(secs / made, 1), "whisper_heard": heard, "word_error": round(score, 3)})
