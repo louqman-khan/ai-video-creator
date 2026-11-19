@@ -10,7 +10,8 @@ for (const scheme of ["light", "dark"]) {
     await page.goto(base + path);
     await page.waitForTimeout(path.startsWith("/projects") ? 5000 : 1200);
     await page.addScriptTag({ content: axeSource });
-    const v = await page.evaluate(async () => (await window.axe.run(document)).violations.map((x) => `${x.impact} ${x.id} x${x.nodes.length}`));
+    const detail = process.env.DETAIL === "1";
+    const v = await page.evaluate(async (detail) => (await window.axe.run(document)).violations.map((x) => `${x.impact} ${x.id} x${x.nodes.length}` + (detail ? " [" + x.nodes.slice(0, 6).map((n) => n.target.join(" ") + " :: " + ((n.any[0] && n.any[0].message) || "").slice(0, 90)).join(" | ") + "]" : "")), detail);
     console.log(`${v.length === 0 ? "PASS" : "FAIL"} ${scheme} ${path} ${v.join("; ")}`);
     if (v.length) process.exitCode = 1;
   }

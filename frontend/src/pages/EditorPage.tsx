@@ -102,7 +102,7 @@ export function EditorPage() {
           ))}
         </nav>
 
-        <aside className="ws-panel" role="tabpanel" aria-label={tabs.find((t) => t.id === active)?.label}>
+        <div className="ws-panel" role="tabpanel" aria-label={tabs.find((t) => t.id === active)?.label}>
           {isActive(project) && (
             <div className="panel">
               <ProgressBar value={project.progress} label="Processing" />
@@ -120,7 +120,7 @@ export function EditorPage() {
           {active === "export" && project.video_ready && <ExportPanel project={project} onStarted={changed} />}
           {active === "credits" && ready && <CreditsPanel project={project} />}
           {!ready && !isActive(project) && <p className="muted">Nothing to edit yet.</p>}
-        </aside>
+        </div>
 
         <section className="ws-stage" aria-label="Preview">
           {project.video_ready ? (
@@ -154,10 +154,10 @@ export function EditorPage() {
       {project.video_ready && (project.status === "done" || opened.current === project.id) && (
         <>
           <div className="ws-split" role="separator" aria-orientation="horizontal" aria-label="Resize the timeline" onPointerDown={dragTimeline} />
-          <section className="ws-timeline" aria-label="Timeline">
+          <div className="ws-timeline">
             <Timeline projectId={project.id} version={playerVersion} video={live ? engine : video} onDoc={setLiveDoc} onMedia={setMediaState} overlayHost={live ? overlayHost : null} inspectorHost={inspectorHost} sampler={live && engine ? (id, x, y) => engine.pickColor(id, x, y) : null}
               focusSampler={live && engine ? (id, x, y) => engine.pickFocus(id, x, y) : null} onProject={changed} />
-          </section>
+          </div>
         </>
       )}
     </div>
