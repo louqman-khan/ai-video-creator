@@ -42,9 +42,11 @@ jobs:
         run: |
           git config user.name "voice-experiment"
           git config user.email "voice-experiment@users.noreply.github.com"
+          cp -r out /tmp/results
           git checkout --orphan voice-results
           git rm -rf . > /dev/null 2>&1 || true
-          cp -r out/. .
+          git clean -fdxq   # only the results go on that branch, not the 120 MB model files
+          cp -r /tmp/results/. .
           git add -A
           git commit -m "voice experiment results" > /dev/null
           git push -f origin voice-results
