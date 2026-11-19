@@ -7,6 +7,9 @@ on:
     branches: [voice-experiment]
   workflow_dispatch:
 
+permissions:
+  contents: write   # to save the results on the branch `voice-results`
+
 jobs:
   voices:
     runs-on: ubuntu-latest
@@ -34,3 +37,14 @@ jobs:
         with:
           name: voice-samples
           path: out/
+      - name: Save the results on the branch voice-results (so they can be fetched with plain git)
+        if: always()
+        run: |
+          git config user.name "voice-experiment"
+          git config user.email "voice-experiment@users.noreply.github.com"
+          git checkout --orphan voice-results
+          git rm -rf . > /dev/null 2>&1 || true
+          cp -r out/. .
+          git add -A
+          git commit -m "voice experiment results" > /dev/null
+          git push -f origin voice-results
