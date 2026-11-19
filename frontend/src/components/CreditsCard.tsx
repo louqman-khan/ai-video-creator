@@ -16,8 +16,8 @@ export function CreditsCard() {
       {!c.unlimited && (
         <div className="credits-bar" role="progressbar" aria-label="Credits used" aria-valuemin={0} aria-valuemax={c.monthly} aria-valuenow={c.used}><span style={{ width: `${pct}%` }} /></div>
       )}
-      <p className="muted small">{c.unlimited ? "No limit on your account." : `${c.remaining} left · renews ${resetLabel(c.resets_on)}`}</p>
-      <Link to="/account" className="credits-link">Manage plan<Icon name="chevron" size={14} /></Link>
+      <p className="muted small">{c.unlimited ? "No limit on your account." : `${c.remaining} left · renews ${resetLabel(c.resets_on)}`}{!c.unlimited && !!c.bonus && ` · includes ${c.bonus} bonus`}</p>
+      <Link to="/account" className="credits-link">Your account<Icon name="chevron" size={14} /></Link>
     </div>
   );
 }

@@ -78,8 +78,9 @@ class Quotas:
 
     def credits(self, user_id: str, admin: bool = False) -> dict:
         monthly = self.s.credits_per_month
-        used = 0 if self.accounts is None else -self.accounts.credit_sum(user_id, month_start().timestamp())
-        return {"plan": self.s.credits_plan_name, "monthly": monthly, "used": max(0, used), "remaining": max(0, monthly - used),
+        spent = 0 if self.accounts is None else self.accounts.credit_sum(user_id, month_start().timestamp())   # negative: this month's videos, net of refunds
+        bonus = 0 if self.accounts is None else self.accounts.credit_bonus_total(user_id)
+        return {"plan": self.s.credits_plan_name, "monthly": monthly, "bonus": bonus, "used": max(0, -spent), "remaining": max(0, monthly + bonus + spent),
                 "resets_on": next_month_start().date().isoformat(), "unlimited": admin, "minutes_per_credit": self.s.credit_minutes}
 
     def charge(self, user_id: str, cost: int, project_id: str, admin: bool = False) -> None:

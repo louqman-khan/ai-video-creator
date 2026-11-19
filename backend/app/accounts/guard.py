@@ -95,7 +95,7 @@ class Guard:
                 raise HTTPException(404, "Project not found")
 
         # 5. administrators only
-        if path.startswith("/api/storage") and not user.is_admin:
+        if path.startswith(("/api/storage", "/api/admin")) and not user.is_admin:
             raise HTTPException(403, "Only administrators can do that.")
 
         # 6. limits

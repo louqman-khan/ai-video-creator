@@ -202,9 +202,10 @@ class Accounts:
             c.execute(credit_events.insert().values(user_id=user_id, ts=time.time(), delta=delta, reason=reason, project_id=project_id))
 
     def credit_sum(self, user_id: str, since: float) -> int:
+        """What this month's videos and refunds add up to (bonus credits are counted separately: they do not expire)."""
         with self.engine.connect() as c:
             return int(c.execute(sa.select(sa.func.coalesce(sa.func.sum(credit_events.c.delta), 0)).where(
-                sa.and_(credit_events.c.user_id == user_id, credit_events.c.ts >= since))).scalar_one())
+                sa.and_(credit_events.c.user_id == user_id, credit_events.c.ts >= since, credit_events.c.reason != "bonus"))).scalar_one())
 
     def credit_event_for(self, project_id: str, reason: str) -> int | None:
         """The amount of the first event of this kind for a project (None when there is none)."""
@@ -212,4 +213,29 @@ class Accounts:
             row = c.execute(sa.select(credit_events.c.delta).where(
                 sa.and_(credit_events.c.project_id == project_id, credit_events.c.reason == reason)).limit(1)).first()
         return None if row is None else int(row[0])
+
+    # ---- administration
+    def list_users(self) -> list[dict]:
+        with self.engine.connect() as c:
+            rows = c.execute(sa.select(users).order_by(users.c.created_at.desc())).all()
+        return [{"id": r.id, "email": r.email, "role": r.role, "verified": bool(r.verified), "disabled": bool(r.disabled), "created_at": r.created_at, "last_login": r.last_login} for r in rows]
+
+    def set_disabled(self, user_id: str, disabled: bool) -> bool:
+        """False when there is no such account. Disabling also ends every session of the person."""
+        with self.engine.begin() as c:
+            n = c.execute(users.update().where(users.c.id == user_id).values(disabled=disabled)).rowcount
+            if n and disabled:
+                c.execute(sessions.delete().where(sessions.c.user_id == user_id))
+        return bool(n)
+
+    def user_by_id(self, user_id: str) -> User | None:
+        with self.engine.connect() as c:
+            row = c.execute(sa.select(users).where(users.c.id == user_id)).first()
+        return self._user(row) if row else None
+
+    def credit_bonus_total(self, user_id: str) -> int:
+        """Bonus credits given to the account so far (they do not expire with the month)."""
+        with self.engine.connect() as c:
+            return int(c.execute(sa.select(sa.func.coalesce(sa.func.sum(credit_events.c.delta), 0)).where(
+                sa.and_(credit_events.c.user_id == user_id, credit_events.c.reason == "bonus"))).scalar_one())
 

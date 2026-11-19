@@ -353,3 +353,58 @@ def test_the_monthly_allowance_renews_on_the_first_of_the_month():
     assert month_start(t).isoformat().startswith("2026-12-01") and next_month_start(t).isoformat().startswith("2027-01-01")
     t = datetime(2026, 3, 15, 8, 0, tzinfo=timezone.utc).timestamp()
     assert next_month_start(t).isoformat().startswith("2026-04-01")
+
+
+# ------------------------------------------------------------------ administration
+
+def test_the_admin_area_is_for_administrators_only_and_lists_use(env):
+    app, s, tone, _ = hosted(env, admin_emails="boss@example.com", credits_per_month=5)
+    with Browser(app, s) as boss, Browser(app, s) as ann, TestClient(app, headers=H) as anon:
+        boss.register("boss@example.com")
+        ann.register("ann@example.com")
+        assert anon.get("/api/admin/users").status_code == 401
+        assert ann.c.get("/api/admin/users").status_code == 403
+        assert ann.c.post("/api/admin/users/x/credits", json={"amount": 5}).status_code == 403
+        assert ann.make_project(tone).status_code == 202
+        rows = {u["email"]: u for u in boss.c.get("/api/admin/users").json()}
+        assert set(rows) == {"boss@example.com", "ann@example.com"}
+        a = rows["ann@example.com"]
+        assert (a["projects"], a["credits"]["used"], a["credits"]["remaining"], a["disabled"], a["role"]) == (1, 1, 4, False, "user")
+        assert rows["boss@example.com"]["credits"]["unlimited"] is True
+        assert "password" not in str(rows)                                              # nothing secret leaves the server
+
+
+def test_bonus_credits_are_added_kept_across_months_and_can_be_taken_back_but_not_below_zero(env):
+    app, s, tone, _ = hosted(env, admin_emails="boss@example.com", credits_per_month=1, max_active_jobs_per_user=5)
+    with Browser(app, s) as boss, Browser(app, s) as ann:
+        boss.register("boss@example.com")
+        ann.register("ann@example.com")
+        uid = next(u["id"] for u in boss.c.get("/api/admin/users").json() if u["email"] == "ann@example.com")
+        assert ann.make_project(tone).status_code == 202                                # the one monthly credit
+        assert ann.make_project(tone).status_code == 402
+        r = boss.c.post(f"/api/admin/users/{uid}/credits", json={"amount": 3})
+        assert r.status_code == 200 and (r.json()["bonus"], r.json()["remaining"]) == (3, 3)
+        assert ann.make_project(tone).status_code == 202                                # the bonus pays for it
+        assert credits_of(ann)["remaining"] == 2 and credits_of(ann)["bonus"] == 3
+        assert boss.c.post(f"/api/admin/users/{uid}/credits", json={"amount": -9}).status_code == 422      # only 3 can be taken back
+        assert boss.c.post(f"/api/admin/users/{uid}/credits", json={"amount": 0}).status_code == 422
+        assert boss.c.post(f"/api/admin/users/{uid}/credits", json={"amount": 5000}).status_code == 422
+        assert boss.c.post("/api/admin/users/nobody/credits", json={"amount": 1}).status_code == 404
+        assert boss.c.post(f"/api/admin/users/{uid}/credits", json={"amount": -3}).status_code == 200
+        assert credits_of(ann)["bonus"] == 0
+
+
+def test_switching_an_account_off_ends_its_sessions_and_blocks_login_and_it_can_be_switched_on(env):
+    app, s, tone, _ = hosted(env, admin_emails="boss@example.com")
+    with Browser(app, s) as boss, Browser(app, s) as ann:
+        boss.register("boss@example.com")
+        ann.register("ann@example.com")
+        uid = next(u["id"] for u in boss.c.get("/api/admin/users").json() if u["email"] == "ann@example.com")
+        boss_id = next(u["id"] for u in boss.c.get("/api/admin/users").json() if u["email"] == "boss@example.com")
+        assert boss.c.post(f"/api/admin/users/{boss_id}/disabled", json={"disabled": True}).status_code == 422   # an administrator cannot lock out an administrator
+        assert ann.c.get("/api/projects").status_code == 200
+        assert boss.c.post(f"/api/admin/users/{uid}/disabled", json={"disabled": True}).status_code == 200
+        assert ann.c.get("/api/projects").status_code == 401                              # her session ended at once
+        assert ann.c.post("/api/auth/login", json={"email": "ann@example.com", "password": GOOD}).status_code == 401
+        assert boss.c.post(f"/api/admin/users/{uid}/disabled", json={"disabled": False}).status_code == 200
+        assert ann.c.post("/api/auth/login", json={"email": "ann@example.com", "password": GOOD}).status_code == 200

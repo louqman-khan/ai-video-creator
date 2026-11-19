@@ -12,6 +12,20 @@ export interface Credits {
   resets_on: string;   // YYYY-MM-DD
   unlimited: boolean;
   minutes_per_credit: number;
+  bonus?: number;   // credits given by the operator (they do not expire)
+}
+
+export interface AdminUser {
+  id: string;
+  email: string;
+  role: "user" | "admin";
+  verified: boolean;
+  disabled: boolean;
+  created_at: number;
+  last_login: number | null;
+  projects: number;
+  storage_bytes: number;
+  credits: Credits;
 }
 
 export interface Account {
@@ -109,6 +123,11 @@ export interface SetupStatus {
 }
 
 export const api = {
+  adminUsers: () => request<AdminUser[]>("/api/admin/users"),
+  adminGiveCredits: (id: string, amount: number) =>
+    request<Credits>(`/api/admin/users/${encodeURIComponent(id)}/credits`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ amount }) }),
+  adminSetDisabled: (id: string, disabled: boolean) =>
+    request<{ id: string; disabled: boolean }>(`/api/admin/users/${encodeURIComponent(id)}/disabled`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ disabled }) }),
   setupStatus: () => request<SetupStatus>("/api/setup"),
   setupKeys: (body: { gemini_api_key?: string; pixabay_api_key?: string }) =>
     request<SetupStatus>("/api/setup/keys", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }),

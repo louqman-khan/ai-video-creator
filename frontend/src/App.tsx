@@ -14,6 +14,7 @@ function ProjectCount() {
 import { AccountPage, ForgotPage, LegalPage, LoginPage, ResetPage, SignupPage, VerifyPage } from "./pages/AuthPages";
 import { EditorPage } from "./pages/EditorPage";
 import { NewProjectPage } from "./pages/NewProjectPage";
+import { AdminPage } from "./pages/AdminPage";
 import { ProjectsPage } from "./pages/ProjectsPage";
 import { SetupPage } from "./pages/SetupPage";
 import { useAuth } from "./store/auth";
@@ -55,6 +56,7 @@ export function App() {
         {!hosted && <Route path="/setup" element={<SetupPage />} />}
         <Route path="/projects/:id" element={<EditorPage />} />
         {hosted && <Route path="/account" element={<AccountPage />} />}
+        {hosted && user?.admin && <Route path="/admin" element={<AdminPage />} />}
         {hosted && <Route path="/terms" element={<LegalPage kind="terms" />} />}
         {hosted && <Route path="/privacy" element={<LegalPage kind="privacy" />} />}
         {hosted && <Route path="/login" element={<Navigate to="/" replace />} />}
@@ -86,6 +88,7 @@ export function App() {
             <NavLink to="/" end><Icon name="grid" />Projects<ProjectCount /></NavLink>
             <NavLink to="/new"><Icon name="plus" />New project</NavLink>
             {!hosted && <NavLink to="/setup"><Icon name="settings" />Settings</NavLink>}
+            {hosted && user?.admin && <NavLink to="/admin"><Icon name="user" />Accounts</NavLink>}
           </nav>
           <RecentProjects />
           {!hosted && <SetupCard />}

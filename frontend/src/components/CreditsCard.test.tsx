@@ -20,7 +20,7 @@ describe("CreditsCard", () => {
     expect(screen.getByText("6 of 10 video credits used this month.")).toBeInTheDocument();
     expect(screen.getByRole("progressbar", { name: "Credits used" })).toHaveAttribute("aria-valuenow", "6");
     expect(screen.getByText(/4 left · renews/)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /Manage plan/ })).toHaveAttribute("href", "/account");
+    expect(screen.getByRole("link", { name: /Your account/ })).toHaveAttribute("href", "/account");
   });
   it("says so for an administrator and shows nothing when the server sent no credits", () => {
     useAuth.setState({ account: account(credits({ unlimited: true, used: 0, remaining: 10 })) });

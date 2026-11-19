@@ -34,6 +34,7 @@ from app.pipeline.runner import ASPECTS, Providers
 import app.maintenance as maintenance
 from app.api import avatars as avatars_api
 from app.accounts import routes as auth_routes
+from app.accounts import admin as admin_routes
 from app.accounts.db import Accounts
 from app.accounts.guard import Guard
 from app.accounts.mailer import create_mailer
@@ -133,6 +134,8 @@ def create_app(settings: Settings | None = None, providers_factory: ProvidersFac
                 log.exception("refund failed for %s", pid)
         jobs.on_failed = refund_if_never_made
     app.include_router(auth_routes.build_router(settings, store, accounts, quotas, create_mailer(settings) if hosted else None, limiter))
+    if hosted:
+        app.include_router(admin_routes.build_router(accounts, quotas))
     if not hosted:
         from app.api import setup as setup_routes
 
