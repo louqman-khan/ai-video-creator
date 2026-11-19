@@ -121,7 +121,7 @@ describe("NewProjectPage", () => {
     await userEvent.type(screen.getByLabelText("Script to speak"), "Hello there.");
     expect(screen.getByRole("alert")).toHaveTextContent("Choose English or Urdu");
     await userEvent.selectOptions(screen.getByLabelText("Language"), "ur");
-    expect(screen.getByRole("alert")).toHaveTextContent("No Urdu voice is installed");
+    expect(screen.getByRole("alert")).toHaveTextContent("No Urdu voice is available here yet");
     await userEvent.selectOptions(screen.getByLabelText("Language"), "en");
     expect(button).toBeEnabled();
     await userEvent.click(button);
@@ -163,4 +163,11 @@ describe("NewProjectPage", () => {
     expect(screen.getByRole("button", { name: "Create video" })).toBeDisabled();
     useAuth.setState({ account: null });
   });
+
+  it("says on the Type a script card when the site has no computer voice at all", async () => {
+    vi.spyOn(client.api, "health").mockResolvedValue({ ok: true, ffmpeg: true, speech: [], limits: DEFAULT_LIMITS });
+    renderPage();
+    expect(await screen.findByText("No computer voice is available here yet.")).toBeInTheDocument();
+  });
 });
+

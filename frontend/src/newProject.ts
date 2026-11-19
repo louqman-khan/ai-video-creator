@@ -48,7 +48,7 @@ export function validateScript(script: string, limits: Limits): string | null {
 export function validateSpeak(v: NewProjectValues, speech: string[]): string | null {
   if (!v.script.trim()) return "Type the script you want spoken.";
   if (v.language === "") return "Choose English or Urdu: the voice needs to know which language to speak.";
-  if (!speech.includes(v.language)) return `No ${v.language === "ur" ? "Urdu" : "English"} voice is installed on this computer (see docs/tts.md).`;
+  if (!speech.includes(v.language)) return `No ${v.language === "ur" ? "Urdu" : "English"} voice is available here yet. Upload a recording instead, or choose the other language.`;
   return null;
 }
 

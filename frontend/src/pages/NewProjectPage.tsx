@@ -19,6 +19,7 @@ export function NewProjectPage() {
   const [params] = useSearchParams();
   const [mode, setMode] = useState<"record" | "speak">(params.get("source") === "script" ? "speak" : "record");   // a recording, or a typed script spoken by a synthetic voice
   const [speech, setSpeech] = useState<string[]>([]);
+  const [voicesKnown, setVoicesKnown] = useState(false);   // the server has told us which voices it has
   const [speechPaid, setSpeechPaid] = useState(false);   // the voice is an outside paid service
   const [paidOk, setPaidOk] = useState(false);
   const [fileError, setFileError] = useState<string | null>(null);
@@ -32,7 +33,7 @@ export function NewProjectPage() {
 
   useEffect(() => {
     let live = true;
-    api.health().then((h) => { if (live) { setLimits(h.limits); setSpeech(h.speech ?? []); setSpeechPaid(!!h.speech_paid); } }).catch(() => undefined); // keep defaults
+    api.health().then((h) => { if (live) { setLimits(h.limits); setSpeech(h.speech ?? []); setVoicesKnown(true); setSpeechPaid(!!h.speech_paid); } }).catch(() => undefined); // keep defaults
     return () => {
       live = false;
       abortRef.current?.(); // leaving the page cancels a running upload
@@ -124,7 +125,7 @@ export function NewProjectPage() {
             <input type="radio" name="source" aria-label="Speak my script with a computer voice" checked={mode === "speak"} disabled={uploading} onChange={() => setMode("speak")} />
             <Icon name="text" size={22} />
             <strong>Type a script</strong>
-            <span>A computer voice reads it for you.</span>
+            <span>{voicesKnown && speech.length === 0 ? "No computer voice is available here yet." : "A computer voice reads it for you."}</span>
           </label>
         </div>
 
