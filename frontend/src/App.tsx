@@ -56,6 +56,8 @@ export function App() {
       </Routes>
     );
 
+  const authPage = /^\/(login|signup|forgot|reset|verify)\b/.test(location.pathname);
+  if (!showNav && authPage) return <div className="shell shell-bare shell-auth">{routes}</div>;
   if (!showNav) {
     return (
       <div className="shell shell-bare">

@@ -1,17 +1,37 @@
 import { useState, type FormEvent, type ReactNode } from "react";
 import { Link, Navigate, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { api, ApiError } from "../api/client";
+import { Icon } from "../components/Icon";
 import { useAuth } from "../store/auth";
 import { creditsText, plural, resetLabel } from "../credits";
 
 const message = (e: unknown) => (e instanceof ApiError || e instanceof Error ? e.message : "Something went wrong");
 
+/** Every sign-in page: a calm brand side with what the product does, and the form beside it (stacked on a phone). */
 function Card({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <section className="auth-card panel">
-      <h1>{title}</h1>
-      {children}
-    </section>
+    <div className="auth-split">
+      <aside className="auth-brand" aria-label="About AI Video Creator">
+        <Link to="/" className="brand"><span className="brand-mark" aria-hidden="true" />AI Video Creator</Link>
+        <div className="auth-pitch">
+          <p className="eyebrow"><span className="dot" />Your studio, in motion</p>
+          <p className="auth-headline">Turn the words in your head into a video people can watch.</p>
+          <ul className="auth-points">
+            <li><Icon name="check" size={16} />Start from a script or a recording</li>
+            <li><Icon name="check" size={16} />Captions in English and <span dir="rtl" lang="ur">اردو</span>, shaped correctly</li>
+            <li><Icon name="check" size={16} />Pictures found and timed for you</li>
+            <li><Icon name="check" size={16} />A full editor when you want control</li>
+          </ul>
+        </div>
+        <p className="auth-sample" dir="rtl" lang="ur">ہر کہانی ایک منظر سے شروع ہوتی ہے</p>
+      </aside>
+      <main className="auth-form">
+        <section className="auth-card">
+          <h1>{title}</h1>
+          {children}
+        </section>
+      </main>
+    </div>
   );
 }
 
