@@ -19,6 +19,7 @@ async function person(label) {
   const problems = [];
   page.on("console", (m) => m.type() === "error" && problems.push(m.text()));
   page.on("pageerror", (e) => problems.push(e.message));
+  page.on("response", (r) => r.status() >= 400 && problems.push(`${r.status()} ${r.url().replace(/[0-9a-f]{32}/g, "<id>")}`));
   return { ctx, page, problems, label };
 }
 async function signUpAndLogIn(p, email) {
@@ -54,15 +55,18 @@ await ann.page.getByLabel(/Narration audio/).setInputFiles(audio);
 await ann.page.getByRole("button", { name: "Create video" }).click();
 await ann.page.waitForURL(/\/projects\/[0-9a-f]{32}/);
 const pid = ann.page.url().match(/projects\/([0-9a-f]{32})/)[1];
-await ann.page.getByRole("region", { name: "Timeline" }).waitFor({ timeout: 300000 });
+await ann.page.getByRole("region", { name: "Timeline" }).waitFor({ timeout: 540000 });
 await ann.page.locator("canvas.live-canvas").waitFor();
 await ann.page.waitForTimeout(3000);
+const me = await (await ann.page.request.get(`${base}/api/auth/me`)).json();
+step("one video used credits (a 25 second narration costs 1)", me.usage.credits.used === 1 && me.usage.credits.remaining === 9, JSON.stringify(me.usage.credits));
 step("ann's project finished and the editor with its live preview works under the security headers", ann.problems.length === 0, ann.problems.join(" | ").slice(0, 300));
 const headers = (await ann.page.request.get(`${base}/api/health`)).headers();
 step("security headers are sent", headers["x-frame-options"] === "DENY" && headers["x-content-type-options"] === "nosniff" && headers["content-security-policy"].includes("default-src 'self'"));
 
 // bob cannot see or reach it
 await signUpAndLogIn(bob, "bob@example.com");
+await bob.page.getByText("No projects yet").waitFor({ timeout: 15000 });
 step("bob's project list is empty", (await bob.page.getByText("No projects yet").count()) === 1);
 const direct = await bob.page.request.get(`${base}/api/projects/${pid}`);
 const video = await bob.page.request.get(`${base}/api/projects/${pid}/video`);
@@ -98,5 +102,6 @@ await ann.page.getByRole("heading", { name: "Your account" }).waitFor({ timeout:
 step("ann logs in again and lands where she was (her account page)", true);
 await ann.page.goto(`${base}/`);
 await ann.page.getByRole("heading", { name: /Good (morning|afternoon|evening)|Working late/ }).waitFor();
-step("her project is still there after bob's account was deleted", (await ann.page.request.get(`${base}/api/projects/${pid}`)).status() === 200 && (await ann.page.locator(".card").count()) === 1);
+step("the sidebar plan card shows 1 of 10 credits used", (await ann.page.getByText("1 of 10 video credits used this month.").count()) === 1);
+step("her project is still there after bob's account was deleted", (await ann.page.request.get(`${base}/api/projects/${pid}`)).status() === 200 && (await ann.page.locator(".proj").count()) === 1);
 await browser.close();

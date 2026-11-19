@@ -4,6 +4,9 @@ import hashlib
 import itertools
 import json
 import logging
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor, wait
 from pathlib import Path
 
 from app.config import Settings
@@ -28,11 +31,30 @@ class CompositeSearch:
     name = "composite"
     kinds = frozenset({"video", "image"})
 
-    def __init__(self, sources: list[MediaSearch], cache_dir: Path | None = None) -> None:
+    def __init__(self, sources: list[MediaSearch], cache_dir: Path | None = None, deadline: float = 15.0,
+                 breaker_failures: int = 2, breaker_pause: float = 180.0) -> None:
         self.sources = sources
+        # circuit breaker: a source that failed or stalled this many times in a row is left out for `breaker_pause` seconds (a site that is down
+        # for this network must not add its timeout to every single search)
+        self._fails: dict[str, int] = {}
+        self._paused_until: dict[str, float] = {}
+        self._lock = threading.Lock()
+        self.breaker_failures, self.breaker_pause = breaker_failures, breaker_pause
+        self.deadline = deadline  # seconds one search may take in total: a stalled site must not hold a whole video back
         self.cache_dir = cache_dir
         if cache_dir:
             cache_dir.mkdir(parents=True, exist_ok=True)
+
+    def _note(self, name: str, ok: bool) -> None:
+        with self._lock:
+            if ok:
+                self._fails[name] = 0
+                return
+            self._fails[name] = self._fails.get(name, 0) + 1
+            if self._fails[name] >= self.breaker_failures:
+                self._paused_until[name] = time.monotonic() + self.breaker_pause
+                self._fails[name] = 0
+                log.warning("%s keeps failing: leaving it out of searches for %.0f s", name, self.breaker_pause)
 
     def _cache_path(self, query: str, kind: str, orientation: str) -> Path | None:
         if not self.cache_dir:
@@ -49,14 +71,29 @@ class CompositeSearch:
             return [MediaAsset.model_validate(a) for a in json.loads(cache.read_text("utf-8"))]
         per_source: list[list[MediaAsset]] = []
         failed = False
-        for src in self.sources:
-            if kind not in src.kinds:
-                continue
-            try:
-                per_source.append(src.search(query, kind, orientation=orientation, limit=limit))
-            except Exception as e:  # one broken source must not kill the run
-                failed = True
-                log.warning("%s search failed for %r: %s", src.name, query, e)
+        now = time.monotonic()
+        with self._lock:
+            active = [s for s in self.sources if kind in s.kinds and self._paused_until.get(s.name, 0) <= now]
+        pool = ThreadPoolExecutor(max_workers=max(1, len(active)), thread_name_prefix="search")
+        try:
+            futures = {pool.submit(s.search, query, kind, orientation=orientation, limit=limit): s for s in active}
+            done, late = wait(futures, timeout=self.deadline)
+            for f in futures:  # keep the sources' own order, so the interleaving stays the same
+                src = futures[f]
+                if f in late:
+                    failed = True
+                    log.warning("%s search for %r took longer than %.0f s: skipped", src.name, query, self.deadline)
+                    self._note(src.name, ok=False)
+                    continue
+                try:
+                    per_source.append(f.result())
+                    self._note(src.name, ok=True)
+                except Exception as e:  # one broken source must not kill the run
+                    failed = True
+                    log.warning("%s search failed for %r: %s", src.name, query, e)
+                    self._note(src.name, ok=False)
+        finally:
+            pool.shutdown(wait=False, cancel_futures=True)  # a stalled request is left to time out by itself; we do not wait for it
         merged = [
             a
             for a in itertools.chain.from_iterable(itertools.zip_longest(*per_source))

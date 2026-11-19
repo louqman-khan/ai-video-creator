@@ -200,3 +200,71 @@ def test_cache_rejects_downloads_that_are_not_media_and_keeps_real_ones(tmp_path
             cache.get(asset(bad))
         assert not cache.path_for(asset(bad)).exists()                # nothing bad left in the cache
         assert not list(tmp_path.glob("*.part"))
+
+
+def test_a_stalled_source_is_skipped_after_the_deadline_and_the_others_still_answer():
+    import threading
+    import time
+
+    from app.models import MediaAsset
+    from app.providers.media_search import CompositeSearch
+
+    def asset(i):
+        return MediaAsset(id=f"a:{i}", source="a", kind="image", url="https://x/d.jpg", license="CC0")
+
+    class Fast:
+        name, kinds = "fast", frozenset({"image"})
+
+        def search(self, q, kind, *, orientation="landscape", limit=10):
+            return [asset(1)]
+
+    class Stalled:
+        name, kinds = "stalled", frozenset({"image"})
+        release = threading.Event()
+
+        def search(self, q, kind, *, orientation="landscape", limit=10):
+            self.release.wait(10)
+            return [asset(2)]
+
+    class Broken:
+        name, kinds = "broken", frozenset({"image"})
+
+        def search(self, q, kind, *, orientation="landscape", limit=10):
+            raise RuntimeError("boom")
+
+    s = CompositeSearch([Stalled(), Broken(), Fast()], deadline=0.5)
+    t0 = time.monotonic()
+    out = s.search("x", "image")
+    took = time.monotonic() - t0
+    Stalled.release.set()
+    assert [a.id for a in out] == ["a:1"] and took < 3          # the fast one answered; neither the stalled nor the broken one blocked it
+
+
+def test_a_source_that_keeps_failing_is_left_out_for_a_while_and_comes_back():
+    import time
+
+    from app.models import MediaAsset
+    from app.providers.media_search import CompositeSearch
+
+    calls = {"down": 0}
+
+    class Up:
+        name, kinds = "up", frozenset({"image"})
+
+        def search(self, q, kind, *, orientation="landscape", limit=10):
+            return [MediaAsset(id="u:1", source="u", kind="image", url="https://x/d.jpg", license="CC0")]
+
+    class Down:
+        name, kinds = "down", frozenset({"image"})
+
+        def search(self, q, kind, *, orientation="landscape", limit=10):
+            calls["down"] += 1
+            raise ConnectionError("unreachable")
+
+    s = CompositeSearch([Down(), Up()], breaker_failures=2, breaker_pause=0.3)
+    for q in ("a", "b", "c", "d"):
+        assert [a.id for a in s.search(q, "image")] == ["u:1"]
+    assert calls["down"] == 2                      # asked twice, then left out
+    time.sleep(0.4)
+    s.search("e", "image")
+    assert calls["down"] == 3                      # the pause is over: it is tried again
