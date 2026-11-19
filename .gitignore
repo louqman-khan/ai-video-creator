@@ -30,3 +30,10 @@ desktop/src-tauri/resources/*
 !desktop/src-tauri/resources/README.txt
 backend/build/
 samples/footage/
+
+# fonts with an unclear or personal-use licence: kept on the owner computer only, never committed
+assets/fonts/Jameel*
+assets/fonts/jameel*
+Jameel*.ttf
+samples/font-comparison/*PRIVATE*
+samples/font-comparison/product-preview-*
