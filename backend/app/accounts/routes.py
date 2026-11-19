@@ -12,7 +12,7 @@ from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
-from app.accounts import passwords
+from app.accounts import emails, passwords
 from app.accounts.db import LOCAL_USER, Accounts
 from app.accounts.guard import COOKIE, client_ip
 from app.accounts.mailer import Mailer
@@ -24,11 +24,26 @@ from app.config import Settings
 EMAIL = re.compile(r"^[^@\s]{1,64}@[^@\s]{1,190}\.[^@\s]{2,}$")
 
 
+def _lang(v: str) -> str:
+    return "ur" if v == "ur" else "en"
+
+
+class CodeBody(BaseModel):
+    email: str = Field(..., max_length=254)
+    code: str = Field(..., max_length=12)
+
+
+class Resend(BaseModel):
+    email: str = Field(..., max_length=254)
+    lang: str = Field("en", max_length=5)
+
+
 class SignUp(BaseModel):
     email: str = Field(..., max_length=254)
     password: str = Field(..., max_length=passwords.MAX_LENGTH)
     invite: str = Field("", max_length=100)
     terms: bool = False  # the person ticked "I accept the terms of use and the privacy policy"
+    lang: str = Field("en", max_length=5)  # the language of the e-mail: "en" or "ur"
 
 
 class LogIn(BaseModel):
@@ -42,6 +57,7 @@ class TokenBody(BaseModel):
 
 class Forgot(BaseModel):
     email: str = Field(..., max_length=254)
+    lang: str = Field("en", max_length=5)
 
 
 class Reset(BaseModel):
@@ -100,12 +116,45 @@ def build_router(s: Settings, store: ProjectStore, accounts: Accounts | None, qu
             raise HTTPException(422, problem)
         user = acc.create_user(email, passwords.hash_password(body.password), verified=not s.require_email_verification)
         assert mailer is not None
+        lang = _lang(body.lang)
         if user is None:  # the same answer as for a new address: nobody can use this form to find out who has an account
-            mailer.send(email, "Your AI Video Creator account", "Someone tried to sign up with this address, but it already has an account.\nIf it was you, log in or reset your password:\n" + s.public_url + "/login\n")
+            subject, text, html = emails.exists(lang, s.public_url + "/login")
+            mailer.send(email, subject, text, html)
         elif s.require_email_verification:
-            token = acc.create_token(user.id, "verify", 48)
-            mailer.send(email, "Confirm your e-mail address", f"Welcome to AI Video Creator.\nConfirm your address to start:\n{s.public_url}/verify?token={token}\n\nThe link works for 48 hours.\n")
+            send_verification(acc, user.id, email, lang)
         return generic
+
+    def send_verification(acc: Accounts, user_id: str, email: str, lang: str) -> None:
+        assert mailer is not None
+        token = acc.create_token(user_id, "verify", 48)
+        code = acc.create_code(user_id, 30)
+        subject, text, html = emails.verify(lang, f"{s.public_url}/verify?token={token}", code)
+        mailer.send(email, subject, text, html)
+
+    @router.post("/resend", status_code=202)
+    def resend(body: Resend, request: Request) -> dict:
+        """A new confirmation e-mail (link and code) for an address that has not been confirmed yet. The answer is always the same."""
+        acc = need_accounts()
+        throttle(request, "resend", 6, 3600)
+        throttle(request, "resend-account", 3, 3600, body.email)
+        row = acc.by_email(body.email)
+        if row and not row.verified and not row.disabled and s.require_email_verification:
+            send_verification(acc, row.id, row.email, _lang(body.lang))
+        return generic
+
+    @router.post("/verify-code")
+    def verify_code(body: CodeBody, request: Request) -> dict:
+        """Confirm the address with the six digits from the e-mail. Five wrong tries per address and quarter of an hour: a code cannot be guessed."""
+        acc = need_accounts()
+        throttle(request, "code", 30, 3600)
+        throttle(request, "code-account", 5, 900, body.email)
+        row = acc.by_email(body.email)
+        code = re.sub(r"\D", "", body.code)
+        if not row or len(code) != 6 or not acc.consume_code(row.id, code):
+            raise HTTPException(400, "That code is wrong or has expired. Check the e-mail or ask for a new one.")
+        acc.set_verified(row.id)
+        acc.clear_verification(row.id)
+        return {"message": "Your e-mail address is confirmed. You can log in now."}
 
     @router.post("/verify")
     def verify(body: TokenBody, request: Request) -> dict:
@@ -115,6 +164,7 @@ def build_router(s: Settings, store: ProjectStore, accounts: Accounts | None, qu
         if not uid:
             raise HTTPException(400, "This link is invalid or has expired. Sign up again or ask for a new link by logging in.")
         acc.set_verified(uid)
+        acc.clear_verification(uid)
         return {"message": "Your e-mail address is confirmed. You can log in now."}
 
     @router.post("/login")
@@ -151,7 +201,8 @@ def build_router(s: Settings, store: ProjectStore, accounts: Accounts | None, qu
         if row and not row.disabled:
             token = acc.create_token(row.id, "reset", 1)
             assert mailer is not None
-            mailer.send(row.email, "Reset your password", f"Choose a new password:\n{s.public_url}/reset?token={token}\n\nThe link works for one hour. If you did not ask for this, ignore this e-mail.\n")
+            subject, text, html = emails.reset(_lang(body.lang), f"{s.public_url}/reset?token={token}")
+            mailer.send(row.email, subject, text, html)
         return generic
 
     @router.post("/reset")

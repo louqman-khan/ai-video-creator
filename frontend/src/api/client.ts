@@ -134,15 +134,19 @@ export const api = {
   setupModels: (body: { whisper?: string; clip: boolean }) =>
     request<SetupStatus>("/api/setup/models", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }),
   account: () => request<Account>("/api/auth/me"),
-  signup: (body: { email: string; password: string; invite?: string; terms: boolean }) =>
+  verifyCode: (email: string, code: string) =>
+    request<{ message: string }>("/api/auth/verify-code", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, code }) }),
+  resend: (email: string, lang: string) =>
+    request<{ message: string }>("/api/auth/resend", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, lang }) }),
+  signup: (body: { email: string; password: string; invite?: string; terms: boolean; lang?: string }) =>
     request<{ message: string }>("/api/auth/signup", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }),
   login: (body: { email: string; password: string }) =>
     request<unknown>("/api/auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }),
   logout: () => request<unknown>("/api/auth/logout", { method: "POST" }),
   verifyEmail: (token: string) =>
     request<{ message: string }>("/api/auth/verify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token }) }),
-  forgotPassword: (email: string) =>
-    request<{ message: string }>("/api/auth/forgot", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email }) }),
+  forgotPassword: (email: string, lang = "en") =>
+    request<{ message: string }>("/api/auth/forgot", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, lang }) }),
   resetPassword: (token: string, password: string) =>
     request<{ message: string }>("/api/auth/reset", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token, password }) }),
   deleteAccount: (password: string) =>

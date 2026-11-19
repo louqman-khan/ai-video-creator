@@ -3,8 +3,9 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
-import { api, type Account } from "./api/client";
+import { api, ApiError, type Account } from "./api/client";
 import { useAuth } from "./store/auth";
+import { useLang } from "./i18n";
 import { useProjects } from "./store/projects";
 
 const local: Account = { mode: "local", signups: "open", require_verification: true, user: { id: "local", email: null, admin: true } };
@@ -18,6 +19,7 @@ const open = (path = "/") => render(<MemoryRouter initialEntries={[path]}><App /
 beforeEach(() => {
   vi.restoreAllMocks();
   useAuth.setState({ account: null, error: null });
+  useLang.setState({ lang: "en" });
   useProjects.setState({ projects: [], loading: false, error: null });
   vi.spyOn(api, "listProjects").mockResolvedValue([]);
   vi.spyOn(api, "storage").mockRejectedValue(new Error("none"));
@@ -85,7 +87,7 @@ describe("App and accounts", () => {
     expect(button).toBeDisabled();
     await userEvent.click(screen.getByRole("checkbox"));
     await userEvent.click(button);
-    expect(signup).toHaveBeenCalledWith({ email: "new@example.com", password: "a long passphrase here", invite: "beta", terms: true });
+    expect(signup).toHaveBeenCalledWith({ email: "new@example.com", password: "a long passphrase here", invite: "beta", terms: true, lang: "en" });
     expect(await screen.findByRole("status")).toHaveTextContent("An e-mail is on its way.");
   });
 
@@ -130,5 +132,61 @@ describe("App and accounts", () => {
     await userEvent.click(confirm);
     expect(del).toHaveBeenCalledWith("correct horse battery");
     expect(await screen.findByRole("heading", { name: "Log in" })).toBeInTheDocument();
+  });
+
+  it("after sign-up the six digits from the e-mail confirm the address", async () => {
+    vi.spyOn(api, "account").mockResolvedValue(hostedOut);
+    vi.spyOn(api, "signup").mockResolvedValue({ message: "An e-mail is on its way." });
+    const code = vi.spyOn(api, "verifyCode").mockRejectedValueOnce(new Error("That code is wrong or has expired. Check the e-mail or ask for a new one.")).mockResolvedValue({ message: "Your e-mail address is confirmed. You can log in now." });
+    open("/signup");
+    await userEvent.type(await screen.findByLabelText("E-mail"), "New@Example.com");
+    await userEvent.type(screen.getByLabelText("Password"), "a long passphrase here");
+    await userEvent.click(screen.getByRole("checkbox"));
+    await userEvent.click(screen.getByRole("button", { name: "Create account" }));
+    const box = await screen.findByLabelText("6-digit code");
+    expect(screen.getByText("new@example.com")).toBeInTheDocument();
+    await userEvent.type(box, "123 456");                                              // spaces and a wrong code first
+    expect(code).toHaveBeenCalledWith("new@example.com", "123456");                    // it sends itself at the sixth digit
+    expect(await screen.findByRole("alert")).toHaveTextContent("wrong or has expired");
+    await userEvent.type(screen.getByLabelText("6-digit code"), "654321");
+    expect(await screen.findByText("Your e-mail address is confirmed. You can log in now.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Go to log in" })).toHaveAttribute("href", "/login");
+  });
+
+  it("a log-in that is refused because the address is not confirmed offers the code box and a new e-mail", async () => {
+    vi.spyOn(api, "account").mockResolvedValue(hostedOut);
+    vi.spyOn(api, "login").mockRejectedValue(new ApiError("Confirm your e-mail address first: open the link we sent you.", 403));
+    open("/login");
+    await userEvent.type(await screen.findByLabelText("E-mail"), "ann@example.com");
+    await userEvent.type(screen.getByLabelText("Password"), "correct horse battery");
+    await userEvent.click(screen.getByRole("button", { name: "Log in" }));
+    expect(await screen.findByLabelText("6-digit code")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Send a new e-mail/ })).toBeDisabled();      // a short wait first: nobody can make the site send e-mail in a loop
+  });
+
+  it("the language switch turns the sign-in pages into Urdu, right to left, and is remembered", async () => {
+    vi.spyOn(api, "account").mockResolvedValue(hostedOut);
+    const { container } = open("/login");
+    expect(await screen.findByRole("heading", { name: "Log in" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "اردو" }));
+    expect(await screen.findByRole("heading", { name: "لاگ اِن" })).toBeInTheDocument();
+    expect(screen.getByLabelText("ای میل")).toBeInTheDocument();
+    expect(screen.getByText("پاس ورڈ بھول گئے؟")).toBeInTheDocument();
+    expect(container.querySelector(".auth-split")).toHaveAttribute("dir", "rtl");
+    expect(window.localStorage.getItem("avc-lang")).toBe("ur");
+    await userEvent.click(screen.getByRole("button", { name: "English" }));
+    expect(await screen.findByRole("heading", { name: "Log in" })).toBeInTheDocument();
+    expect(container.querySelector(".auth-split")).toHaveAttribute("dir", "ltr");
+  });
+
+  it("the chosen language goes to the server so the e-mail comes in the same language", async () => {
+    vi.spyOn(api, "account").mockResolvedValue(hostedOut);
+    const forgot = vi.spyOn(api, "forgotPassword").mockResolvedValue({ message: "If that is possible, an e-mail is on its way. Check your inbox (and the spam folder)." });
+    useLang.setState({ lang: "ur" });
+    open("/forgot");
+    await userEvent.type(await screen.findByLabelText("ای میل"), "ann@example.com");
+    await userEvent.click(screen.getByRole("button", { name: "مجھے لنک بھیجیں" }));
+    expect(forgot).toHaveBeenCalledWith("ann@example.com", "ur");
+    expect(await screen.findByRole("status")).toHaveTextContent("اگر یہ ممکن ہوا");     // even the server's answer is shown in Urdu
   });
 });

@@ -50,3 +50,10 @@ Administrators (`ADMIN_EMAILS`) get an **Accounts** page (`/admin`) in the sideb
 ## E-mail (verification and password reset)
 Set `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD` and `MAIL_FROM` (for example `AI Video Creator <no-reply@your-domain>`) in the server's `.env`. Port **465** uses an encrypted connection from the first byte (SMTPS); ports 587/25 start plain and upgrade with STARTTLS. Without `SMTP_HOST` the messages are written to `<work_dir>/outbox/` (development). Tests always use the outbox, even when `.env` holds real mail settings. Check that the login works without sending anything: connect with `smtplib.SMTP_SSL(host, 465)` and call `login`. Never commit `.env`.
 
+## Sign-in experience (English and Urdu)
+- **Languages:** every sign-in page has a switch (English | اردو); the choice is remembered, Urdu turns the page right to left and uses Noto Nastaliq. The interface language is sent with sign-up, resend and forgot-password, so the e-mail arrives in the same language (`app/accounts/emails.py`). Texts are keyed by their English wording in `frontend/src/i18n.ts` (an unknown text stays English; server messages are translated there too).
+- **E-mail:** a styled HTML message (plain text for clients that do not show HTML) with a **Confirm my e-mail** button and a **six-digit code**. Open `<work_dir>/outbox/*.html` in a browser to see the styled version when no SMTP is configured.
+- **Code:** `POST /api/auth/verify-code {email, code}`; stored only as a hash, valid 30 minutes, one per account, single use; five wrong tries per address per 15 minutes (a six-digit code cannot be guessed), 30 per hour per IP. Confirming by link or by code makes the other unusable.
+- **Resend:** `POST /api/auth/resend {email, lang}` (the answer never reveals whether the address exists or is confirmed; 3 per address per hour). The pages offer it after sign-up and when a log-in is refused for an unconfirmed address, with a 45 s wait between sends.
+- **Password reset** stays link-only (one hour, single use).
+

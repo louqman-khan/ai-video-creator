@@ -177,6 +177,22 @@ class Accounts:
             c.execute(tokens.insert().values(token_hash=digest(token), user_id=user_id, kind=kind, expires_at=time.time() + hours * 3600))
         return token
 
+    def create_code(self, user_id: str, minutes: float = 30) -> str:
+        """A six-digit code to type instead of clicking the link. Stored only as a hash (of the code and the account), one per account."""
+        code = f"{secrets.randbelow(10**6):06d}"
+        with self.engine.begin() as c:
+            c.execute(tokens.delete().where(sa.and_(tokens.c.user_id == user_id, tokens.c.kind == "code")))
+            c.execute(tokens.insert().values(token_hash=digest(f"{user_id}:{code}"), user_id=user_id, kind="code", expires_at=time.time() + minutes * 60))
+        return code
+
+    def consume_code(self, user_id: str, code: str) -> bool:
+        return self.consume_token(f"{user_id}:{code}", "code") == user_id
+
+    def clear_verification(self, user_id: str) -> None:
+        """After the address is confirmed, neither the link nor the code may be used again."""
+        with self.engine.begin() as c:
+            c.execute(tokens.delete().where(sa.and_(tokens.c.user_id == user_id, tokens.c.kind.in_(["verify", "code"]))))
+
     def consume_token(self, token: str, kind: str) -> str | None:
         """The user id the token belongs to, once: a used or expired token gives None."""
         with self.engine.begin() as c:

@@ -408,3 +408,72 @@ def test_switching_an_account_off_ends_its_sessions_and_blocks_login_and_it_can_
         assert ann.c.post("/api/auth/login", json={"email": "ann@example.com", "password": GOOD}).status_code == 401
         assert boss.c.post(f"/api/admin/users/{uid}/disabled", json={"disabled": False}).status_code == 200
         assert ann.c.post("/api/auth/login", json={"email": "ann@example.com", "password": GOOD}).status_code == 200
+
+
+# ------------------------------------------------------------------ e-mail code, resend, languages
+
+def code_in_mail(b, to):
+    for t in reversed(b.mails(to)):
+        m = re.search(r"\n(\d{6})\n", t)
+        if m:
+            return m.group(1)
+    raise AssertionError("no code mail")
+
+
+def test_the_confirmation_mail_has_a_link_a_code_and_a_styled_version_and_the_code_confirms_the_address(env):
+    app, s, tone, _ = hosted(env)
+    with Browser(app, s) as b:
+        assert b.signup("ann@example.com").status_code == 202
+        text = b.mails("ann@example.com")[-1]
+        assert "/verify?token=" in text and re.search(r"\n\d{6}\n", text)
+        outbox = Path(s.work_dir) / "outbox"
+        html = next(outbox.glob("*.html")).read_text("utf-8")
+        assert "Confirm my e-mail" in html and 'dir="ltr"' in html and "<table" in html
+        code = code_in_mail(b, "ann@example.com")
+        assert b.c.post("/api/auth/login", json={"email": "ann@example.com", "password": GOOD}).status_code == 403     # not confirmed yet
+        assert b.c.post("/api/auth/verify-code", json={"email": "ann@example.com", "code": "000000" if code != "000000" else "111111"}).status_code == 400
+        assert b.c.post("/api/auth/verify-code", json={"email": "ann@example.com", "code": f"{code[:3]} {code[3:]}"}).status_code == 200   # spaces are fine
+        assert b.c.post("/api/auth/login", json={"email": "ann@example.com", "password": GOOD}).status_code == 200
+        assert b.c.post("/api/auth/verify-code", json={"email": "ann@example.com", "code": code}).status_code == 400    # a code works once
+
+
+def test_a_code_cannot_be_guessed_five_wrong_tries_lock_it_for_a_while(env):
+    app, s, tone, _ = hosted(env)
+    with Browser(app, s) as b:
+        b.signup("ann@example.com")
+        code = code_in_mail(b, "ann@example.com")
+        wrong = "123456" if code != "123456" else "654321"
+        for _ in range(5):
+            assert b.c.post("/api/auth/verify-code", json={"email": "ann@example.com", "code": wrong}).status_code == 400
+        assert b.c.post("/api/auth/verify-code", json={"email": "ann@example.com", "code": code}).status_code == 429    # even the right one waits
+        assert b.c.post("/api/auth/verify-code", json={"email": "nobody@example.com", "code": "123456"}).status_code in (400, 429)
+
+
+def test_resend_sends_a_new_pair_only_to_unconfirmed_addresses_and_never_reveals_which(env):
+    app, s, tone, _ = hosted(env)
+    with Browser(app, s) as b:
+        b.signup("ann@example.com")
+        first = b.link_token("ann@example.com", "verify")
+        r1 = b.c.post("/api/auth/resend", json={"email": "ann@example.com"})
+        r2 = b.c.post("/api/auth/resend", json={"email": "nobody@example.com"})
+        assert r1.status_code == r2.status_code == 202 and r1.json() == r2.json()
+        assert b.link_token("ann@example.com", "verify") != first                       # only the newest link works
+        assert b.c.post("/api/auth/verify", json={"token": first}).status_code == 400
+        assert b.c.post("/api/auth/verify", json={"token": b.link_token("ann@example.com", "verify")}).status_code == 200
+        before = len(b.mails("ann@example.com"))
+        b.c.post("/api/auth/resend", json={"email": "ann@example.com"})
+        assert len(b.mails("ann@example.com")) == before                                  # confirmed: nothing more is sent
+
+
+def test_mails_can_be_in_urdu_and_the_reset_mail_is_styled(env):
+    app, s, tone, _ = hosted(env)
+    with Browser(app, s) as b:
+        b.register("ann@example.com")
+        b.c.post("/api/auth/forgot", json={"email": "ann@example.com", "lang": "ur"})
+        text = b.mails("ann@example.com")[-1]
+        assert "Subject: پاس ورڈ دوبارہ سیٹ کریں" in text and "/reset?token=" in text
+        html = sorted((Path(s.work_dir) / "outbox").glob("*.html"))[-1].read_text("utf-8")
+        assert 'dir="rtl"' in html and 'lang="ur"' in html
+        b.signup("bob@example.com")
+        b.c.post("/api/auth/signup", json={"email": "bob@example.com", "password": GOOD, "terms": True, "lang": "xx"})     # an unknown language falls back to English
+        assert "Subject: Confirm your e-mail address" in b.mails("bob@example.com")[-1] or "Subject: Your AI Video Creator account" in b.mails("bob@example.com")[-1]

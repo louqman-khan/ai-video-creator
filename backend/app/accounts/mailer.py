@@ -15,17 +15,20 @@ log = logging.getLogger("avc.mail")
 
 
 class Mailer(Protocol):
-    def send(self, to: str, subject: str, body: str) -> None: ...
+    def send(self, to: str, subject: str, body: str, html: str | None = None) -> None: ...
 
 
 class ConsoleMailer:
     def __init__(self, outbox: Path) -> None:
         self.outbox = outbox
 
-    def send(self, to: str, subject: str, body: str) -> None:
+    def send(self, to: str, subject: str, body: str, html: str | None = None) -> None:
         self.outbox.mkdir(parents=True, exist_ok=True)
-        name = f"{time.time_ns()}.txt"
+        stamp = time.time_ns()
+        name = f"{stamp}.txt"
         (self.outbox / name).write_text(f"To: {to}\nSubject: {subject}\n\n{body}\n", "utf-8")
+        if html:
+            (self.outbox / f"{stamp}.html").write_text(html, "utf-8")   # open it in a browser to see the styled version
         log.info("e-mail to %s: %s (written to %s)", to, subject, self.outbox / name)
 
 
@@ -33,10 +36,12 @@ class SmtpMailer:
     def __init__(self, s: Settings) -> None:
         self.s = s
 
-    def send(self, to: str, subject: str, body: str) -> None:
+    def send(self, to: str, subject: str, body: str, html: str | None = None) -> None:
         msg = EmailMessage()
         msg["From"], msg["To"], msg["Subject"] = self.s.mail_from, to, subject
         msg.set_content(body)
+        if html:
+            msg.add_alternative(html, subtype="html")   # clients that show HTML use it; the others keep the plain text
         if self.s.smtp_port == 465:  # "implicit TLS": the connection is encrypted from the first byte (587 and 25 start plain and upgrade with STARTTLS)
             smtp = smtplib.SMTP_SSL(self.s.smtp_host, self.s.smtp_port, timeout=20)
         else:

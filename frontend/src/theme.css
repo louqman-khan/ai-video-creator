@@ -498,3 +498,22 @@ input[type="color"] { width: 44px; min-height: 30px; height: 30px; padding: 2px;
 .hero-chip-a { right: 0; top: 10px; } .hero-chip-b { right: 4px; top: 96px; }
 @media (max-width: 900px) { .hero { grid-template-columns: minmax(0, 1fr); } .hero-visual { display: none; } }
 .auth-brand .eyebrow::before { background: #a7e3d3; }
+
+/* ---- sign-in: language switch, e-mail confirmation */
+.auth-top { width: 100%; max-width: 26rem; display: flex; justify-content: flex-end; margin-bottom: var(--s4); }
+.auth-form { align-content: center; justify-items: center; }
+.lang-switch { display: inline-flex; align-items: center; gap: var(--s3); padding: 4px 4px 4px var(--s4); border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel-3); width: 100%; justify-content: space-between; }
+.lang-label { font-size: .8125rem; color: var(--muted); }
+.lang-switch .seg { background: var(--panel-3); border: 0; padding: 0; gap: 4px; }
+.lang-switch .seg-b { min-height: 34px; padding: 0 var(--s4); font-size: .875rem; border-radius: var(--radius-sm); }
+.lang-switch .seg-on { background: var(--panel); color: var(--text); box-shadow: var(--shadow-1); }
+.lang-switch .seg-b[lang="ur"] { font-family: "Noto Nastaliq Urdu", serif; font-size: .95rem; padding-top: 4px; }
+[dir="rtl"] .lang-switch { padding: 4px var(--s4) 4px 4px; }
+.auth-split[dir="rtl"] .auth-card, .auth-split[dir="rtl"] h1 { font-family: "Noto Nastaliq Urdu", var(--font); line-height: 1.9; }
+.auth-split[dir="rtl"] .auth-headline, .auth-split[dir="rtl"] .auth-points li, .auth-split[dir="rtl"] .eyebrow { font-family: "Noto Nastaliq Urdu", var(--font); line-height: 1.9; letter-spacing: 0; text-transform: none; }
+.auth-split[dir="rtl"] .field .label, .auth-split[dir="rtl"] .btn, .auth-split[dir="rtl"] small, .auth-split[dir="rtl"] p { letter-spacing: 0; }
+.confirm { display: grid; gap: var(--s3); }
+.confirm-lead { margin: 0; } .confirm .small { margin: 0; }
+.code-input { text-align: center; letter-spacing: .5em; font-size: 1.5rem; font-weight: 600; min-height: 52px; padding-left: .5em; }
+.confirm-actions { display: flex; gap: var(--s2); flex-wrap: wrap; }
+.auth-card .notice { margin: 0; }
