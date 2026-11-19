@@ -97,14 +97,18 @@ describe("App and accounts", () => {
     expect(await screen.findByRole("heading", { name: "Sign-ups are closed" })).toBeInTheDocument();
   });
 
-  it("the verify link asks for a click, confirms, and offers the log-in", async () => {
+  it("there is no confirmation link page any more: an old /verify link ends on the log-in page", async () => {
     vi.spyOn(api, "account").mockResolvedValue(hostedOut);
-    const verify = vi.spyOn(api, "verifyEmail").mockResolvedValue({ message: "Your e-mail address is confirmed. You can log in now." });
     open("/verify?token=abc123");
-    await userEvent.click(await screen.findByRole("button", { name: "Confirm my address" }));
-    expect(verify).toHaveBeenCalledWith("abc123");
-    expect(await screen.findByRole("status")).toHaveTextContent("confirmed");
-    expect(screen.getByRole("link", { name: "Log in" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Log in" })).toBeInTheDocument();
+  });
+
+  it("the empty fields show what to type and the password hint says 6 characters", async () => {
+    vi.spyOn(api, "account").mockResolvedValue(hostedOut);
+    open("/signup");
+    expect(await screen.findByPlaceholderText("name@example.com")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("At least 6 characters")).toBeInTheDocument();
+    expect(screen.getByText(/At least 6 characters\. A few random words/)).toBeInTheDocument();
   });
 
   it("the reset page changes the password with the token from the link", async () => {
@@ -161,7 +165,10 @@ describe("App and accounts", () => {
     await userEvent.type(screen.getByLabelText("Password"), "correct horse battery");
     await userEvent.click(screen.getByRole("button", { name: "Log in" }));
     expect(await screen.findByLabelText("6-digit code")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Send a new e-mail/ })).toBeDisabled();      // a short wait first: nobody can make the site send e-mail in a loop
+    const resend = vi.spyOn(api, "resend").mockResolvedValue({ message: "ok" });
+    await userEvent.click(screen.getByRole("button", { name: "Send a new e-mail" }));         // the old code may have expired: a new one can be asked for at once
+    expect(resend).toHaveBeenCalledWith("ann@example.com", "en");
+    expect(await screen.findByRole("button", { name: /Send a new e-mail \(\d+\)/ })).toBeDisabled();   // and then a short wait: nobody can make the site send e-mail in a loop
   });
 
   it("the language switch turns the sign-in pages into Urdu, right to left, and is remembered", async () => {

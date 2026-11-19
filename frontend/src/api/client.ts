@@ -143,8 +143,6 @@ export const api = {
   login: (body: { email: string; password: string }) =>
     request<unknown>("/api/auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }),
   logout: () => request<unknown>("/api/auth/logout", { method: "POST" }),
-  verifyEmail: (token: string) =>
-    request<{ message: string }>("/api/auth/verify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token }) }),
   forgotPassword: (email: string, lang = "en") =>
     request<{ message: string }>("/api/auth/forgot", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, lang }) }),
   resetPassword: (token: string, password: string) =>

@@ -5,13 +5,13 @@ import { useT } from "../i18n";
 const COOLDOWN = 45;
 
 /** "Check your e-mail": the six digits from the e-mail confirm the address too (no need to switch to the same browser). Used after sign-up and when a log-in is refused because the address is not confirmed. */
-export function ConfirmBox({ email, onDone, onOtherAddress }: { email: string; onDone: (message: string) => void; onOtherAddress?: () => void }) {
+export function ConfirmBox({ email, onDone, onOtherAddress, resendNow = false }: { email: string; onDone: (message: string) => void; onOtherAddress?: () => void; resendNow?: boolean }) {
   const { t, lang } = useT();
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
-  const [wait, setWait] = useState(COOLDOWN);
+  const [wait, setWait] = useState(resendNow ? 0 : COOLDOWN);   // right after sign-up an e-mail has just been sent; after a refused log-in the old code may have expired
 
   useEffect(() => {
     if (wait <= 0) return;
@@ -54,7 +54,7 @@ export function ConfirmBox({ email, onDone, onOtherAddress }: { email: string; o
   return (
     <div className="confirm">
       <p className="confirm-lead">{t("We sent a confirmation e-mail to")} <strong dir="ltr">{email}</strong></p>
-      <p className="muted small">{t("Click the button in the e-mail, or type the 6-digit code here.")}</p>
+      <p className="muted small">{t("Type the 6-digit code from the e-mail.")}</p>
       <form onSubmit={submit} className="form" noValidate>
         <label className="field">
           <span className="label">{t("6-digit code")}</span>

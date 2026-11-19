@@ -56,7 +56,7 @@ class Browser:
 
     def register(self, email, password=GOOD):
         assert self.signup(email, password).status_code == 202
-        assert self.c.post("/api/auth/verify", json={"token": self.link_token(email, "verify")}).status_code == 200
+        assert self.c.post("/api/auth/verify-code", json={"email": email, "code": code_in_mail(self, email)}).status_code == 200
         r = self.c.post("/api/auth/login", json={"email": email, "password": password})
         assert r.status_code == 200, r.text
         return r.json()["user"]
@@ -71,7 +71,7 @@ def test_passwords_are_hashed_checked_and_policed():
     assert h.startswith("scrypt$") and GOOD not in h and passwords.verify_password(GOOD, h) and not passwords.verify_password("wrong", h)
     assert h != passwords.hash_password(GOOD)                              # a fresh salt every time
     assert not passwords.verify_password("x", "garbage") and not passwords.verify_password("x", "scrypt$1$2")
-    assert passwords.policy_problem("short") and passwords.policy_problem("password123") and passwords.policy_problem("aaaaaaaaaaaa")
+    assert passwords.policy_problem("short") and passwords.policy_problem("123456") and passwords.policy_problem("password123") and passwords.policy_problem("aaaaaaaaaaaa")
     assert passwords.policy_problem("me@example.com", "me@example.com") and passwords.policy_problem("a" * 500)
     assert passwords.policy_problem(GOOD, "me@example.com") is None
 
@@ -95,16 +95,16 @@ def test_sign_up_verification_login_logout(env):
     with Browser(app, s) as b:
         assert b.c.post("/api/auth/signup", json={"email": "t@example.com", "password": GOOD}).status_code == 422      # the terms were not accepted
         assert b.signup("not an address").status_code == 422
-        assert b.signup("x@example.com", "short").status_code == 422
+        assert b.signup("x@example.com", "short").status_code == 422                          # fewer than 6 characters
         assert b.signup("Ann@Example.com").status_code == 202
         assert b.signup("ann@example.com").status_code == 202                                  # same answer for a known address
         assert len(b.mails("ann@example.com")) == 2 and "already has an account" in b.mails("ann@example.com")[1]
         r = b.c.post("/api/auth/login", json={"email": "ann@example.com", "password": GOOD})
         assert r.status_code == 403 and "Confirm your e-mail" in r.json()["detail"]
-        assert b.c.post("/api/auth/verify", json={"token": "nonsense"}).status_code == 400
-        tok = b.link_token("ann@example.com", "verify")
-        assert b.c.post("/api/auth/verify", json={"token": tok}).status_code == 200
-        assert b.c.post("/api/auth/verify", json={"token": tok}).status_code == 400            # a link works once
+        assert b.c.post("/api/auth/verify", json={"token": "nonsense"}).status_code in (404, 405)      # there is no confirmation link any more: only the code
+        code = code_in_mail(b, "ann@example.com")
+        assert b.c.post("/api/auth/verify-code", json={"email": "ann@example.com", "code": code}).status_code == 200
+        assert b.c.post("/api/auth/verify-code", json={"email": "ann@example.com", "code": code}).status_code == 400    # a code works once
         bad = b.c.post("/api/auth/login", json={"email": "ann@example.com", "password": "wrong password"})
         none = b.c.post("/api/auth/login", json={"email": "nobody@example.com", "password": GOOD})
         assert bad.status_code == none.status_code == 401 and bad.json() == none.json()        # the two failures look the same
@@ -425,10 +425,10 @@ def test_the_confirmation_mail_has_a_link_a_code_and_a_styled_version_and_the_co
     with Browser(app, s) as b:
         assert b.signup("ann@example.com").status_code == 202
         text = b.mails("ann@example.com")[-1]
-        assert "/verify?token=" in text and re.search(r"\n\d{6}\n", text)
+        assert "/verify" not in text and "http" not in text and re.search(r"\n\d{6}\n", text)        # the code only: no link
         outbox = Path(s.work_dir) / "outbox"
         html = next(outbox.glob("*.html")).read_text("utf-8")
-        assert "Confirm my e-mail" in html and 'dir="ltr"' in html and "<table" in html
+        assert "YOUR CONFIRMATION CODE".lower() in html.lower() and 'dir="ltr"' in html and "<table" in html and "href=" not in html
         code = code_in_mail(b, "ann@example.com")
         assert b.c.post("/api/auth/login", json={"email": "ann@example.com", "password": GOOD}).status_code == 403     # not confirmed yet
         assert b.c.post("/api/auth/verify-code", json={"email": "ann@example.com", "code": "000000" if code != "000000" else "111111"}).status_code == 400
@@ -453,13 +453,15 @@ def test_resend_sends_a_new_pair_only_to_unconfirmed_addresses_and_never_reveals
     app, s, tone, _ = hosted(env)
     with Browser(app, s) as b:
         b.signup("ann@example.com")
-        first = b.link_token("ann@example.com", "verify")
+        first = code_in_mail(b, "ann@example.com")
         r1 = b.c.post("/api/auth/resend", json={"email": "ann@example.com"})
         r2 = b.c.post("/api/auth/resend", json={"email": "nobody@example.com"})
         assert r1.status_code == r2.status_code == 202 and r1.json() == r2.json()
-        assert b.link_token("ann@example.com", "verify") != first                       # only the newest link works
-        assert b.c.post("/api/auth/verify", json={"token": first}).status_code == 400
-        assert b.c.post("/api/auth/verify", json={"token": b.link_token("ann@example.com", "verify")}).status_code == 200
+        new = code_in_mail(b, "ann@example.com")
+        assert new != first or True                                                        # (one in a million to repeat)
+        if new != first:
+            assert b.c.post("/api/auth/verify-code", json={"email": "ann@example.com", "code": first}).status_code == 400      # only the newest code works
+        assert b.c.post("/api/auth/verify-code", json={"email": "ann@example.com", "code": new}).status_code == 200
         before = len(b.mails("ann@example.com"))
         b.c.post("/api/auth/resend", json={"email": "ann@example.com"})
         assert len(b.mails("ann@example.com")) == before                                  # confirmed: nothing more is sent

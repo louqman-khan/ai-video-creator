@@ -10,9 +10,13 @@ import os
 N, R, P = 2**15, 8, 1
 SALT_BYTES = 16
 KEY_BYTES = 32
-MIN_LENGTH = 10
+MIN_LENGTH = 6
 MAX_LENGTH = 200  # scrypt on a huge input is a cheap way to burn CPU
-COMMON = {"password", "passwordpassword", "1234567890", "qwertyuiop", "iloveyou12", "0123456789", "password123", "letmein1234", "1q2w3e4r5t"}
+COMMON = {"password", "passwordpassword", "1234567890", "qwertyuiop", "iloveyou12", "0123456789", "password123", "letmein1234", "1q2w3e4r5t",
+          # with a short minimum the everyday favourites matter most
+          "123456", "1234567", "12345678", "123456789", "111111", "000000", "654321", "123123", "121212", "abc123", "abcdef", "abc12345", "qwerty", "qwerty1", "qwerty12", "qwerty123",
+          "password1", "passw0rd", "p@ssword", "welcome", "welcome1", "letmein", "iloveyou", "admin123", "administrator", "changeme", "football", "baseball", "monkey", "dragon", "sunshine", "princess",
+          "pakistan", "pakistan1", "allahuakbar", "muhammad", "786786", "123456a", "1q2w3e", "zxcvbn", "asdfgh", "asdfghjk"}
 
 
 def policy_problem(password: str, email: str = "") -> str | None:
@@ -22,7 +26,7 @@ def policy_problem(password: str, email: str = "") -> str | None:
     if len(password) > MAX_LENGTH:
         return f"Use at most {MAX_LENGTH} characters."
     low = password.lower()
-    if low in COMMON or len(set(low)) < 4:
+    if low in COMMON or len(set(low)) < 3:
         return "That password is too easy to guess."
     if email and (low == email.lower() or low == email.split("@")[0].lower()):
         return "The password must not be your e-mail address."

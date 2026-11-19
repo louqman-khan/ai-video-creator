@@ -37,7 +37,7 @@ tokens = sa.Table(
     "tokens", meta,
     sa.Column("token_hash", sa.String(64), primary_key=True),
     sa.Column("user_id", sa.String(32), sa.ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False),
-    sa.Column("kind", sa.String(10), nullable=False),  # "verify" | "reset"
+    sa.Column("kind", sa.String(10), nullable=False),  # "code" (confirm the address) | "reset"
     sa.Column("expires_at", sa.Float, nullable=False),
 )
 usage = sa.Table(
@@ -189,9 +189,9 @@ class Accounts:
         return self.consume_token(f"{user_id}:{code}", "code") == user_id
 
     def clear_verification(self, user_id: str) -> None:
-        """After the address is confirmed, neither the link nor the code may be used again."""
+        """After the address is confirmed, the code may not be used again."""
         with self.engine.begin() as c:
-            c.execute(tokens.delete().where(sa.and_(tokens.c.user_id == user_id, tokens.c.kind.in_(["verify", "code"]))))
+            c.execute(tokens.delete().where(sa.and_(tokens.c.user_id == user_id, tokens.c.kind == "code")))
 
     def consume_token(self, token: str, kind: str) -> str | None:
         """The user id the token belongs to, once: a used or expired token gives None."""

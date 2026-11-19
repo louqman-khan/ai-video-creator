@@ -13,6 +13,12 @@ const mailLink = (to, kind) => {
   throw new Error(`no ${kind} mail for ${to}`);
 };
 
+const codeFromMail = (to) => {
+  const files = readdirSync(join(work, "outbox")).filter((f) => f.endsWith(".txt")).sort().reverse();
+  for (const f of files) { const t = readFileSync(join(work, "outbox", f), "utf8"); if (t.includes(`To: ${to}`)) { const m = /\n(\d{6})\n/.exec(t); if (m) return m[1]; } }
+  throw new Error(`no code mail for ${to}`);
+};
+
 async function person(label) {
   const ctx = await browser.newContext({ viewport: { width: 1400, height: 1500 } });
   const page = await ctx.newPage();
@@ -28,10 +34,9 @@ async function signUpAndLogIn(p, email) {
   await p.page.getByLabel("Password").fill(PASSWORD);
   await p.page.getByRole("checkbox").check();
   await p.page.getByRole("button", { name: "Create account" }).click();
-  await p.page.getByRole("status").waitFor();
-  await p.page.goto(`${base}/verify?token=${mailLink(email, "verify")}`);
-  await p.page.getByRole("button", { name: "Confirm my address" }).click();
-  await p.page.getByRole("link", { name: "Log in" }).click();
+  await p.page.getByLabel("6-digit code").waitFor();                      // the page asks for the code from the e-mail
+  await p.page.getByLabel("6-digit code").fill(codeFromMail(email));      // six digits confirm by themselves
+  await p.page.getByRole("link", { name: "Go to log in" }).first().click();
   await p.page.getByLabel("E-mail").fill(email);
   await p.page.getByLabel("Password").fill(PASSWORD);
   await p.page.getByRole("button", { name: "Log in" }).click();

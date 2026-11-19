@@ -11,7 +11,7 @@ function ProjectCount() {
   const n = useProjects((s) => s.projects.length);
   return n > 0 ? <span className="count">{n}</span> : null;
 }
-import { AccountPage, ForgotPage, LegalPage, LoginPage, ResetPage, SignupPage, VerifyPage } from "./pages/AuthPages";
+import { AccountPage, ForgotPage, LegalPage, LoginPage, ResetPage, SignupPage } from "./pages/AuthPages";
 import { EditorPage } from "./pages/EditorPage";
 import { NewProjectPage } from "./pages/NewProjectPage";
 import { AdminPage } from "./pages/AdminPage";
@@ -42,7 +42,6 @@ export function App() {
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/signup" element={<SignupPage />} />
-        <Route path="/verify" element={<VerifyPage />} />
         <Route path="/forgot" element={<ForgotPage />} />
         <Route path="/reset" element={<ResetPage />} />
         <Route path="/terms" element={<LegalPage kind="terms" />} />

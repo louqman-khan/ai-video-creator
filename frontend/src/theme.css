@@ -517,3 +517,9 @@ input[type="color"] { width: 44px; min-height: 30px; height: 30px; padding: 2px;
 .code-input { text-align: center; letter-spacing: .5em; font-size: 1.5rem; font-weight: 600; min-height: 52px; padding-left: .5em; }
 .confirm-actions { display: flex; gap: var(--s2); flex-wrap: wrap; }
 .auth-card .notice { margin: 0; }
+
+/* inputs on the sign-in pages: a clearly visible box, and a hint inside while empty */
+.auth-card input:not([type="checkbox"]) { border-color: #c4cdc9; background: var(--panel); }
+.auth-card input::placeholder { color: #8b9794; }
+.auth-card input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-color: var(--accent); }
+.code-input::placeholder { letter-spacing: .5em; color: #a5b0ad; }

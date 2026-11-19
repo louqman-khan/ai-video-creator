@@ -40,15 +40,15 @@ function Card({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 
-function Field({ id, label, type = "text", value, onChange, autoComplete, hint, required = true }: {
-  id: string; label: string; type?: string; value: string; onChange: (v: string) => void; autoComplete?: string; hint?: string; required?: boolean;
+function Field({ id, label, type = "text", value, onChange, autoComplete, hint, required = true, placeholder }: {
+  id: string; label: string; type?: string; value: string; onChange: (v: string) => void; autoComplete?: string; hint?: string; required?: boolean; placeholder?: string;
 }) {
   const { t } = useT();
   return (
     <div className="field">
       <label className="label" htmlFor={id}>{t(label)}</label>
       <input id={id} type={type} value={value} onChange={(e) => onChange(e.target.value)} autoComplete={autoComplete} required={required}
-        aria-describedby={hint ? `${id}-hint` : undefined} spellCheck={false} dir={type === "email" || type === "password" ? "ltr" : undefined} />
+        aria-describedby={hint ? `${id}-hint` : undefined} spellCheck={false} placeholder={placeholder ? t(placeholder) : undefined} dir={type === "email" || type === "password" ? "ltr" : undefined} />
       {hint && <small id={`${id}-hint`} className="muted">{t(hint)}</small>}
     </div>
   );
@@ -87,13 +87,13 @@ export function LoginPage() {
   return (
     <Card title="Log in">
       <form onSubmit={submit} className="form" noValidate>
-        <Field id="email" label="E-mail" type="email" value={email} onChange={setEmail} autoComplete="username" />
-        <Field id="password" label="Password" type="password" value={password} onChange={setPassword} autoComplete="current-password" />
+        <Field id="email" label="E-mail" type="email" value={email} onChange={setEmail} autoComplete="username" placeholder="name@example.com" />
+        <Field id="password" label="Password" type="password" value={password} onChange={setPassword} autoComplete="current-password" placeholder="Your password" />
         {confirmed && <p className="notice" role="status">{t(confirmed)}</p>}
         {error && <p className="alert" role="alert">{t(error)}</p>}
         <button className="btn btn-primary" type="submit" disabled={busy || !email || !password}>{busy ? t("Logging in…") : t("Log in")}</button>
       </form>
-      {unconfirmed && !confirmed && <ConfirmBox email={email} onDone={(m) => { setConfirmed(m); setUnconfirmed(false); setError(null); }} />}
+      {unconfirmed && !confirmed && <ConfirmBox email={email} resendNow onDone={(m) => { setConfirmed(m); setUnconfirmed(false); setError(null); }} />}
       <p className="small"><Link to="/forgot">{t("Forgot your password?")}</Link>{signups !== "closed" && <> · <Link to="/signup">{t("Create an account")}</Link></>}</p>
     </Card>
   );
@@ -137,8 +137,8 @@ export function SignupPage() {
   return (
     <Card title="Create an account">
       <form onSubmit={submit} className="form" noValidate>
-        <Field id="email" label="E-mail" type="email" value={email} onChange={setEmail} autoComplete="email" />
-        <Field id="password" label="Password" type="password" value={password} onChange={setPassword} autoComplete="new-password" hint="At least 10 characters. A few random words is a good password." />
+        <Field id="email" label="E-mail" type="email" value={email} onChange={setEmail} autoComplete="email" placeholder="name@example.com" />
+        <Field id="password" label="Password" type="password" value={password} onChange={setPassword} autoComplete="new-password" hint="At least 6 characters. A few random words is a good password." placeholder="At least 6 characters" />
         {signups === "invite" && <Field id="invite" label="Invitation code" value={invite} onChange={setInvite} autoComplete="off" />}
         <label className="check">
           <input type="checkbox" checked={terms} onChange={(e) => setTerms(e.target.checked)} />
@@ -150,32 +150,6 @@ export function SignupPage() {
         <button className="btn btn-primary" type="submit" disabled={busy || !email || !password || !terms}>{busy ? t("Creating…") : t("Create account")}</button>
       </form>
       <p className="small">{t("Already have an account?")} <Link to="/login">{t("Log in")}</Link></p>
-    </Card>
-  );
-}
-
-export function VerifyPage() {
-  const { t } = useT();
-  const [params] = useSearchParams();
-  const token = params.get("token") ?? "";
-  const [state, setState] = useState<{ ok: boolean; text: string } | null>(null);
-  const [busy, setBusy] = useState(false);
-  const go = async () => {
-    setBusy(true);
-    try {
-      setState({ ok: true, text: (await api.verifyEmail(token)).message });
-    } catch (e) {
-      setState({ ok: false, text: message(e) });
-    } finally {
-      setBusy(false);
-    }
-  };
-  return (
-    <Card title="Confirm your e-mail address">
-      {!state && <button className="btn btn-primary" type="button" disabled={busy || !token} onClick={() => void go()}>{busy ? t("Confirming…") : t("Confirm my address")}</button>}
-      {!token && <p className="alert" role="alert">{t("This link is incomplete. Open the whole link from the e-mail.")}</p>}
-      {state && <p role={state.ok ? "status" : "alert"} className={state.ok ? "" : "alert"}>{t(state.text)}</p>}
-      {state?.ok && <p><Link className="btn btn-primary" to="/login">{t("Log in")}</Link></p>}
     </Card>
   );
 }
@@ -198,7 +172,7 @@ export function ForgotPage() {
     <Card title="Reset your password">
       {done ? <p role="status">{t(done)}</p> : (
         <form onSubmit={submit} className="form" noValidate>
-          <Field id="email" label="E-mail" type="email" value={email} onChange={setEmail} autoComplete="email" />
+          <Field id="email" label="E-mail" type="email" value={email} onChange={setEmail} autoComplete="email" placeholder="name@example.com" />
           {error && <p className="alert" role="alert">{t(error)}</p>}
           <button className="btn btn-primary" type="submit" disabled={!email}>{t("Send me a link")}</button>
         </form>
@@ -228,7 +202,7 @@ export function ResetPage() {
     <Card title="Choose a new password">
       {done ? <><p role="status">{t(done)}</p><p><Link className="btn btn-primary" to="/login">{t("Log in")}</Link></p></> : (
         <form onSubmit={submit} className="form" noValidate>
-          <Field id="password" label="New password" type="password" value={password} onChange={setPassword} autoComplete="new-password" hint="At least 10 characters." />
+          <Field id="password" label="New password" type="password" value={password} onChange={setPassword} autoComplete="new-password" hint="At least 6 characters." placeholder="At least 6 characters" />
           {!token && <p className="alert" role="alert">{t("This link is incomplete. Open the whole link from the e-mail.")}</p>}
           {error && <p className="alert" role="alert">{t(error)}</p>}
           <button className="btn btn-primary" type="submit" disabled={!password || !token}>{t("Change password")}</button>

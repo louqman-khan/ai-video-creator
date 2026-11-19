@@ -25,7 +25,7 @@ COOKIE = "avc_session"
 CSRF_HEADER = "x-requested-with"
 CSRF_VALUE = "avc"
 SAFE = {"GET", "HEAD", "OPTIONS"}
-PUBLIC = {"/api/health", "/api/auth/me", "/api/auth/signup", "/api/auth/login", "/api/auth/logout", "/api/auth/verify", "/api/auth/verify-code", "/api/auth/resend", "/api/auth/forgot", "/api/auth/reset"}
+PUBLIC = {"/api/health", "/api/auth/me", "/api/auth/signup", "/api/auth/login", "/api/auth/logout", "/api/auth/verify-code", "/api/auth/resend", "/api/auth/forgot", "/api/auth/reset"}
 PROJECT_PATH = re.compile(r"^/api/projects/([^/]+)(/.*)?$")
 JOB_STARTERS = [  # (method, path pattern) that start a render or another long job
     ("POST", re.compile(r"^/api/projects$")),

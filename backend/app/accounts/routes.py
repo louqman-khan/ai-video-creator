@@ -51,10 +51,6 @@ class LogIn(BaseModel):
     password: str = Field(..., max_length=passwords.MAX_LENGTH)
 
 
-class TokenBody(BaseModel):
-    token: str = Field(..., max_length=200)
-
-
 class Forgot(BaseModel):
     email: str = Field(..., max_length=254)
     lang: str = Field("en", max_length=5)
@@ -126,9 +122,8 @@ def build_router(s: Settings, store: ProjectStore, accounts: Accounts | None, qu
 
     def send_verification(acc: Accounts, user_id: str, email: str, lang: str) -> None:
         assert mailer is not None
-        token = acc.create_token(user_id, "verify", 48)
         code = acc.create_code(user_id, 30)
-        subject, text, html = emails.verify(lang, f"{s.public_url}/verify?token={token}", code)
+        subject, text, html = emails.verify(lang, code)
         mailer.send(email, subject, text, html)
 
     @router.post("/resend", status_code=202)
@@ -154,17 +149,6 @@ def build_router(s: Settings, store: ProjectStore, accounts: Accounts | None, qu
             raise HTTPException(400, "That code is wrong or has expired. Check the e-mail or ask for a new one.")
         acc.set_verified(row.id)
         acc.clear_verification(row.id)
-        return {"message": "Your e-mail address is confirmed. You can log in now."}
-
-    @router.post("/verify")
-    def verify(body: TokenBody, request: Request) -> dict:
-        acc = need_accounts()
-        throttle(request, "verify", 20, 3600)
-        uid = acc.consume_token(body.token, "verify")
-        if not uid:
-            raise HTTPException(400, "This link is invalid or has expired. Sign up again or ask for a new link by logging in.")
-        acc.set_verified(uid)
-        acc.clear_verification(uid)
         return {"message": "Your e-mail address is confirmed. You can log in now."}
 
     @router.post("/login")
