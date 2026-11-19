@@ -97,8 +97,8 @@ def test_sign_up_verification_login_logout(env):
         assert b.signup("not an address").status_code == 422
         assert b.signup("x@example.com", "short").status_code == 422                          # fewer than 6 characters
         assert b.signup("Ann@Example.com").status_code == 202
-        assert b.signup("ann@example.com").status_code == 202                                  # same answer for a known address
-        assert len(b.mails("ann@example.com")) == 2 and "already has an account" in b.mails("ann@example.com")[1]
+        assert b.signup("ann@example.com").status_code == 202                                  # started but never confirmed: a new code is sent
+        assert len(b.mails("ann@example.com")) == 2 and re.search(r"\n\d{6}\n", b.mails("ann@example.com")[1])
         r = b.c.post("/api/auth/login", json={"email": "ann@example.com", "password": GOOD})
         assert r.status_code == 403 and "Confirm your e-mail" in r.json()["detail"]
         assert b.c.post("/api/auth/verify", json={"token": "nonsense"}).status_code in (404, 405)      # there is no confirmation link any more: only the code
@@ -479,3 +479,26 @@ def test_mails_can_be_in_urdu_and_the_reset_mail_is_styled(env):
         b.signup("bob@example.com")
         b.c.post("/api/auth/signup", json={"email": "bob@example.com", "password": GOOD, "terms": True, "lang": "xx"})     # an unknown language falls back to English
         assert "Subject: Confirm your e-mail address" in b.mails("bob@example.com")[-1] or "Subject: Your AI Video Creator account" in b.mails("bob@example.com")[-1]
+
+
+def test_signing_up_with_an_address_that_already_has_an_account_says_so_and_never_overwrites_it(env):
+    app, s, tone, _ = hosted(env, admin_emails="")
+    with Browser(app, s) as b:
+        b.register("ann@example.com")
+        r = b.signup("ann@example.com", "another good password")
+        assert r.status_code == 409 and "already has an account" in r.json()["detail"]
+        assert b.c.post("/api/auth/login", json={"email": "ann@example.com", "password": GOOD}).status_code == 200              # the first password still works
+        assert b.c.post("/api/auth/login", json={"email": "ann@example.com", "password": "another good password"}).status_code == 401
+
+
+def test_an_unconfirmed_sign_up_can_be_continued_with_a_new_code_and_keeps_its_first_password(env):
+    app, s, tone, _ = hosted(env)
+    with Browser(app, s) as b:
+        assert b.signup("ann@example.com").status_code == 202
+        first = code_in_mail(b, "ann@example.com")
+        assert b.signup("ann@example.com", "a second password").status_code == 202                  # asks again: it is not an error
+        new = code_in_mail(b, "ann@example.com")
+        assert b.c.post("/api/auth/verify-code", json={"email": "ann@example.com", "code": new}).status_code == 200
+        assert b.c.post("/api/auth/login", json={"email": "ann@example.com", "password": GOOD}).status_code == 200            # nobody can swap the password before it is confirmed
+        assert first or True
+

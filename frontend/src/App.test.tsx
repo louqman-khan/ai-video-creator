@@ -196,4 +196,18 @@ describe("App and accounts", () => {
     expect(forgot).toHaveBeenCalledWith("ann@example.com", "ur");
     expect(await screen.findByRole("status")).toHaveTextContent("اگر یہ ممکن ہوا");     // even the server's answer is shown in Urdu
   });
+
+  it("sign-up says so when the address already has an account and offers log in and password reset", async () => {
+    vi.spyOn(api, "account").mockResolvedValue(hostedOut);
+    vi.spyOn(api, "signup").mockRejectedValue(new ApiError("This e-mail already has an account. Log in, or reset your password if you forgot it.", 409));
+    open("/signup");
+    await userEvent.type(await screen.findByLabelText("E-mail"), "ann@example.com");
+    await userEvent.type(screen.getByLabelText("Password"), "a long passphrase here");
+    await userEvent.click(screen.getByRole("checkbox"));
+    await userEvent.click(screen.getByRole("button", { name: "Create account" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("already has an account");
+    expect(screen.getAllByRole("link", { name: "Log in" }).every((l) => l.getAttribute("href") === "/login")).toBe(true);
+    expect(screen.getByRole("link", { name: "Forgot your password?" })).toHaveAttribute("href", "/forgot");
+  });
 });
+

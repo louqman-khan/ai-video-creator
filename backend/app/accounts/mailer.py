@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import logging
 import smtplib
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from email.message import EmailMessage
 from pathlib import Path
 from typing import Protocol
@@ -43,9 +45,9 @@ class SmtpMailer:
         if html:
             msg.add_alternative(html, subtype="html")   # clients that show HTML use it; the others keep the plain text
         if self.s.smtp_port == 465:  # "implicit TLS": the connection is encrypted from the first byte (587 and 25 start plain and upgrade with STARTTLS)
-            smtp = smtplib.SMTP_SSL(self.s.smtp_host, self.s.smtp_port, timeout=20)
+            smtp = smtplib.SMTP_SSL(self.s.smtp_host, self.s.smtp_port, timeout=12)
         else:
-            smtp = smtplib.SMTP(self.s.smtp_host, self.s.smtp_port, timeout=20)
+            smtp = smtplib.SMTP(self.s.smtp_host, self.s.smtp_port, timeout=12)
         with smtp:
             if self.s.smtp_port != 465:
                 smtp.starttls()
@@ -54,5 +56,33 @@ class SmtpMailer:
             smtp.send_message(msg)
 
 
+class BackgroundMailer:
+    """Sends in the background, with retries, so the person never waits for the mail server and a mail server that is slow or down cannot make sign-up fail:
+    the request answers at once (as it must anyway, so that a known address cannot be told from an unknown one by the response time) and the e-mail follows.
+    A message that cannot be sent after the retries is logged; the person can ask for a new one."""
+
+    def __init__(self, inner: Mailer, tries: int = 4, pause: float = 3.0) -> None:
+        self.inner, self.tries, self.pause = inner, tries, pause
+        self._pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="mail")
+        self.failed = 0
+        self._lock = threading.Lock()
+
+    def send(self, to: str, subject: str, body: str, html: str | None = None) -> None:
+        self._pool.submit(self._deliver, to, subject, body, html)
+
+    def _deliver(self, to: str, subject: str, body: str, html: str | None) -> None:
+        for n in range(1, self.tries + 1):
+            try:
+                self.inner.send(to, subject, body, html)
+                return
+            except Exception as e:  # noqa: BLE001  a mail server can fail in many ways; none of them may crash the site
+                log.warning("e-mail to %s: attempt %d of %d failed (%s: %s)", to.split("@")[-1], n, self.tries, type(e).__name__, str(e)[:100])
+                if n < self.tries:
+                    time.sleep(self.pause * n)
+        with self._lock:
+            self.failed += 1
+        log.error("e-mail \"%s\" could not be delivered after %d attempts (the person can ask for a new one)", subject, self.tries)
+
+
 def create_mailer(s: Settings) -> Mailer:
-    return SmtpMailer(s) if s.smtp_host else ConsoleMailer(Path(s.work_dir) / "outbox")
+    return BackgroundMailer(SmtpMailer(s)) if s.smtp_host else ConsoleMailer(Path(s.work_dir) / "outbox")

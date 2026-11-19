@@ -95,6 +95,8 @@ const UR: Record<string, string> = {
   "This link is invalid or has expired. Sign up again or ask for a new link by logging in.": "یہ لنک درست نہیں یا اس کی مدت ختم ہو چکی ہے۔ دوبارہ سائن اپ کریں۔",
   "This link is invalid or has expired. Ask for a new one.": "یہ لنک درست نہیں یا اس کی مدت ختم ہو چکی ہے۔ نیا لنک منگوائیں۔",
   "Your password has been changed. Log in with the new one.": "آپ کا پاس ورڈ تبدیل ہو گیا ہے۔ نئے پاس ورڈ سے لاگ اِن کریں۔",
+  "This e-mail already has an account. Log in, or reset your password if you forgot it.": "اس ای میل پر پہلے سے اکاؤنٹ موجود ہے۔ لاگ اِن کریں، یا پاس ورڈ بھول گئے ہوں تو دوبارہ سیٹ کریں۔",
+  "This e-mail already has an account.": "اس ای میل پر پہلے سے اکاؤنٹ موجود ہے۔",
   "Sign-ups are closed at the moment.": "اس وقت سائن اپ بند ہیں۔",
   "You need an invitation code to sign up.": "سائن اپ کے لیے دعوتی کوڈ درکار ہے۔",
 };

@@ -109,6 +109,7 @@ export function SignupPage() {
   const [done, setDone] = useState<string | null>(null);
   const [confirmed, setConfirmed] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [exists, setExists] = useState(false);   // the address already has an account: offer to log in or reset the password
   const [busy, setBusy] = useState(false);
 
   if (signups === "closed") return <Card title="Sign-ups are closed"><p>{t("New accounts cannot be created at the moment.")}</p><p><Link to="/login">{t("Log in")}</Link></p></Card>;
@@ -116,10 +117,12 @@ export function SignupPage() {
     e.preventDefault();
     setBusy(true);
     setError(null);
+    setExists(false);
     try {
       setDone((await api.signup({ email, password, invite, terms, lang })).message);
     } catch (er) {
       setError(message(er));
+      setExists(er instanceof ApiError && er.status === 409);
     } finally {
       setBusy(false);
     }
@@ -147,6 +150,7 @@ export function SignupPage() {
             : <span>I accept the <Link to="/terms" target="_blank">terms of use</Link> and the <Link to="/privacy" target="_blank">privacy policy</Link>.</span>}
         </label>
         {error && <p className="alert" role="alert">{t(error)}</p>}
+        {exists && <p className="small"><Link to="/login">{t("Log in")}</Link> · <Link to="/forgot">{t("Forgot your password?")}</Link></p>}
         <button className="btn btn-primary" type="submit" disabled={busy || !email || !password || !terms}>{busy ? t("Creating…") : t("Create account")}</button>
       </form>
       <p className="small">{t("Already have an account?")} <Link to="/login">{t("Log in")}</Link></p>

@@ -1,6 +1,9 @@
 import smtplib
 
-from app.accounts.mailer import ConsoleMailer, SmtpMailer, create_mailer
+import threading
+import time
+
+from app.accounts.mailer import BackgroundMailer, ConsoleMailer, SmtpMailer, create_mailer
 from app.config import Settings
 
 
@@ -53,4 +56,37 @@ def test_port_587_starts_plain_and_upgrades(monkeypatch):
 
 def test_without_a_host_mail_goes_to_the_outbox_folder(tmp_path):
     assert isinstance(create_mailer(Settings(_env_file=None, smtp_host="", work_dir=str(tmp_path))), ConsoleMailer)
-    assert isinstance(create_mailer(Settings(_env_file=None, smtp_host="mail.example.com")), SmtpMailer)
+    assert isinstance(create_mailer(Settings(_env_file=None, smtp_host="mail.example.com")), BackgroundMailer)
+
+
+class Flaky:
+    def __init__(self, fail_times):
+        self.fail_times, self.calls, self.sent, self.done = fail_times, 0, [], threading.Event()
+
+    def send(self, to, subject, body, html=None):
+        self.calls += 1
+        if self.calls <= self.fail_times:
+            raise TimeoutError("timed out")
+        self.sent.append((to, subject))
+        self.done.set()
+
+
+def test_the_background_mailer_returns_at_once_and_retries_a_mail_server_that_times_out():
+    inner = Flaky(fail_times=2)
+    m = BackgroundMailer(inner, tries=4, pause=0.05)
+    t0 = time.monotonic()
+    m.send("a@example.com", "Hi", "body")
+    assert time.monotonic() - t0 < 0.5                              # the caller does not wait for the mail server
+    assert inner.done.wait(5) and inner.calls == 3 and inner.sent == [("a@example.com", "Hi")]
+    assert m.failed == 0
+
+
+def test_a_mail_that_never_gets_through_is_counted_not_raised():
+    inner = Flaky(fail_times=99)
+    m = BackgroundMailer(inner, tries=2, pause=0.01)
+    m.send("a@example.com", "Hi", "body")                           # must not raise, ever
+    for _ in range(100):
+        if m.failed:
+            break
+        time.sleep(0.05)
+    assert m.failed == 1 and inner.calls == 2

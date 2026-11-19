@@ -110,13 +110,18 @@ def build_router(s: Settings, store: ProjectStore, accounts: Accounts | None, qu
         problem = passwords.policy_problem(body.password, email)
         if problem:
             raise HTTPException(422, problem)
-        user = acc.create_user(email, passwords.hash_password(body.password), verified=not s.require_email_verification)
-        assert mailer is not None
         lang = _lang(body.lang)
-        if user is None:  # the same answer as for a new address: nobody can use this form to find out who has an account
-            subject, text, html = emails.exists(lang, s.public_url + "/login")
-            mailer.send(email, subject, text, html)
-        elif s.require_email_verification:
+        existing = acc.by_email(email)
+        if existing is not None:
+            # Say so: a person who already has an account needs to know (the sign-up form is rate limited, so it cannot be used to comb through addresses).
+            if existing.verified or existing.disabled or not s.require_email_verification:
+                raise HTTPException(409, "This e-mail already has an account. Log in, or reset your password if you forgot it.")
+            send_verification(acc, existing.id, email, lang)   # started before but never confirmed: a new code, the original password stays
+            return generic
+        user = acc.create_user(email, passwords.hash_password(body.password), verified=not s.require_email_verification)
+        if user is None:  # two sign-ups with the same address at the same moment
+            raise HTTPException(409, "This e-mail already has an account. Log in, or reset your password if you forgot it.")
+        if s.require_email_verification:
             send_verification(acc, user.id, email, lang)
         return generic
 
