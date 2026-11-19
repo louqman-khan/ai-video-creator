@@ -45,6 +45,7 @@ export function ProjectsPage() {
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<"new" | "old" | "name">("new");
   const [tab, setTab] = useState<"all" | "recent" | "progress">("all");
+  const sample = projects.find((p) => p.video_ready);   // its first picture decorates the banner
   const shown = projects
     .filter((p) => p.name.toLowerCase().includes(query.trim().toLowerCase()))
     .filter((p) => tab === "all" || (tab === "progress" ? isActive(p) || p.status === "failed" : Date.now() - new Date(p.created_at).getTime() < 14 * 864e5))
@@ -63,12 +64,23 @@ export function ProjectsPage() {
 
       <SetupBanner />
       <section className="hero" aria-label="Start a video">
-        <p className="eyebrow">A little magic, a lot less work</p>
-        <h2>Your voice. Your story.<span>Every language in between.</span></h2>
-        <p>Start with a script or a recording. We find the pictures, time them and add captions in English or Urdu.</p>
-        <div className="hero-actions">
-          <Link to="/new" className="btn btn-primary"><Icon name="mic" />Start with a voiceover</Link>
-          <Link to="/new?source=script" className="btn"><Icon name="text" />Write a script</Link>
+        <div className="hero-text">
+          <p className="eyebrow">A little magic, a lot less work</p>
+          <h2>Your voice. Your story. <span>Every language in between.</span></h2>
+          <p>Start with a script or a recording. We find the pictures, time them and add captions in English or Urdu.</p>
+          <div className="hero-actions">
+            <Link to="/new" className="btn btn-primary"><Icon name="mic" />Start with a voiceover</Link>
+            <Link to="/new?source=script" className="btn"><Icon name="text" />Write a script</Link>
+          </div>
+        </div>
+        <div className="hero-visual" aria-hidden="true">
+          <div className="hero-card">
+            {sample && <img src={api.thumbUrl(sample.id, 1, sample.updated_at)} alt="" onError={(e) => (e.currentTarget.style.display = "none")} />}
+            <span className="hero-play"><Icon name="play" size={16} /></span>
+            <span className="hero-cap" dir="rtl" lang="ur">ہر کہانی ایک منظر سے شروع ہوتی ہے</span>
+          </div>
+          <span className="hero-chip hero-chip-a"><Icon name="check" size={12} />Pictures matched for you</span>
+          <span className="hero-chip hero-chip-b">Aa&nbsp; Urdu captions</span>
         </div>
       </section>
       {error && (
