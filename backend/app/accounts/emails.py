@@ -63,7 +63,11 @@ def _page(lang: str, title: str, intro: str, button: str | None, url: str | None
     lh = "2" if ur else "1.6"
     code_block = ""
     if code:
-        boxes = "".join(f'<span style="display:inline-block;width:46px;height:60px;line-height:60px;margin:0 4px;border-radius:10px;background:{MINT};border:1px solid #cfe6dd;font:700 30px {LATIN_FONTS};color:{TEAL};text-align:center;">{escape(c)}</span>' for c in code)
+        spacer = '<td width="8" style="width:8px;font-size:0;line-height:0;">&nbsp;</td>'
+        cells = spacer.join(
+            f'<td width="48" height="62" align="center" valign="middle" style="width:48px;height:62px;padding:0;border-radius:10px;background:{MINT};border:1px solid #cfe6dd;'
+            f'font-family:{LATIN_FONTS};font-size:30px;font-weight:700;line-height:30px;color:{TEAL};text-align:center;vertical-align:middle;">{escape(c)}</td>' for c in code)
+        boxes = f'<table role="presentation" cellpadding="0" cellspacing="0" align="center" style="margin:0 auto;border-collapse:separate;"><tr>{cells}</tr></table>'
         code_block = f'''<tr><td align="center" style="padding:22px 32px 6px 32px;font:600 13px {font};letter-spacing:{'0' if ur else '.08em'};text-transform:{'none' if ur else 'uppercase'};color:{MUTED};">{escape(code_intro)}</td></tr>
 <tr><td align="center" style="padding:8px 24px 6px 24px;" dir="ltr">{boxes}</td></tr>'''
     button_block = (f'<tr><td align="{align}" style="padding:16px 32px 8px 32px;"><a href="{escape(url)}" style="display:inline-block;background:{TEAL};color:#ffffff;text-decoration:none;font:600 16px {font};padding:13px 26px;border-radius:10px;">{escape(button)}</a></td></tr>'

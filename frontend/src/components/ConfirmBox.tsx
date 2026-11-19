@@ -58,7 +58,13 @@ export function ConfirmBox({ email, onDone, onOtherAddress, resendNow = false }:
       <form onSubmit={submit} className="form" noValidate>
         <label className="field">
           <span className="label">{t("6-digit code")}</span>
-          <input className="code-input" dir="ltr" inputMode="numeric" autoComplete="one-time-code" maxLength={7} placeholder="000000" value={code} disabled={busy} onChange={(e) => change(e.target.value)} />
+          {/* six large boxes for looking at; one real input on top of them takes the typing, pasting and the phone's code suggestion */}
+          <span className="otp" dir="ltr">
+            {[0, 1, 2, 3, 4, 5].map((i) => (
+              <span key={i} className={`otp-box${i === code.length && !busy ? " otp-active" : ""}${code[i] ? " otp-filled" : ""}`} aria-hidden="true">{code[i] ?? ""}</span>
+            ))}
+            <input className="otp-input" dir="ltr" inputMode="numeric" autoComplete="one-time-code" maxLength={7} value={code} disabled={busy} autoFocus onChange={(e) => change(e.target.value)} />
+          </span>
         </label>
         {error && <p className="alert" role="alert">{t(error)}</p>}
         <button className="btn btn-primary" type="submit" disabled={busy || code.length !== 6}>{busy ? t("Confirming…") : t("Confirm")}</button>

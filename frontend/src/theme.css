@@ -523,3 +523,10 @@ input[type="color"] { width: 44px; min-height: 30px; height: 30px; padding: 2px;
 .auth-card input::placeholder { color: #8b9794; }
 .auth-card input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-color: var(--accent); }
 .code-input::placeholder { letter-spacing: .5em; color: #a5b0ad; }
+
+/* ---- code input: six large boxes (the real input sits invisibly on top) */
+.otp { position: relative; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: var(--s2); }
+.otp-box { display: grid; place-items: center; height: 60px; border: 1.5px solid #c4cdc9; border-radius: var(--radius-sm); background: var(--panel); font-size: 1.625rem; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; transition: border-color .12s, box-shadow .12s; }
+.otp-filled { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-strong); }
+.otp:focus-within .otp-active { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
+.otp-input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: text; font-size: 1.625rem; caret-color: transparent; }

@@ -64,12 +64,11 @@ export function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [unconfirmed, setUnconfirmed] = useState(false);
-  const [confirmed, setConfirmed] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const signups = useAuth((s) => s.account?.signups);
 
-  const submit = async (e: FormEvent) => {
-    e.preventDefault();
+  const submit = async (e?: FormEvent) => {
+    e?.preventDefault();
     setBusy(true);
     setError(null);
     setUnconfirmed(false);
@@ -89,11 +88,10 @@ export function LoginPage() {
       <form onSubmit={submit} className="form" noValidate>
         <Field id="email" label="E-mail" type="email" value={email} onChange={setEmail} autoComplete="username" placeholder="name@example.com" />
         <Field id="password" label="Password" type="password" value={password} onChange={setPassword} autoComplete="current-password" placeholder="Your password" />
-        {confirmed && <p className="notice" role="status">{t(confirmed)}</p>}
         {error && <p className="alert" role="alert">{t(error)}</p>}
         <button className="btn btn-primary" type="submit" disabled={busy || !email || !password}>{busy ? t("Logging in…") : t("Log in")}</button>
       </form>
-      {unconfirmed && !confirmed && <ConfirmBox email={email} resendNow onDone={(m) => { setConfirmed(m); setUnconfirmed(false); setError(null); }} />}
+      {unconfirmed && <ConfirmBox email={email} resendNow onDone={() => void submit()} />}
       <p className="small"><Link to="/forgot">{t("Forgot your password?")}</Link>{signups !== "closed" && <> · <Link to="/signup">{t("Create an account")}</Link></>}</p>
     </Card>
   );
@@ -111,6 +109,19 @@ export function SignupPage() {
   const [error, setError] = useState<string | null>(null);
   const [exists, setExists] = useState(false);   // the address already has an account: offer to log in or reset the password
   const [busy, setBusy] = useState(false);
+
+  const navigate = useNavigate();
+  const load = useAuth((s) => s.load);
+  /** The address is confirmed: log in with the password just typed (it is still checked) and open the dashboard; if that fails the person gets the plain "confirmed, log in" page. */
+  const enter = async (m: string) => {
+    try {
+      await api.login({ email, password });
+      await load();
+      navigate("/", { replace: true });
+    } catch {
+      setConfirmed(m);
+    }
+  };
 
   if (signups === "closed") return <Card title="Sign-ups are closed"><p>{t("New accounts cannot be created at the moment.")}</p><p><Link to="/login">{t("Log in")}</Link></p></Card>;
   const submit = async (e: FormEvent) => {
@@ -132,7 +143,7 @@ export function SignupPage() {
     return (
       <Card title="Check your e-mail">
         <p role="status" className="sr-only">{t(done)}</p>
-        <ConfirmBox email={email.trim().toLowerCase()} onDone={setConfirmed} onOtherAddress={() => setDone(null)} />
+        <ConfirmBox email={email.trim().toLowerCase()} onDone={(m) => void enter(m)} onOtherAddress={() => setDone(null)} />
         <p className="small"><Link to="/login">{t("Go to log in")}</Link></p>
       </Card>
     );

@@ -34,9 +34,10 @@ async function signUpAndLogIn(p, email) {
   await p.page.getByLabel("Password").fill(PASSWORD);
   await p.page.getByRole("checkbox").check();
   await p.page.getByRole("button", { name: "Create account" }).click();
-  await p.page.getByLabel("6-digit code").waitFor();                      // the page asks for the code from the e-mail
-  await p.page.getByLabel("6-digit code").fill(codeFromMail(email));      // six digits confirm by themselves
-  await p.page.getByRole("link", { name: "Go to log in" }).first().click();
+  await p.page.getByLabel("6-digit code").waitFor();
+  await p.page.keyboard.type(codeFromMail(email));                        // six digits confirm by themselves and log the person in
+  await p.page.getByRole("heading", { name: /Good (morning|afternoon|evening)|Working late/ }).waitFor({ timeout: 15000 });
+  return;
   await p.page.getByLabel("E-mail").fill(email);
   await p.page.getByLabel("Password").fill(PASSWORD);
   await p.page.getByRole("button", { name: "Log in" }).click();

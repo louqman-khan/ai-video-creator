@@ -138,10 +138,11 @@ describe("App and accounts", () => {
     expect(await screen.findByRole("heading", { name: "Log in" })).toBeInTheDocument();
   });
 
-  it("after sign-up the six digits from the e-mail confirm the address", async () => {
-    vi.spyOn(api, "account").mockResolvedValue(hostedOut);
+  it("after sign-up the six digits from the e-mail confirm the address and the person lands on the dashboard, logged in", async () => {
+    const account = vi.spyOn(api, "account").mockResolvedValue(hostedOut);
     vi.spyOn(api, "signup").mockResolvedValue({ message: "An e-mail is on its way." });
     const code = vi.spyOn(api, "verifyCode").mockRejectedValueOnce(new Error("That code is wrong or has expired. Check the e-mail or ask for a new one.")).mockResolvedValue({ message: "Your e-mail address is confirmed. You can log in now." });
+    const login = vi.spyOn(api, "login").mockResolvedValue({});
     open("/signup");
     await userEvent.type(await screen.findByLabelText("E-mail"), "New@Example.com");
     await userEvent.type(screen.getByLabelText("Password"), "a long passphrase here");
@@ -152,9 +153,24 @@ describe("App and accounts", () => {
     await userEvent.type(box, "123 456");                                              // spaces and a wrong code first
     expect(code).toHaveBeenCalledWith("new@example.com", "123456");                    // it sends itself at the sixth digit
     expect(await screen.findByRole("alert")).toHaveTextContent("wrong or has expired");
+    account.mockResolvedValue(hostedIn);                                                // the server will know the person after the log-in
     await userEvent.type(screen.getByLabelText("6-digit code"), "654321");
-    expect(await screen.findByText("Your e-mail address is confirmed. You can log in now.")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Go to log in" })).toHaveAttribute("href", "/login");
+    await waitFor(() => expect(login).toHaveBeenCalledWith({ email: "New@Example.com", password: "a long passphrase here" }));
+    expect(await screen.findByRole("heading", { name: GREETING })).toBeInTheDocument();   // no extra click: straight to the projects page
+  });
+
+  it("if the automatic log-in after the code does not work, the person gets the plain confirmed page with a log-in button", async () => {
+    vi.spyOn(api, "account").mockResolvedValue(hostedOut);
+    vi.spyOn(api, "signup").mockResolvedValue({ message: "An e-mail is on its way." });
+    vi.spyOn(api, "verifyCode").mockResolvedValue({ message: "Your e-mail address is confirmed. You can log in now." });
+    vi.spyOn(api, "login").mockRejectedValue(new Error("E-mail or password is wrong."));
+    open("/signup");
+    await userEvent.type(await screen.findByLabelText("E-mail"), "new@example.com");
+    await userEvent.type(screen.getByLabelText("Password"), "a long passphrase here");
+    await userEvent.click(screen.getByRole("checkbox"));
+    await userEvent.click(screen.getByRole("button", { name: "Create account" }));
+    await userEvent.type(await screen.findByLabelText("6-digit code"), "123456");
+    expect(await screen.findByRole("link", { name: "Go to log in" })).toHaveAttribute("href", "/login");
   });
 
   it("a log-in that is refused because the address is not confirmed offers the code box and a new e-mail", async () => {
