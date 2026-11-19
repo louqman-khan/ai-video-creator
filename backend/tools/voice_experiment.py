@@ -76,6 +76,9 @@ def main() -> None:
     md = ["| file | voice | audio s | made in s | x real time | Whisper heard | word error |", "|---|---|---|---|---|---|---|"]
     md += [f"| {r['label']} | {r['voice']} | {r['audio_s']} | {r['made_in_s']} | {r['x_realtime']} | {r['whisper_heard']} | {r['word_error']} |" for r in rows]
     (OUT / "results.md").write_text("\n".join(md) + "\n", "utf-8")
+    for r in rows:  # also as notes on the run: the public API can read those without a login
+        line = f"{r['label']} | voice {r['voice']} | audio {r['audio_s']}s made in {r['made_in_s']}s (x{r['x_realtime']} real time) | error {r['word_error']} | heard: {r['whisper_heard']}"
+        print("::notice title=voice result::" + line.replace("%", "%25").replace("\n", " "))
 
 
 if __name__ == "__main__":
