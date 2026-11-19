@@ -92,7 +92,7 @@ describe("CaptionEditor", () => {
     renderEditor();
     await screen.findByDisplayValue("second caption");
     fireEvent.change(screen.getByLabelText("Text colour"), { target: { value: "#ffff00" } });
-    await userEvent.selectOptions(screen.getByLabelText("Position"), "top");
+    await userEvent.click(screen.getByRole("button", { name: "Top" }));
     await waitFor(() => expect(api.previewCaption).toHaveBeenLastCalledWith("p1", expect.objectContaining({ style: expect.objectContaining({ color: "#FFFF00", position: "top" }) }), expect.anything()));
     await userEvent.click(screen.getByRole("button", { name: "Apply and re-render" }));
     await waitFor(() => expect(update).toHaveBeenCalled());

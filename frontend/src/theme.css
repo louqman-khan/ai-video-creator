@@ -442,3 +442,18 @@ h1 .hl { font-weight: 600; }
 /* the sidebar width above must not apply to pages without a sidebar (the editor, the sign-in pages) */
 .shell.shell-editor, .shell.shell-bare, .shell.shell-auth { grid-template-columns: minmax(0, 1fr); }
 @media (max-width: 1000px) { .shell { grid-template-columns: minmax(0, 1fr); } }
+
+/* ---- caption controls in the Manus style: segmented position picker, colour swatches */
+.seg { display: inline-flex; gap: 2px; padding: 3px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--panel); }
+.seg-b { display: inline-flex; align-items: center; gap: 6px; min-height: 28px; padding: 0 var(--s3); border: 0; border-radius: 6px; background: transparent; color: var(--muted); font: inherit; font-size: .8125rem; cursor: pointer; }
+.seg-b:hover { color: var(--text); } .seg-on { background: var(--accent-soft); color: var(--accent-strong); font-weight: 600; }
+.seg-ico { position: relative; width: 14px; height: 11px; border: 1.5px solid currentColor; border-radius: 2px; }
+.seg-ico::after { content: ""; position: absolute; left: 2px; right: 2px; height: 2px; border-radius: 1px; background: currentColor; }
+.seg-top::after { top: 1px; } .seg-center::after { top: 3.5px; } .seg-bottom::after { bottom: 1px; }
+.swatches { display: inline-flex; gap: 6px; margin-top: 6px; }
+.swatch { width: 22px; height: 22px; padding: 0; border-radius: 50%; border: 1.5px solid var(--line-strong); cursor: pointer; }
+.swatch-on { outline: 2px solid var(--accent); outline-offset: 2px; }
+input[type="color"] { width: 44px; min-height: 30px; height: 30px; padding: 2px; border-radius: var(--radius-sm); cursor: pointer; }
+.style-form .field:has(input[type="color"]) { grid-template-columns: auto 1fr; align-items: center; column-gap: var(--s3); }
+.style-form .field:has(input[type="color"]) .label { grid-column: 1 / -1; }
+.style-form .field:has(input[type="color"]) .swatches { margin-top: 0; }

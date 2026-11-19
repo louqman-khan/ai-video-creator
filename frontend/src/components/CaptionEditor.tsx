@@ -149,19 +149,26 @@ export function CaptionEditor({ project, onChanged, previewDebounceMs = 400 }: P
                 <input type="number" min={2} max={30} step={0.5} value={style.size_pct ?? ""} placeholder="Automatic"
                   onChange={(e) => num("size_pct", e.target.value)} />
               </label>
-              <label className="field">
+              <div className="field" role="group" aria-label="Position">
                 <span className="label">Position</span>
-                <select value={style.position} onChange={(e) => set("position", e.target.value as CaptionStyle["position"])}>
-                  <option value="bottom">Bottom</option>
-                  <option value="center">Middle</option>
-                  <option value="top">Top</option>
-                </select>
-              </label>
+                <div className="seg">
+                  {([["top", "Top"], ["center", "Middle"], ["bottom", "Bottom"]] as const).map(([v, label]) => (
+                    <button key={v} type="button" aria-pressed={style.position === v} className={`seg-b${style.position === v ? " seg-on" : ""}`} onClick={() => set("position", v)}>
+                      <span className={`seg-ico seg-${v}`} aria-hidden="true" />{label}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
             <div className="row">
               <label className="field">
                 <span className="label">Text colour</span>
                 <input type="color" value={style.color} onChange={(e) => set("color", e.target.value.toUpperCase())} />
+                <span className="swatches" role="group" aria-label="Quick text colours">
+                  {["#FFFFFF", "#FFF3D6", "#FFE066", "#BCE9D8", "#172321"].map((c) => (
+                    <button key={c} type="button" className={`swatch${style.color.toUpperCase() === c ? " swatch-on" : ""}`} style={{ background: c }} aria-label={`Text colour ${c}`} aria-pressed={style.color.toUpperCase() === c} onClick={() => set("color", c)} />
+                  ))}
+                </span>
               </label>
               <label className="field">
                 <span className="label">Outline colour</span>
