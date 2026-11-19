@@ -50,7 +50,7 @@ describe("App and accounts", () => {
     await userEvent.click(screen.getByRole("button", { name: "Log in" }));
     expect(await screen.findByRole("heading", { name: GREETING })).toBeInTheDocument();
     expect(login).toHaveBeenCalledWith({ email: "ann@example.com", password: "correct horse battery" });
-    expect(screen.getByRole("link", { name: "ann@example.com" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /ann@example\.com/ })).toBeInTheDocument();
     const logout = vi.spyOn(api, "logout").mockResolvedValue({});
     account.mockResolvedValue(hostedOut);
     await userEvent.click(screen.getByRole("button", { name: "Log out" }));

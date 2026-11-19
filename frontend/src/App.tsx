@@ -93,9 +93,15 @@ export function App() {
           {!hosted && <SetupCard />}
           {hosted && <CreditsCard />}
           {hosted && user && (
-            <div className="side-foot">
-              <NavLink to="/account"><Icon name="user" /><span className="side-email">{user.email}</span></NavLink>
-              <button className="btn btn-quiet" type="button" onClick={() => void logout()}>Log out</button>
+            <div className="profile">
+              <NavLink to="/account" className="profile-link" title="Your account">
+                <span className="profile-avatar" aria-hidden="true">{(user.email ?? "?").slice(0, 1).toUpperCase()}</span>
+                <span className="profile-text">
+                  <span className="profile-email">{user.email}</span>
+                  <span className="profile-role">{user.admin ? "Administrator" : "Your account"}</span>
+                </span>
+              </NavLink>
+              <button className="profile-out" type="button" onClick={() => void logout()}><Icon name="logout" size={16} />Log out</button>
             </div>
           )}
         </aside>
