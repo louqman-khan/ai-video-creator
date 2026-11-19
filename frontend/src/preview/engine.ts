@@ -35,6 +35,13 @@ function cssFilter(l: Layer, W: number): string {
 const BLUR_ZOOM = 1.15;
 const BLUR_SIGMA = 0.03;
 
+/** The font list for the live caption: the font chosen in the caption style first (when this computer has it), then the Urdu defaults. */
+export function captionFontStack(chosen: unknown): string {
+  const name = typeof chosen === "string" ? chosen.replace(/["'\\;{}]/g, "").trim().slice(0, 60) : "";
+  const defaults = '"Noto Nastaliq Urdu", "Jameel Noori Nastaleeq", system-ui, sans-serif';
+  return name ? `"${name}", ${defaults}` : defaults;
+}
+
 export class LiveEngine extends EventTarget {
   private doc: Doc;
   private frame = 0;
@@ -389,7 +396,7 @@ export class LiveEngine extends EventTarget {
   /** An approximation of the burned-in caption (the export uses libass and the caption style): white text, dark outline. */
   private drawCaption(g: CanvasRenderingContext2D, text: string, W: number, H: number) {
     const size = Math.round(H * 0.055);
-    g.font = `${size}px "Noto Nastaliq Urdu", "Jameel Noori Nastaleeq", system-ui, sans-serif`;
+    g.font = `${size}px ${captionFontStack(this.doc.caption_style?.font)}`;
     g.textAlign = "center";
     g.textBaseline = "alphabetic";
     g.direction = "inherit";
