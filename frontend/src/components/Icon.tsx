@@ -17,6 +17,11 @@ const PATHS: Record<string, string> = {
   text: "M5 6h14M12 6v14M9 20h6",
   search: "M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM21 21l-4.3-4.3",
   check: "M5 13l4 4L19 7",
+  sun: "M12 17a5 5 0 1 0 0-10 5 5 0 0 0 0 10zM12 1v2M12 21v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M1 12h2M21 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4",
+  moon: "M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z",
+  chevron: "M9 6l6 6-6 6",
+  play: "M8 5v14l11-7z",
+  folder: "M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z",
 };
 
 export function Icon({ name, size = 18 }: { name: keyof typeof PATHS | string; size?: number }) {

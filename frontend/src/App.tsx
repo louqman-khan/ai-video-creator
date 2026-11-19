@@ -1,6 +1,8 @@
 import { useEffect } from "react";
 import { Link, Navigate, NavLink, Route, Routes, useLocation } from "react-router-dom";
 import { Icon } from "./components/Icon";
+import { TopBar } from "./components/TopBar";
+import { SetupCard } from "./components/SetupCard";
 import { AccountPage, ForgotPage, LegalPage, LoginPage, ResetPage, SignupPage, VerifyPage } from "./pages/AuthPages";
 import { EditorPage } from "./pages/EditorPage";
 import { NewProjectPage } from "./pages/NewProjectPage";
@@ -65,11 +67,13 @@ export function App() {
       {!inEditor && (
         <aside className="sidebar">
           <Link to="/" className="brand"><span className="brand-mark" aria-hidden="true" />AI Video Creator</Link>
+          <Link to="/new" className="btn btn-primary side-new"><Icon name="plus" />New video</Link>
           <nav className="side-nav" aria-label="Main">
+            <span className="side-label">Workspace</span>
             <NavLink to="/" end><Icon name="grid" />Projects</NavLink>
-            <NavLink to="/new"><Icon name="plus" />New project</NavLink>
             {!hosted && <NavLink to="/setup"><Icon name="settings" />Setup</NavLink>}
           </nav>
+          {!hosted && <SetupCard />}
           {hosted && user && (
             <div className="side-foot">
               <NavLink to="/account"><Icon name="user" /><span className="side-email">{user.email}</span></NavLink>
@@ -79,7 +83,12 @@ export function App() {
         </aside>
       )}
       <main className={inEditor ? "editor-main" : "shell-main"}>
-        {inEditor ? routes : <div className="container">{routes}</div>}
+        {inEditor ? routes : (
+          <>
+            <TopBar workspace={hosted ? "Your workspace" : "Local workspace"} user={user?.email ?? null} />
+            <div className="container">{routes}</div>
+          </>
+        )}
       </main>
     </div>
   );

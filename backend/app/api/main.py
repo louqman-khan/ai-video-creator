@@ -86,6 +86,19 @@ def _safe_name(filename: str) -> str:
     return re.sub(r"[^\w\- ]+", "", stem).strip()[:60] or "project"
 
 
+def _backfill_durations(store: ProjectStore) -> None:
+    """Projects made before the card showed a length get it from their preview video (cheap; once)."""
+    from app.media import ffmpeg
+
+    for p in store.list():
+        f = store.path(p.id) / "preview.mp4"
+        if p.video_ready and p.duration is None and f.is_file():
+            try:
+                store.update(p.id, duration=round(ffmpeg.probe_duration(f), 1))
+            except Exception:  # noqa: BLE001  a broken file just has no length
+                continue
+
+
 def create_app(settings: Settings | None = None, providers_factory: ProvidersFactory | None = None) -> FastAPI:
     settings = settings or get_settings()
     store = ProjectStore(Path(settings.projects_dir))
@@ -93,6 +106,7 @@ def create_app(settings: Settings | None = None, providers_factory: ProvidersFac
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
+        _backfill_durations(store)
         n = store.recover_interrupted()
         if n:
             log.warning("marked %d interrupted project(s) as failed", n)

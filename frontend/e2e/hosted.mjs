@@ -34,7 +34,7 @@ async function signUpAndLogIn(p, email) {
   await p.page.getByLabel("E-mail").fill(email);
   await p.page.getByLabel("Password").fill(PASSWORD);
   await p.page.getByRole("button", { name: "Log in" }).click();
-  await p.page.getByRole("heading", { name: "Projects" }).waitFor();
+  await p.page.getByRole("heading", { name: /Good (morning|afternoon|evening)|Working late/ }).waitFor();
 }
 
 const ann = await person("ann"), bob = await person("bob"), anon = await person("anon");
@@ -97,6 +97,6 @@ await ann.page.getByRole("button", { name: "Log in" }).click();
 await ann.page.getByRole("heading", { name: "Your account" }).waitFor({ timeout: 15000 });   // she is taken back to the page she was on
 step("ann logs in again and lands where she was (her account page)", true);
 await ann.page.goto(`${base}/`);
-await ann.page.getByRole("heading", { name: "Projects" }).waitFor();
+await ann.page.getByRole("heading", { name: /Good (morning|afternoon|evening)|Working late/ }).waitFor();
 step("her project is still there after bob's account was deleted", (await ann.page.request.get(`${base}/api/projects/${pid}`)).status() === 200 && (await ann.page.locator(".card").count()) === 1);
 await browser.close();

@@ -1342,3 +1342,20 @@ def test_cue_confidence_is_the_lowest_word_confidence_inside_the_cue(tmp_path):
     cues = [Cue(start=0, end=1.0, text="a b"), Cue(start=2.5, end=4.0, text="c"), Cue(start=5.5, end=7.0, text="d")]
     assert cue_confidences(tmp_path, cues) == [0.4, 0.95, None]                    # a word without a confidence (typed/script) says nothing
     assert cue_confidences(tmp_path / "missing", cues) == [None, None, None]
+
+
+def test_projects_made_before_the_card_showed_a_length_get_one_from_their_video(env, tmp_path):
+    from app.api.main import _backfill_durations
+    from app.api.store import ProjectStore
+
+    store = ProjectStore(tmp_path / "projects")
+    info = store.create("old one")
+    store.update(info.id, status="done", video_ready=True)
+    ff("-f", "lavfi", "-i", "color=c=blue:s=64x64:d=2", "-c:v", "libx264", "-pix_fmt", "yuv420p", str(store.path(info.id) / "preview.mp4"))
+    _backfill_durations(store)
+    assert store.get(info.id).duration == 2.0
+    broken = store.create("broken")
+    store.update(broken.id, status="done", video_ready=True)
+    (store.path(broken.id) / "preview.mp4").write_bytes(b"not a video")
+    _backfill_durations(store)                                                   # a broken file just has no length
+    assert store.get(broken.id).duration is None

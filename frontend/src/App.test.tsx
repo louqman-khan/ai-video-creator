@@ -11,6 +11,8 @@ const local: Account = { mode: "local", signups: "open", require_verification: t
 const hostedOut: Account = { mode: "hosted", signups: "open", require_verification: true, user: null };
 const hostedIn: Account = { ...hostedOut, user: { id: "u1", email: "ann@example.com", admin: false, verified: true }, usage: { projects: 1, max_projects: 20, storage_bytes: 5e6, max_storage_bytes: 5e9, max_exports_per_day: 10 } };
 
+/** the projects page greets the person (by the hour) instead of saying "Projects" */
+const GREETING = /Good (morning|afternoon|evening)|Working late/;
 const open = (path = "/") => render(<MemoryRouter initialEntries={[path]}><App /></MemoryRouter>);
 
 beforeEach(() => {
@@ -25,7 +27,7 @@ describe("App and accounts", () => {
   it("local mode: no login, no account menu", async () => {
     vi.spyOn(api, "account").mockResolvedValue(local);
     open();
-    expect(await screen.findByRole("heading", { name: "Projects" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: GREETING })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Log out" })).not.toBeInTheDocument();
   });
 
@@ -44,7 +46,7 @@ describe("App and accounts", () => {
     await userEvent.type(screen.getByLabelText("Password"), "correct horse battery");
     account.mockResolvedValue(hostedIn);
     await userEvent.click(screen.getByRole("button", { name: "Log in" }));
-    expect(await screen.findByRole("heading", { name: "Projects" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: GREETING })).toBeInTheDocument();
     expect(login).toHaveBeenCalledWith({ email: "ann@example.com", password: "correct horse battery" });
     expect(screen.getByRole("link", { name: "ann@example.com" })).toBeInTheDocument();
     const logout = vi.spyOn(api, "logout").mockResolvedValue({});
@@ -67,7 +69,7 @@ describe("App and accounts", () => {
   it("the session ending in the background sends the person to the log-in page", async () => {
     vi.spyOn(api, "account").mockResolvedValue(hostedIn);
     open("/");
-    expect(await screen.findByRole("heading", { name: "Projects" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: GREETING })).toBeInTheDocument();
     window.dispatchEvent(new Event("avc:unauthorized"));
     expect(await screen.findByRole("heading", { name: "Log in" })).toBeInTheDocument();
   });

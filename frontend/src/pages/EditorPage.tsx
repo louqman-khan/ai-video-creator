@@ -2,6 +2,7 @@ import { useRef, useState, type PointerEvent as ReactPointerEvent } from "react"
 import { Link, useParams } from "react-router-dom";
 import { api } from "../api/client";
 import { Icon } from "../components/Icon";
+import { ThemeToggle } from "../components/ThemeToggle";
 import { isActive } from "../api/types";
 import { ProgressBar } from "../components/ProgressBar";
 import { CaptionEditor } from "../components/CaptionEditor";
@@ -80,9 +81,12 @@ export function EditorPage() {
     <div className="ws" style={{ ["--tl-h" as string]: `${tlHeight}px` }}>
       <header className="ws-top">
         <Link to="/" className="ws-back" aria-label="Back to projects"><Icon name="back" /></Link>
+        <Link to="/" className="ws-crumb">Projects</Link>
+        <Icon name="chevron" size={14} />
         <h1 dir="auto" className="ws-title">{project.name}</h1>
         <StatusBadge status={project.status} />
         <span className="ws-spacer" />
+        <ThemeToggle />
         {project.video_ready && (
           <button type="button" className="btn btn-primary" onClick={() => setTab("export")}><Icon name="export" />Export</button>
         )}

@@ -8,7 +8,7 @@ page.on("console", (m) => m.type() === "error" && problems.push(m.text()));
 page.on("pageerror", (e) => problems.push(e.message));
 const shot = async (name, full = false) => { await page.waitForTimeout(700); await page.screenshot({ path: `${out}/${name}.png`, fullPage: full }); console.log("shot", name); };
 await page.goto(base);
-await page.getByRole("heading", { name: "Projects" }).waitFor();
+await page.getByRole("heading", { name: /Good (morning|afternoon|evening)|Working late/ }).waitFor();
 await shot("1-projects");
 await page.goto(`${base}/new`);
 await shot("2-new", true);

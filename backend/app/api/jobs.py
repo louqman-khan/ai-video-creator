@@ -57,7 +57,7 @@ class JobRunner:
 
     def _finish_export(self, pid: str, export: bool, aspect: str | None, preset: str, encoder: str, video_seconds: float, started: float) -> None:
         self.store.update(pid, status="done", stage="done", progress=1.0, message="Finished", video_ready=True, export_ready=export,
-                          export_aspect=aspect, export_preset=preset if export else None, export_encoder=encoder if export else None)
+                          **({"duration": round(video_seconds, 1)} if video_seconds > 0 else {}), export_aspect=aspect, export_preset=preset if export else None, export_encoder=encoder if export else None)
         if export:  # what this export really cost makes the next estimate better
             export_speed.record(self.settings.work_dir, encoder, preset, aspect or "16:9", video_seconds, time.monotonic() - started)
 

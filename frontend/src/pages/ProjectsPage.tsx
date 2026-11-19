@@ -10,6 +10,12 @@ import { StoragePanel } from "../components/StoragePanel";
 import { useAuth } from "../store/auth";
 import { useProjects } from "../store/projects";
 
+function greeting(now = new Date()): string {
+  const h = now.getHours();
+  return h < 5 ? "Working late?" : h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
+}
+const clock = (s: number) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, "0")}`;
+
 export function ProjectsPage() {
   const admin = useAuth((s) => !!s.account?.user?.admin);  // the disk of the whole server is for its administrator (always true in the single-user desktop app)
   const { projects, loading, error, load, remove } = useProjects();
@@ -28,16 +34,19 @@ export function ProjectsPage() {
 
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<"new" | "old" | "name">("new");
+  const [tab, setTab] = useState<"all" | "recent" | "progress">("all");
   const shown = projects
     .filter((p) => p.name.toLowerCase().includes(query.trim().toLowerCase()))
+    .filter((p) => tab === "all" || (tab === "progress" ? isActive(p) || p.status === "failed" : Date.now() - new Date(p.created_at).getTime() < 14 * 864e5))
     .sort((a, b) => (sort === "name" ? a.name.localeCompare(b.name) : sort === "old" ? a.created_at.localeCompare(b.created_at) : b.created_at.localeCompare(a.created_at)));
 
   return (
     <section>
       <div className="page-head">
         <div>
-          <h1>Projects</h1>
-          <p className="page-sub">Everything you have made. Open a project to edit it, or start a new one.</p>
+          <p className="eyebrow"><span className="dot" />Your creative space</p>
+          <h1>{greeting()}</h1>
+          <p className="page-sub">Your next story is only a few clicks away.</p>
         </div>
         <Link className="btn btn-primary" to="/new"><Icon name="plus" />New project</Link>
       </div>
@@ -46,11 +55,11 @@ export function ProjectsPage() {
       <div className="starts" aria-label="Start a video">
         <Link to="/new" className="start">
           <span className="start-ico"><Icon name="mic" size={22} /></span>
-          <span><strong>Start with a voiceover</strong><span className="muted">Upload your narration (Urdu or English). We find the visuals and add captions.</span></span>
+          <span><strong>Start with a voiceover</strong><span className="muted">Upload narration (Urdu or English). We find the visuals and add captions.</span><span className="start-go">From audio<Icon name="chevron" size={14} /></span></span>
         </Link>
         <Link to="/new?source=script" className="start">
           <span className="start-ico"><Icon name="text" size={22} /></span>
-          <span><strong>Bring a script to life</strong><span className="muted">Type or paste your story and a computer voice reads it.</span></span>
+          <span><strong>Bring a script to life</strong><span className="muted">Type or paste your story and a computer voice reads it.</span><span className="start-go">From a script<Icon name="chevron" size={14} /></span></span>
         </Link>
       </div>
       {error && (
@@ -69,6 +78,13 @@ export function ProjectsPage() {
       )}
 
       {admin && <StoragePanel />}
+      {projects.length > 0 && (
+        <div className="tabs" role="tablist" aria-label="Filter projects">
+          {([["all", "All projects"], ["recent", "Recent"], ["progress", "In progress"]] as const).map(([id, label]) => (
+            <button key={id} type="button" role="tab" aria-selected={tab === id} className={`tab${tab === id ? " tab-on" : ""}`} onClick={() => setTab(id)}>{label}</button>
+          ))}
+        </div>
+      )}
       {projects.length > 0 && (
         <div className="toolbar">
           <label className="search">
@@ -91,6 +107,7 @@ export function ProjectsPage() {
               <span className="proj-ph"><Icon name="film" size={30} /></span>
               {p.video_ready && <img src={api.thumbUrl(p.id, 1, p.updated_at)} alt="" loading="lazy" onError={(e) => (e.currentTarget.style.display = "none")} />}
               <StatusBadge status={p.status} />
+              {p.duration ? <span className="proj-len"><Icon name="play" size={10} />{clock(p.duration)}</span> : null}
             </Link>
             <div className="proj-body">
               <div className="proj-title">

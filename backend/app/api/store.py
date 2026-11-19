@@ -44,6 +44,7 @@ class ProjectInfo(BaseModel):
     export_aspect: str | None = None
     export_preset: str | None = None  # 720p / 1080p / 4k
     export_encoder: str | None = None  # software / hardware
+    duration: float | None = None  # length of the video in seconds (shown on the project card)
     preview_rev: int | None = None  # the timeline revision the current preview was rendered from
     owner: str | None = None  # hosted mode: the account that owns the project (None in local mode)
 

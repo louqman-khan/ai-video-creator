@@ -15,7 +15,8 @@ export interface Project {
   language: string | null;
   aspect: string;
   options: { captions?: boolean; [key: string]: unknown };
-  video_ready: boolean; // a playable preview exists
+  video_ready: boolean;
+  duration?: number | null; // length of the video in seconds // a playable preview exists
   export_ready: boolean; // a full-quality export exists and matches the current edits
   export_aspect: string | null;
   export_preset?: string | null; // 720p / 1080p / 4k
