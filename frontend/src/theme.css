@@ -457,3 +457,11 @@ input[type="color"] { width: 44px; min-height: 30px; height: 30px; padding: 2px;
 .style-form .field:has(input[type="color"]) { grid-template-columns: auto 1fr; align-items: center; column-gap: var(--s3); }
 .style-form .field:has(input[type="color"]) .label { grid-column: 1 / -1; }
 .style-form .field:has(input[type="color"]) .swatches { margin-top: 0; }
+@media (max-width: 1000px) {
+  .workspace, .recent, .side-label { display: none; }
+  .sidebar { gap: var(--s2); padding: var(--s2) var(--s4); }
+  .side-nav { flex-wrap: nowrap; overflow-x: auto; }
+  .side-nav a { white-space: nowrap; min-height: 38px; }
+  .hero { padding: var(--s5) var(--s4); border-radius: 16px; } .hero h2 { font-size: 1.375rem; }
+  h1 { font-size: 1.75rem; }
+}
