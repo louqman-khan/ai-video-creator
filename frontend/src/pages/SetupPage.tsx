@@ -43,8 +43,8 @@ export function SetupPage() {
     <section>
       <div className="page-head">
         <div>
-          <h1>Setup</h1>
-          <p className="page-sub">Everything stays on this computer{st.data_dir ? <> (in <code>{st.data_dir}</code>)</> : null}. Both keys are free.</p>
+          <h1>Settings</h1>
+          <p className="page-sub">This page only exists when the app runs on your own computer, where it needs its own free keys and models. Everything stays on this computer{st.data_dir ? <> (in <code>{st.data_dir}</code>)</> : null}. On a hosted website the service provides these, and customers never see them.</p>
         </div>
         <Link className="btn" to="/">Back to projects</Link>
       </div>

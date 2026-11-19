@@ -3,7 +3,7 @@ import { Link, useLocation } from "react-router-dom";
 import { Icon } from "./Icon";
 import { ThemeToggle } from "./ThemeToggle";
 
-const TITLES: Record<string, string> = { "/": "Projects", "/new": "New project", "/setup": "Setup", "/account": "Account", "/terms": "Terms", "/privacy": "Privacy" };
+const TITLES: Record<string, string> = { "/": "Projects", "/new": "New project", "/setup": "Settings", "/account": "Account", "/terms": "Terms", "/privacy": "Privacy" };
 
 /** The bar above every page: where you are (a breadcrumb) on the left; theme and who you are on the right. */
 export function TopBar({ workspace, user }: { workspace: string; user: string | null }) {

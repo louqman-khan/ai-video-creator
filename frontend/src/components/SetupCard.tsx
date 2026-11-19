@@ -20,6 +20,6 @@ export function SetupCard() {
   return state === "ready" ? (
     <div className="side-card side-card-ok"><Icon name="check" size={16} /><span><strong>Ready to create</strong><span className="muted">Keys and models are set up.</span></span></div>
   ) : (
-    <Link to="/setup" className="side-card side-card-warn"><Icon name="settings" size={16} /><span><strong>Finish setup</strong><span className="muted">Add your free keys and download the models.</span></span></Link>
+    <Link to="/setup" className="side-card side-card-warn"><Icon name="settings" size={16} /><span><strong>Finish settings</strong><span className="muted">Add your free keys and download the models.</span></span></Link>
   );
 }

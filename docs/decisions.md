@@ -81,3 +81,8 @@ Public hosting needs isolation, limits and security, not scale. One Docker host 
 later), every project is a folder owned by an account; a single global guard enforces login, ownership (404 for foreign projects), CSRF header/Origin, administrator-only routes and per-user limits. Object storage and
 a worker queue are postponed until one machine is not enough: ffmpeg needs real files, so the split costs a large refactor with no benefit for the first users. Free computer voices (CC-BY-NC / unclear licence) are
 disabled in hosted mode; downloads from search results are limited to public addresses. Details: `docs/hosting.md`, `docs/security.md`.
+
+
+### D9. The product is a SaaS website; customers never handle API keys — **decided 2026-11-19**
+The main product is the hosted website (accounts, projects, editor). The operator holds the provider keys (Gemini, Pixabay, later paid voices or GPUs) in the server's own settings; customers only sign up and create videos, within limits (and, later, credits or plans that pay for what each video costs). In hosted mode there is no Settings page and no key fields. The local app and the desktop installer stay as an optional route for developers and power users: they run on the user's own computer and need the user's own free keys, because keys cannot be hidden inside a downloadable app. The local page for this is called **Settings** and says so.
+Consequences: keys are an operator concern (`deploy/.env.production.example`, never in the browser); cost control = per-user limits now, credits/plans later; the desktop installer is not the main way to reach users.

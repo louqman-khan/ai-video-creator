@@ -18,7 +18,7 @@ export function SetupBanner() {
   if (!missing) return null;
   return (
     <p className="alert" role="status">
-      Finish setting up before your first video: add your free keys and download the speech model. <Link to="/setup">Open Setup</Link>
+      This computer still needs its own free keys and the speech model before the first video. <Link to="/setup">Open Settings</Link>
     </p>
   );
 }

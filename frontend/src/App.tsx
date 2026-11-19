@@ -71,7 +71,7 @@ export function App() {
           <nav className="side-nav" aria-label="Main">
             <span className="side-label">Workspace</span>
             <NavLink to="/" end><Icon name="grid" />Projects</NavLink>
-            {!hosted && <NavLink to="/setup"><Icon name="settings" />Setup</NavLink>}
+            {!hosted && <NavLink to="/setup"><Icon name="settings" />Settings</NavLink>}
           </nav>
           {!hosted && <SetupCard />}
           {hosted && user && (
