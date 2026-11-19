@@ -21,3 +21,11 @@ Goal: look and behave like the established tools in this category (Descript, Ado
 
 ## Status
 See the progress log in `ROADMAP.md`.
+
+## Chosen direction: "frame." (from Lovable, 2026-11-19)
+Palette (light / dark): primary #246B62 / #69C9B0, accent coral #E7745D / #F38A72, success #277A58 / #72C99A, warning #AB6C1B / #E4B35E, danger #C34F4F / #EF8585, info #3F7EAD / #82BBE7,
+background #F5F7F5 / #13191A, surface #FFFFFF / #1A2222, raised #EDF1EF / #222C2C, border #D9E2DE / #35413F, text #1B2826 / #F3F7F4, muted #667470 / #9DACAA.
+Type: Space Grotesk (display) + DM Sans (text) + Noto Nastaliq Urdu (Urdu); all bundled in `frontend/public/fonts` (SIL OFL; licence files alongside). Scale 4/8/12/16/24/32/48/64, radius 4-12, controls 28/36/40.
+Timeline tints: teal = pictures, coral = captions, blue = voice-over. Applied in `frontend/src/theme.css`.
+Layout ideas taken over: start cards on the projects page, new-project page with the main choices on the left and a settings panel (language, format, options, Create) on the right, sort and search above the grid.
+Left for later: credits/plan card (only when plans exist), duration badges on cards, visual-style and stock-visual choices on the new-project page (need backend support), breadcrumb.

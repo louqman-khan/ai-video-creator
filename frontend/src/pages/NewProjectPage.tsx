@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { api, DEFAULT_LIMITS, uploadProject, type Limits } from "../api/client";
 import { Icon } from "../components/Icon";
 import { ProgressBar } from "../components/ProgressBar";
@@ -14,7 +14,8 @@ export function NewProjectPage() {
   const [limits, setLimits] = useState<Limits>(DEFAULT_LIMITS);
   const [values, setValues] = useState<NewProjectValues>(DEFAULT_VALUES);
   const [file, setFile] = useState<File | null>(null);
-  const [mode, setMode] = useState<"record" | "speak">("record");   // a recording, or a typed script spoken by a synthetic voice
+  const [params] = useSearchParams();
+  const [mode, setMode] = useState<"record" | "speak">(params.get("source") === "script" ? "speak" : "record");   // a recording, or a typed script spoken by a synthetic voice
   const [speech, setSpeech] = useState<string[]>([]);
   const [speechPaid, setSpeechPaid] = useState(false);   // the voice is an outside paid service
   const [paidOk, setPaidOk] = useState(false);
@@ -79,7 +80,8 @@ export function NewProjectPage() {
         </div>
       </div>
 
-      <form className="form narrow" onSubmit={submit} noValidate>
+      <form className="np-grid" onSubmit={submit} noValidate>
+        <div className="np-main">
         <div className="choices" role="radiogroup" aria-label="Where does the narration come from?">
           <label className={`choice${mode === "record" ? " choice-on" : ""}`}>
             <input type="radio" name="source" aria-label="I have a recording" checked={mode === "record"} disabled={uploading} onChange={() => setMode("record")} />
@@ -130,26 +132,6 @@ export function NewProjectPage() {
             <input type="text" dir="auto" maxLength={80} value={values.name} disabled={uploading}
               onChange={(e) => set("name", e.target.value)} placeholder="Defaults to the file name" />
           </label>
-          <div className="row">
-            <label className="field">
-              <span className="label">Language</span>
-              <select value={values.language} disabled={uploading}
-                onChange={(e) => set("language", e.target.value as NewProjectValues["language"])}>
-                {mode === "record" && <option value="">Detect automatically</option>}
-                {mode === "speak" && <option value="">Choose…</option>}
-                <option value="en">English</option>
-                <option value="ur">Urdu (اردو)</option>
-              </select>
-            </label>
-            <label className="field">
-              <span className="label">Video format</span>
-              <select value={values.aspect} disabled={uploading}
-                onChange={(e) => set("aspect", e.target.value as NewProjectValues["aspect"])}>
-                <option value="16:9">Landscape 16:9 (1920×1080)</option>
-                <option value="9:16">Vertical 9:16 (1080×1920)</option>
-              </select>
-            </label>
-          </div>
         </div>
 
         <div className="panel">
@@ -182,6 +164,35 @@ export function NewProjectPage() {
           )}
         </div>
 
+        </div>
+        <aside className="np-side">
+          <div className="panel">
+            <h2>Video settings</h2>
+          <div className="np-fields">
+            <label className="field">
+              <span className="label">Language</span>
+              <select value={values.language} disabled={uploading}
+                onChange={(e) => set("language", e.target.value as NewProjectValues["language"])}>
+                {mode === "record" && <option value="">Detect automatically</option>}
+                {mode === "speak" && <option value="">Choose…</option>}
+                <option value="en">English</option>
+                <option value="ur">Urdu (اردو)</option>
+              </select>
+            </label>
+            <label className="field">
+              <span className="label">Video format</span>
+              <select value={values.aspect} disabled={uploading}
+                onChange={(e) => set("aspect", e.target.value as NewProjectValues["aspect"])}>
+                <option value="16:9">Landscape 16:9 (1920×1080)</option>
+                <option value="9:16">Vertical 9:16 (1080×1920)</option>
+              </select>
+            </label>
+          </div>
+          </div>
+          <div className="np-note">
+            <Icon name="check" size={18} />
+            <p><strong>Made for both languages.</strong> English and Urdu captions keep their own reading direction, font and line breaks.</p>
+          </div>
         <details className="panel">
           <summary>Audio and caption options</summary>
           {([
@@ -226,6 +237,7 @@ export function NewProjectPage() {
             </Link>
           )}
         </div>
+        </aside>
       </form>
     </section>
   );

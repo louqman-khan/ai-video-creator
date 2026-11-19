@@ -27,7 +27,10 @@ export function ProjectsPage() {
   }, [anyActive, load]);
 
   const [query, setQuery] = useState("");
-  const shown = projects.filter((p) => p.name.toLowerCase().includes(query.trim().toLowerCase()));
+  const [sort, setSort] = useState<"new" | "old" | "name">("new");
+  const shown = projects
+    .filter((p) => p.name.toLowerCase().includes(query.trim().toLowerCase()))
+    .sort((a, b) => (sort === "name" ? a.name.localeCompare(b.name) : sort === "old" ? a.created_at.localeCompare(b.created_at) : b.created_at.localeCompare(a.created_at)));
 
   return (
     <section>
@@ -40,6 +43,16 @@ export function ProjectsPage() {
       </div>
 
       <SetupBanner />
+      <div className="starts" aria-label="Start a video">
+        <Link to="/new" className="start">
+          <span className="start-ico"><Icon name="mic" size={22} /></span>
+          <span><strong>Start with a voiceover</strong><span className="muted">Upload your narration (Urdu or English). We find the visuals and add captions.</span></span>
+        </Link>
+        <Link to="/new?source=script" className="start">
+          <span className="start-ico"><Icon name="text" size={22} /></span>
+          <span><strong>Bring a script to life</strong><span className="muted">Type or paste your story and a computer voice reads it.</span></span>
+        </Link>
+      </div>
       {error && (
         <p className="alert" role="alert">
           {error}
@@ -63,6 +76,12 @@ export function ProjectsPage() {
             <input type="text" placeholder="Search projects" aria-label="Search projects" value={query} onChange={(e) => setQuery(e.target.value)} />
           </label>
           <span className="muted small">{shown.length} of {projects.length}</span>
+          <label className="sort">
+            <span className="muted small">Sort</span>
+            <select aria-label="Sort projects" value={sort} onChange={(e) => setSort(e.target.value as "new" | "old" | "name")}>
+              <option value="new">Newest first</option><option value="old">Oldest first</option><option value="name">Name</option>
+            </select>
+          </label>
         </div>
       )}
       <ul className="proj-grid">
