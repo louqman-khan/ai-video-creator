@@ -35,7 +35,7 @@ export function SetupPage() {
   };
   const download = async () => {
     setError(null);
-    try { setSt(await api.setupModels({ whisper: size, clip: true })); } catch (e) { setError((e as Error).message); }
+    try { setSt(await api.setupModels({ whisper: size, clip: true, voice: true })); } catch (e) { setError((e as Error).message); }
   };
   const m = st.models;
 
@@ -76,6 +76,7 @@ export function SetupPage() {
             <li><span className="step-dot"><Tick ok={m.rnnoise} /></span> Noise removal</li>
             <li><span className="step-dot"><Tick ok={m.clip} /></span> Picture ranking</li>
             <li><span className="step-dot"><Tick ok={!!m.face} /></span> Face finding (smart crop)</li>
+            <li><span className="step-dot"><Tick ok={!!m.voice} /></span> English voice (for typed scripts)</li>
           </ul>
           <label className="field"><span className="label">Speech model size</span>
             <select value={size} onChange={(e) => setSize(e.target.value)} disabled={running}>

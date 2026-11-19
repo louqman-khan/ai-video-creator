@@ -14,12 +14,12 @@ WORKDIR /app
 COPY backend/pyproject.toml backend/pyproject.toml
 COPY backend/app backend/app
 COPY backend/cli backend/cli
-RUN pip install -e ./backend   # editable: the app finds assets/ and the web build next to backend/ (config.ROOT = /app)
+RUN pip install -e './backend[kokoro]'   # editable: the app finds assets/ and the web build next to backend/ (config.ROOT = /app)
 COPY assets/fonts assets/fonts
 RUN mkdir -p assets/models && chown -R avc /app/assets
 COPY --from=web /web/dist frontend/dist
 USER avc
-RUN avc fetch-models || true
+RUN avc fetch-models --kokoro || avc fetch-models || true
 VOLUME /data
 EXPOSE 8742
 HEALTHCHECK --interval=30s --timeout=5s --start-period=40s CMD curl -fsS http://127.0.0.1:8742/api/health || exit 1

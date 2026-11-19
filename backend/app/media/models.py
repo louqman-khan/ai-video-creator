@@ -16,6 +16,9 @@ CLIP_FILES = (("onnx/vision_model_quantized.onnx", "vision_model_quantized.onnx"
               ("tokenizer.json", "tokenizer.json"), ("preprocessor_config.json", "preprocessor_config.json"))
 FACE_URL = "https://github.com/Linzaer/Ultra-Light-Fast-Generic-Face-Detector-1MB/raw/master/models/onnx/version-RFB-320.onnx"  # MIT licence
 FACE_SHA256 = "34cd7e60aeff28744c657de7a3dc64e872d506741de66987f3426f2b79f88017"
+KOKORO_BASE = "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/"
+KOKORO_FILES = (("kokoro-v1.0.int8.onnx", "6e742170d309016e5891a994e1ce1559c702a2ccd0075e67ef7157974f6406cb"),
+                ("voices-v1.0.bin", "bca610b8308e8d99f32e6fe4197e7ec01679264efed0cac9140fe9c29f1fbf7d"))  # Kokoro-82M, Apache 2.0
 WHISPER_SIZES_MB = {"tiny": 75, "base": 145, "small": 465, "medium": 1500, "large-v3": 3000}
 
 Progress = Callable[[str], None]
@@ -65,6 +68,42 @@ def fetch_face(s: Settings, say: Progress = lambda m: None) -> Path:
         raise ModelError("The downloaded face model is not the expected file. Not using it.")
     dst.write_bytes(r.content)
     return dst
+
+
+def kokoro_ready(s: Settings) -> bool:
+    from app.providers.tts.kokoro import files_present
+
+    return files_present(Path(s.tts_dir))
+
+
+def fetch_kokoro(s: Settings, say: Progress = lambda m: None) -> list[Path]:
+    """The English voice (about 120 MB). Each file is checked against its published checksum and replaced atomically."""
+    import hashlib
+
+    folder = Path(s.tts_dir) / "kokoro-en"
+    folder.mkdir(parents=True, exist_ok=True)
+    out: list[Path] = []
+    for name, digest in KOKORO_FILES:
+        target = folder / name
+        if target.is_file() and hashlib.sha256(target.read_bytes()).hexdigest() == digest:
+            out.append(target)
+            continue
+        say(f"Downloading the English voice file {name} ...")
+        part = target.with_suffix(target.suffix + ".part")
+        h = hashlib.sha256()
+        with make_client(read_timeout=180.0) as c, c.stream("GET", KOKORO_BASE + name, follow_redirects=True) as r:
+            if r.is_error:
+                raise ModelError(f"Download of {name} failed: HTTP {r.status_code}")
+            with part.open("wb") as f:
+                for chunk in r.iter_bytes(1 << 20):
+                    h.update(chunk)
+                    f.write(chunk)
+        if h.hexdigest() != digest:
+            part.unlink(missing_ok=True)
+            raise ModelError(f"The downloaded {name} is not the expected file. Not using it.")
+        part.replace(target)
+        out.append(target)
+    return out
 
 
 def fetch_rnnoise(s: Settings, say: Progress = lambda m: None) -> Path:

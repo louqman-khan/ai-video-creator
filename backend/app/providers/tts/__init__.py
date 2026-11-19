@@ -3,7 +3,8 @@
 Engines (all run on the CPU through onnxruntime; models are files in `assets/models/tts/`, see docs/tts.md):
 - `mms`   Meta MMS-TTS (VITS) converted to ONNX. Urdu. Licence CC-BY-NC 4.0 (not for commercial use).
 - `piper` Piper voices (ONNX + bundled espeak-ng phonemes). English.
-- `auto`  (default) mms for Urdu, piper for English, whichever has its model installed.
+- `kokoro` Kokoro-82M English voices. Apache 2.0, so allowed on the public site too (docs/tts.md).
+- `auto`  (default) English: kokoro, else piper; Urdu: mms. Whichever has its model installed (mms and piper only where the personal-use voices are allowed).
 - `elevenlabs` a PAID cloud voice, only when chosen explicitly and keyed (docs/paid-providers.md); never part of `auto`.
 - `none`  no speech: asking for it explains how to set it up."""
 
@@ -66,6 +67,13 @@ def _piper(settings: Settings) -> TTS:
     return PiperTTS(Path(settings.tts_dir)) if voices_allowed(settings) else UnavailableTTS()
 
 
+@registry.register("kokoro")
+def _kokoro(settings: Settings) -> TTS:
+    from app.providers.tts.kokoro import KokoroTTS
+
+    return KokoroTTS(Path(settings.tts_dir), settings.kokoro_voice)  # licence-clean: no personal-use gate
+
+
 @registry.register("elevenlabs")
 def _elevenlabs(settings: Settings) -> TTS:
     from app.providers.tts.elevenlabs import ElevenLabsTTS
@@ -77,7 +85,7 @@ def _elevenlabs(settings: Settings) -> TTS:
 def _auto(settings: Settings) -> TTS:
     from app.providers.tts.router import RouterTTS
 
-    return RouterTTS([_mms(settings), _piper(settings)])
+    return RouterTTS([_kokoro(settings), _mms(settings), _piper(settings)])
 
 
 def create_tts(settings: Settings) -> TTS:

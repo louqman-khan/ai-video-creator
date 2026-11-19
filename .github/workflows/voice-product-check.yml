@@ -1,0 +1,28 @@
+# Checks the English voice end to end through the product on Linux (hosted-mode settings). Run it by pushing to the branch `voice-check` or from the Actions tab.
+name: voice-product-check
+
+on:
+  push:
+    branches: [voice-check]
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install the product the way the hosted image does
+        run: python -m pip install -e "backend[kokoro]" faster-whisper
+      - name: Download the voice with the product's own command (checksummed)
+        run: avc fetch-models --kokoro
+      - name: Speak through the product and listen again
+        run: python backend/tools/voice_product_check.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: english-check
+          path: english_check.wav

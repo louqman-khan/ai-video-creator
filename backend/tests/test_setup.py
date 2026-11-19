@@ -47,16 +47,17 @@ def test_model_download_runs_in_background(tmp_path, monkeypatch):
     calls = []
     monkeypatch.setattr(models, "fetch_rnnoise", lambda s, say: calls.append("rnnoise"))
     monkeypatch.setattr(models, "fetch_face", lambda s, say: calls.append("face"))
+    monkeypatch.setattr(models, "fetch_kokoro", lambda s, say: calls.append("kokoro"))
     monkeypatch.setattr(models, "fetch_clip", lambda s, say: calls.append("clip"))
     monkeypatch.setattr(models, "fetch_whisper", lambda m, say: calls.append("whisper:" + m))
     monkeypatch.setattr(models, "whisper_ready", lambda m: False)
-    assert c.post("/api/setup/models", json={"whisper": "base"}).status_code == 202
+    assert c.post("/api/setup/models", json={"whisper": "base", "voice": True}).status_code == 202
     for _ in range(100):
         d = c.get("/api/setup").json()["download"]
         if not d["running"]:
             break
         time.sleep(0.05)
-    assert d["error"] is None and calls == ["rnnoise", "face", "clip", "whisper:base"]
+    assert d["error"] is None and calls == ["rnnoise", "face", "kokoro", "clip", "whisper:base"]
     assert s.whisper_model == "base" and "WHISPER_MODEL=base" in (tmp_path / "data" / ".env").read_text()
 
 

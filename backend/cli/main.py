@@ -253,6 +253,7 @@ def fetch_ffmpeg() -> None:
 @app.command("fetch-models")
 def fetch_models(
     clip: Annotated[bool, typer.Option("--clip", help="Also download the CLIP picture-ranking model (about 155 MB)")] = False,
+    kokoro: Annotated[bool, typer.Option("--kokoro", help="Also download the English voice (Kokoro, about 120 MB, free for commercial use)")] = False,
     faces: Annotated[bool, typer.Option("--faces", help="Also download the small face-finding model (1 MB) used by smart crop")] = False,
     whisper: Annotated[bool, typer.Option("--whisper", help="Also download the speech-recognition model chosen by WHISPER_MODEL")] = False,
 ) -> None:
@@ -268,6 +269,10 @@ def fetch_models(
             for f in models.fetch_clip(s, say):
                 console.print(f"[green]Saved[/green] {f}")
             console.print("[dim]CLIP ViT-B/32 (OpenAI, MIT licence), ONNX int8 files by Xenova (Hugging Face).[/dim]")
+        if kokoro:
+            for f in models.fetch_kokoro(s, say):
+                console.print(f"[green]Saved[/green] {f}")
+            console.print("[dim]Kokoro-82M English voices (Apache 2.0). Needs the extra: pip install 'ai-video-creator[kokoro]'.[/dim]")
         if faces:
             console.print(f"[green]Saved[/green] {models.fetch_face(s, say)}")
             console.print("[dim]Ultra-Light-Fast-Generic-Face-Detector RFB-320 (MIT licence).[/dim]")

@@ -24,3 +24,11 @@ Real-time factor 0.42 (English) / 0.46 (Urdu). Whisper-small transcription of th
 ## Limits
 One voice per language; no speed control; numbers and abbreviations are not expanded (the Urdu voice drops digits: write numbers as words); sentences longer than
 220 characters are cut at commas.
+
+## English voice that is free for commercial use: Kokoro (added 2026-11-19)
+`TTS=kokoro` (also what `auto` prefers for English). Kokoro-82M, **Apache 2.0**, 8-bit ONNX through `kokoro-onnx`, CPU only. About 120 MB: `avc fetch-models --kokoro` (checksummed; the Settings page downloads it too). Files: `<tts_dir>/kokoro-en/kokoro-v1.0.int8.onnx` and `voices-v1.0.bin`.
+- **Hosted site:** unlike MMS (CC-BY-NC) and the Piper voice (licence unclear), Kokoro is **not** switched off in hosted mode, so a public site can offer "Type a script" in English. Install with `pip install "ai-video-creator[kokoro]"` (the Dockerfile does) and run `avc fetch-models --kokoro` once.
+- **Voices:** `KOKORO_VOICE` = `af_heart` (default), `af_bella`, `af_nicole`, `am_michael`, `am_adam`, `bf_emma` (British), `bm_george`.
+- **Measured** (GitHub Linux runner, 4 cores): 2 to 3 times faster than real time; Whisper `small` understood the 15 s test script word for word with all three voices tried.
+- **Caveats:** the phoneme step uses espeak-ng (GPL): fine for a site we run, review before giving an installer that contains it to others. `kokoro-onnx` needs onnxruntime >= 1.20, which Intel Macs do not get (this repo's development Mac): it cannot be run there, and the desktop installer build deliberately does not include it. Urdu is not covered: see the experiment in `backend/tools/voice_experiment.py` (Urdu written in Devanagari and read by a Hindi voice) which needs a native listener's verdict first.
+

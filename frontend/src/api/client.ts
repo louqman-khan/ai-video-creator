@@ -116,7 +116,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 export interface SetupStatus {
   ffmpeg: boolean;
   keys: { gemini_api_key: boolean; pixabay_api_key: boolean };
-  models: { whisper: boolean; whisper_model: string; rnnoise: boolean; clip: boolean; face?: boolean };
+  models: { whisper: boolean; whisper_model: string; rnnoise: boolean; clip: boolean; face?: boolean; voice?: boolean };
   whisper_sizes_mb: Record<string, number>;
   download: { running: boolean; message: string; error: string | null };
   data_dir: string | null;
@@ -131,7 +131,7 @@ export const api = {
   setupStatus: () => request<SetupStatus>("/api/setup"),
   setupKeys: (body: { gemini_api_key?: string; pixabay_api_key?: string }) =>
     request<SetupStatus>("/api/setup/keys", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }),
-  setupModels: (body: { whisper?: string; clip: boolean }) =>
+  setupModels: (body: { whisper?: string; clip: boolean; voice?: boolean }) =>
     request<SetupStatus>("/api/setup/models", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }),
   account: () => request<Account>("/api/auth/me"),
   verifyCode: (email: string, code: string) =>

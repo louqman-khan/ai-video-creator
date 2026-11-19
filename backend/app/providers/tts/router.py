@@ -22,4 +22,4 @@ class RouterTTS:
             if language in e.languages():
                 return e.synthesize(text, language, out, voice)
         raise TTSUnavailable(
-            f"No voice for '{language}' is installed. English needs a Piper voice, Urdu a converted MMS voice (see docs/tts.md).")
+            f"No voice for '{language}' is installed. English needs the Kokoro voice files (`avc fetch-models --kokoro`) or a Piper voice, Urdu a converted MMS voice (see docs/tts.md).")

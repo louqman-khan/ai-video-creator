@@ -49,7 +49,8 @@ class Settings(BaseSettings):
     whisper_beam: int = 5  # search width: larger = a little more accurate, slower
     media_ranker: str = "auto"  # auto | clip | heuristic: auto = CLIP when its model files are in clip_dir (docs/clip-ranker.md)
     audio_cleaner: str = "ffmpeg"  # ffmpeg | noop (--no-clean)
-    tts: str = "auto"  # auto | mms | piper | none  (docs/tts.md)
+    tts: str = "auto"  # auto | kokoro | mms | piper | elevenlabs | none  (docs/tts.md)
+    kokoro_voice: str = "af_heart"  # the English voice: af_heart, af_bella, af_nicole, am_michael, am_adam, bf_emma, bm_george
     avatar_renderer: str = "simple"  # simple (cartoon, CPU) | remote (GPU service, AVATAR_URL) | none
     avatar_url: str = ""
     avatar_token: str = ""
