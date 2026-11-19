@@ -395,3 +395,4 @@ input[type=file]::file-selector-button { font: inherit; font-weight: 500; min-he
 }
 .auth-brand .brand-mark { background: rgba(255, 255, 255, .18); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .25); }
 .auth-points [lang="ur"] { font-family: "Noto Nastaliq Urdu", serif; font-size: 1.05em; line-height: 1; padding: 0 2px; }
+.auth-card .check { align-items: flex-start; font-size: .875rem; line-height: 1.5; } .auth-card .check input { margin-top: 3px; flex: none; }

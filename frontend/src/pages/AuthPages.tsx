@@ -118,7 +118,7 @@ export function SignupPage() {
         {signups === "invite" && <Field id="invite" label="Invitation code" value={invite} onChange={setInvite} autoComplete="off" />}
         <label className="check">
           <input type="checkbox" checked={terms} onChange={(e) => setTerms(e.target.checked)} />
-          I accept the <Link to="/terms" target="_blank">terms of use</Link> and the <Link to="/privacy" target="_blank">privacy policy</Link>.
+          <span>I accept the <Link to="/terms" target="_blank">terms of use</Link> and the <Link to="/privacy" target="_blank">privacy policy</Link>.</span>
         </label>
         {error && <p className="alert" role="alert">{error}</p>}
         <button className="btn btn-primary" type="submit" disabled={busy || !email || !password || !terms}>{busy ? "Creating…" : "Create account"}</button>
