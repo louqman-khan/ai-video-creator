@@ -51,6 +51,7 @@ class Settings(BaseSettings):
     audio_cleaner: str = "ffmpeg"  # ffmpeg | noop (--no-clean)
     tts: str = "auto"  # auto | kokoro | mms | piper | elevenlabs | none  (docs/tts.md)
     kokoro_voice: str = "af_heart"  # the English voice: af_heart, af_bella, af_nicole, am_michael, am_adam, bf_emma, bm_george
+    urdu_via_hindi: bool = True  # typed Urdu scripts: Gemini writes them in Devanagari and Kokoro's Hindi voice reads them (needs GEMINI_API_KEY)
     avatar_renderer: str = "simple"  # simple (cartoon, CPU) | remote (GPU service, AVATAR_URL) | none
     avatar_url: str = ""
     avatar_token: str = ""

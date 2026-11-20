@@ -32,3 +32,13 @@ One voice per language; no speed control; numbers and abbreviations are not expa
 - **Measured** (GitHub Linux runner, 4 cores): 2 to 3 times faster than real time; Whisper `small` understood the 15 s test script word for word with all three voices tried.
 - **Caveats:** the phoneme step uses espeak-ng (GPL): fine for a site we run, review before giving an installer that contains it to others. `kokoro-onnx` needs onnxruntime >= 1.20, which Intel Macs do not get (this repo's development Mac): it cannot be run there, and the desktop installer build deliberately does not include it. Urdu is not covered: see the experiment in `backend/tools/voice_experiment.py` (Urdu written in Devanagari and read by a Hindi voice) which needs a native listener's verdict first.
 
+
+## Urdu typed scripts through Kokoro's Hindi voice (free, commercial use allowed)
+
+Spoken Urdu and Hindi are nearly the same language; only the script differs. So for a typed Urdu script, Gemini first writes each sentence in Devanagari (same words and sounds, no translation, Urdu-origin words and the nukta letters kept), then Kokoro's Hindi voice `hf_alpha` (Apache 2.0) reads it.
+
+- Engine: `KokoroUrduTTS` (`app/providers/tts/kokoro.py`), transliteration in `app/providers/tts/urdu_script.py`. Part of `TTS=auto`, after MMS (so where MMS is allowed it still wins for Urdu; on the hosted site it is the only Urdu voice).
+- Needs: the Kokoro files (`avc fetch-models --kokoro`), `GEMINI_API_KEY` (free tier is enough, one request per 12 sentences), and `URDU_VIA_HINDI` not set to false.
+- Safety: the answer is rejected unless it has the same number of sentences, contains Devanagari and no Arabic-script leftovers; otherwise the user is told to try again. Nothing unchecked is ever spoken.
+- Quality: understandable, with a Hindi accent and Hindi-style stress. The owner listened to samples and chose to go ahead. A native Urdu speaker should judge real scripts before launch; the fall-back is the user's own recording.
+- Limits: depends on the Gemini free tier; text that Gemini mis-writes is spoken wrongly (the captions still show the typed Urdu).
