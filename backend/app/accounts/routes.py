@@ -121,6 +121,7 @@ def build_router(s: Settings, store: ProjectStore, accounts: Accounts | None, qu
         user = acc.create_user(email, passwords.hash_password(body.password), verified=not s.require_email_verification)
         if user is None:  # two sign-ups with the same address at the same moment
             raise HTTPException(409, "This e-mail already has an account. Log in, or reset your password if you forgot it.")
+        acc.log_activity(user.id, "signed_up")
         if s.require_email_verification:
             send_verification(acc, user.id, email, lang)
         return generic
@@ -154,6 +155,7 @@ def build_router(s: Settings, store: ProjectStore, accounts: Accounts | None, qu
             raise HTTPException(400, "That code is wrong or has expired. Check the e-mail or ask for a new one.")
         acc.set_verified(row.id)
         acc.clear_verification(row.id)
+        acc.log_activity(row.id, "confirmed")
         return {"message": "Your e-mail address is confirmed. You can log in now."}
 
     @router.post("/login")
@@ -170,6 +172,7 @@ def build_router(s: Settings, store: ProjectStore, accounts: Accounts | None, qu
         if not row.verified:
             raise HTTPException(403, "Confirm your e-mail address first: open the link we sent you.")
         set_cookie(response, acc.create_session(row.id))
+        acc.log_activity(row.id, "login", detail=client_ip(request, s.trusted_proxy))
         return {"user": {"id": row.id, "email": row.email, "admin": row.role == "admin", "verified": True}}
 
     @router.post("/logout")
@@ -177,6 +180,9 @@ def build_router(s: Settings, store: ProjectStore, accounts: Accounts | None, qu
         if accounts is not None:
             token = request.cookies.get(COOKIE)
             if token:
+                who = accounts.session_user(token)
+                if who is not None:
+                    accounts.log_activity(who.id, "logout")
                 accounts.end_session(token)
         response.delete_cookie(COOKIE, path="/")
         return {"message": "Logged out."}
@@ -206,6 +212,7 @@ def build_router(s: Settings, store: ProjectStore, accounts: Accounts | None, qu
             raise HTTPException(400, "This link is invalid or has expired. Ask for a new one.")
         acc.set_password(uid, passwords.hash_password(body.password))
         acc.set_verified(uid)  # reading the e-mail proves the address as well
+        acc.log_activity(uid, "password_reset")
         return {"message": "Your password has been changed. Log in with the new one."}
 
     @router.delete("/account")

@@ -14,6 +14,7 @@ const show = () => render(<MemoryRouter initialEntries={["/admin"]}><Routes><Rou
 beforeEach(() => {
   vi.restoreAllMocks();
   useAuth.setState({ account: account(true), error: null });
+  vi.spyOn(api, "adminActivity").mockResolvedValue([]);
 });
 
 describe("AdminPage", () => {
@@ -28,6 +29,20 @@ describe("AdminPage", () => {
     expect(screen.queryByRole("button", { name: /Switch off boss/ })).not.toBeInTheDocument();      // an administrator cannot be switched off
     await userEvent.type(screen.getByLabelText("Find an account"), "ann");
     expect(screen.getByText("1 of 2 accounts")).toBeInTheDocument();
+  });
+
+  it("shows what everybody did, and what one account did when asked", async () => {
+    const row = (over = {}) => ({ id: 1, user_id: "u1", email: "ann@example.com", ts: 1_700_000_000, kind: "project_created", label: "Created a project", project_id: "p1", project_name: "My story", detail: "", ...over });
+    vi.spyOn(api, "adminUsers").mockResolvedValue([user()]);
+    const feed = vi.spyOn(api, "adminActivity").mockImplementation(async (id) => (id ? [row({ id: 2 })] : [row(), row({ id: 3, kind: "login", label: "Logged in", project_id: null, project_name: "", detail: "1.2.3.4" })]));
+    show();
+    const table = await screen.findByRole("table", { name: "Activity" });
+    expect(table).toHaveTextContent("Created a project");
+    expect(table).toHaveTextContent("My story");
+    expect(table).toHaveTextContent("1.2.3.4");
+    await userEvent.click(screen.getByRole("button", { name: "Show what ann@example.com did" }));
+    expect(await screen.findByRole("heading", { name: "What ann@example.com did" })).toBeInTheDocument();
+    expect(feed).toHaveBeenLastCalledWith("u1");
   });
 
   it("adds bonus credits and shows the answer", async () => {

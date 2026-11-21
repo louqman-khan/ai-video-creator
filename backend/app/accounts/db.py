@@ -56,6 +56,15 @@ credit_events = sa.Table(
     sa.Column("reason", sa.String(20), nullable=False),      # "video" | "refund" | "bonus"
     sa.Column("project_id", sa.String(32), index=True),
 )
+activity = sa.Table(
+    "activity_events", meta,
+    sa.Column("id", sa.Integer, primary_key=True, autoincrement=True),
+    sa.Column("user_id", sa.String(32), index=True, nullable=False),
+    sa.Column("ts", sa.Float, nullable=False, index=True),
+    sa.Column("kind", sa.String(30), nullable=False),        # see app/accounts/activity.py
+    sa.Column("project_id", sa.String(32)),
+    sa.Column("detail", sa.String(200), nullable=False, default=""),
+)
 
 
 @dataclass(frozen=True)
@@ -141,6 +150,7 @@ class Accounts:
             c.execute(sessions.delete().where(sessions.c.user_id == user_id))
             c.execute(tokens.delete().where(tokens.c.user_id == user_id))
             c.execute(usage.delete().where(usage.c.user_id == user_id))
+            c.execute(activity.delete().where(activity.c.user_id == user_id))
             c.execute(credit_events.delete().where(credit_events.c.user_id == user_id))
             c.execute(users.delete().where(users.c.id == user_id))
 
@@ -211,6 +221,29 @@ class Accounts:
         with self.engine.connect() as c:
             return c.execute(sa.select(sa.func.count()).select_from(usage).where(
                 sa.and_(usage.c.user_id == user_id, usage.c.kind == kind, usage.c.ts > time.time() - seconds))).scalar_one()
+
+    # ---- activity log (what each account did; the operator reads it on the Accounts page)
+    def log_activity(self, user_id: str, kind: str, project_id: str | None = None, detail: str = "", dedupe_seconds: float = 0) -> None:
+        """Never raises: a logging problem must not break what the person was doing. With `dedupe_seconds`, the same kind on the same project within that time is one entry."""
+        now = time.time()
+        try:
+            with self.engine.begin() as c:
+                if dedupe_seconds:
+                    last = c.execute(sa.select(activity.c.ts).where(sa.and_(activity.c.user_id == user_id, activity.c.kind == kind, activity.c.project_id == project_id))
+                                     .order_by(activity.c.ts.desc()).limit(1)).scalar()
+                    if last is not None and now - last < dedupe_seconds:
+                        return
+                c.execute(activity.insert().values(user_id=user_id, ts=now, kind=kind, project_id=project_id, detail=detail[:200]))
+        except sa.exc.SQLAlchemyError:
+            pass
+
+    def activity_list(self, user_id: str | None = None, limit: int = 200) -> list[dict]:
+        q = sa.select(activity, users.c.email).select_from(activity.outerjoin(users, users.c.id == activity.c.user_id)).order_by(activity.c.ts.desc(), activity.c.id.desc()).limit(limit)
+        if user_id:
+            q = q.where(activity.c.user_id == user_id)
+        with self.engine.connect() as c:
+            rows = c.execute(q).all()
+        return [{"id": r.id, "user_id": r.user_id, "email": r.email, "ts": r.ts, "kind": r.kind, "project_id": r.project_id, "detail": r.detail} for r in rows]
 
     # ---- credits (a ledger: the balance is the sum of the events of the current month)
     def credit_add(self, user_id: str, delta: int, reason: str, project_id: str | None = None) -> None:

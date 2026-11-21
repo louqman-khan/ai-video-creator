@@ -15,6 +15,18 @@ export interface Credits {
   bonus?: number;   // credits given by the operator (they do not expire)
 }
 
+export interface ActivityRow {
+  id: number;
+  user_id: string;
+  email: string | null;
+  ts: number;
+  kind: string;
+  label: string;
+  project_id: string | null;
+  project_name: string;
+  detail: string;
+}
+
 export interface AdminUser {
   id: string;
   email: string;
@@ -123,6 +135,7 @@ export interface SetupStatus {
 }
 
 export const api = {
+  adminActivity: (userId?: string) => request<ActivityRow[]>(`/api/admin/activity${userId ? `?user=${encodeURIComponent(userId)}` : ""}`),
   adminUsers: () => request<AdminUser[]>("/api/admin/users"),
   adminGiveCredits: (id: string, amount: number) =>
     request<Credits>(`/api/admin/users/${encodeURIComponent(id)}/credits`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ amount }) }),

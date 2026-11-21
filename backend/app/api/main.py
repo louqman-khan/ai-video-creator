@@ -33,6 +33,7 @@ from app.pipeline.caption_style import CaptionStyle
 from app.pipeline.runner import ASPECTS, Providers
 import app.maintenance as maintenance
 from app.api import avatars as avatars_api
+from app.accounts.activity import classify as activity_classify
 from app.accounts import routes as auth_routes
 from app.accounts import admin as admin_routes
 from app.accounts.db import Accounts
@@ -149,6 +150,11 @@ def create_app(settings: Settings | None = None, providers_factory: ProvidersFac
         @app.middleware("http")
         async def security_headers(request, call_next):
             response = await call_next(request)
+            user = getattr(request.state, "user", None)
+            if user is not None and response.status_code < 400 and request.url.path.startswith("/api"):  # the activity log: what the account just did
+                found = activity_classify(request.method, request.url.path)
+                if found:
+                    accounts.log_activity(user.id, found[0], found[1], dedupe_seconds=found[2])
             response.headers.update({"X-Content-Type-Options": "nosniff", "X-Frame-Options": "DENY", "Referrer-Policy": "same-origin",
                                      "Permissions-Policy": "camera=(), microphone=(), geolocation=()", "Content-Security-Policy": csp})
             if secure:

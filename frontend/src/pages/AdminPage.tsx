@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { Navigate } from "react-router-dom";
-import { api, ApiError, type AdminUser } from "../api/client";
+import { api, ApiError, type ActivityRow, type AdminUser } from "../api/client";
 import { Icon } from "../components/Icon";
 import { useAuth } from "../store/auth";
 
 const mb = (b: number) => (b >= 1e9 ? `${(b / 1e9).toFixed(1)} GB` : `${Math.round(b / 1e6)} MB`);
 const day = (t: number | null) => (t ? new Date(t * 1000).toLocaleDateString() : "never");
+const when = (t: number) => new Date(t * 1000).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 const message = (e: unknown) => (e instanceof ApiError || e instanceof Error ? e.message : "Something went wrong");
 
 /** The operator's page (hosted sites, administrators only): who has an account, what they use, bonus credits, switching an account off. */
@@ -17,6 +18,13 @@ export function AdminPage() {
   const [giving, setGiving] = useState<string | null>(null);   // the account whose "add credits" box is open
   const [amount, setAmount] = useState("5");
   const [query, setQuery] = useState("");
+  const [watching, setWatching] = useState<AdminUser | null>(null);   // whose activity is shown (null: everybody)
+  const [log, setLog] = useState<ActivityRow[] | null>(null);
+
+  const loadLog = useCallback((u: AdminUser | null) => api.adminActivity(u?.id).then((r) => setLog(r), (e) => setError(message(e))), []);
+  useEffect(() => {
+    void loadLog(watching);
+  }, [loadLog, watching]);
 
   const load = useCallback(() => api.adminUsers().then((u) => { setUsers(u); setError(null); }, (e) => setError(message(e))), []);
   useEffect(() => {
@@ -103,6 +111,7 @@ export function AdminPage() {
                       ) : (
                         <>
                           {!u.credits.unlimited && <button className="btn" type="button" onClick={() => { setGiving(u.id); setAmount("5"); }} aria-label={`Add credits to ${u.email}`}>Add credits</button>}
+                          <button className="btn btn-quiet" type="button" onClick={() => setWatching(watching?.id === u.id ? null : u)} aria-label={`Show what ${u.email} did`}>Activity</button>
                           {u.role !== "admin" && <button className="btn btn-quiet" type="button" onClick={() => void toggle(u)} aria-label={`${u.disabled ? "Switch on" : "Switch off"} ${u.email}`}>{u.disabled ? "Switch on" : "Switch off"}</button>}
                         </>
                       )}
@@ -112,6 +121,36 @@ export function AdminPage() {
               </tbody>
             </table>
           </div>
+          <div className="page-head" style={{ marginTop: 32 }}>
+            <div>
+              <h2>{watching ? `What ${watching.email} did` : "Recent activity"}</h2>
+              <p className="page-sub">Sign-ins, projects, exports and edits, newest first. Page views and what people type are not recorded.</p>
+            </div>
+            {watching && <button className="btn" type="button" onClick={() => setWatching(null)}>Show everyone</button>}
+            <button className="btn btn-quiet" type="button" onClick={() => void loadLog(watching)}>Refresh</button>
+          </div>
+          {log === null && <p className="muted">Loading…</p>}
+          {log && log.length === 0 && <p className="muted">Nothing recorded yet.</p>}
+          {log && log.length > 0 && (
+            <div className="table-wrap">
+              <table className="table" aria-label="Activity">
+                <thead><tr><th>When</th>{!watching && <th>Account</th>}<th>What</th></tr></thead>
+                <tbody>
+                  {log.map((a) => (
+                    <tr key={a.id}>
+                      <td>{when(a.ts)}</td>
+                      {!watching && <td>{a.email ?? "deleted account"}</td>}
+                      <td>
+                        {a.label}
+                        {a.project_name && <span className="muted small"> · “{a.project_name}”</span>}
+                        {a.detail && <span className="muted small"> · {a.detail}</span>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </>
       )}
     </section>

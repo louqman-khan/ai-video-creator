@@ -374,6 +374,30 @@ def test_the_admin_area_is_for_administrators_only_and_lists_use(env):
         assert "password" not in str(rows)                                              # nothing secret leaves the server
 
 
+def test_the_activity_log_shows_the_operator_what_an_account_did_and_only_the_operator(env):
+    app, s, tone, _ = hosted(env, admin_emails="boss@example.com")
+    with Browser(app, s) as boss, Browser(app, s) as ann:
+        boss.register("boss@example.com")
+        ann.register("ann@example.com")
+        pid = ann.make_project(tone, name="My story").json()["id"]
+        wait_done(ann.c, pid)
+        ann.c.get(f"/api/projects/{pid}/video")
+        ann.c.get(f"/api/projects/{pid}/video")                                         # watched twice in a moment: one entry
+        uid = next(u["id"] for u in boss.c.get("/api/admin/users").json() if u["email"] == "ann@example.com")
+        assert boss.c.post(f"/api/admin/users/{uid}/credits", json={"amount": 4}).status_code == 200
+        assert ann.c.delete(f"/api/projects/{pid}").status_code == 204
+        ann.c.post("/api/auth/logout")
+        rows = boss.c.get(f"/api/admin/activity?user={uid}").json()
+        kinds = [r["kind"] for r in rows]                                              # newest first
+        assert kinds == ["logout", "project_deleted", "bonus", "video_viewed", "project_created", "login", "confirmed", "signed_up"]
+        by = {r["kind"]: r for r in rows}
+        assert by["project_created"]["project_name"] == "" or by["project_created"]["label"] == "Created a project"      # the project is gone by now
+        assert by["bonus"]["detail"] == "+4" and by["login"]["email"] == "ann@example.com" and by["login"]["detail"]
+        assert len(boss.c.get("/api/admin/activity").json()) > len(rows)                 # without ?user= it is everybody
+        assert "password" not in str(rows)
+        assert ann.c.get("/api/admin/activity").status_code in (401, 403)                # not for ordinary accounts
+
+
 def test_bonus_credits_are_added_kept_across_months_and_can_be_taken_back_but_not_below_zero(env):
     app, s, tone, _ = hosted(env, admin_emails="boss@example.com", credits_per_month=1, max_active_jobs_per_user=5)
     with Browser(app, s) as boss, Browser(app, s) as ann:
