@@ -35,6 +35,5 @@ samples/footage/
 assets/fonts/Jameel*
 assets/fonts/jameel*
 Jameel*.ttf
-samples/font-comparison/*PRIVATE*
-samples/font-comparison/product-preview-*
+samples/font-comparison/
 samples/voice-experiment/
